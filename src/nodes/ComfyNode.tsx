@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { ComfyNodeData } from "../store/workflowStore";
+import { useWorkflowStore, type ComfyNodeData } from "../store/workflowStore";
 
 // ── Category colors ────────────────────────────────────────────────
 const CAT_COLORS: Record<string, string> = {
@@ -49,22 +49,41 @@ function getConnectionInputs(inputs: Record<string, any>): string[] {
 }
 
 // ── Node component ─────────────────────────────────────────────────
-function ComfyNode({ data, selected }: NodeProps) {
+function ComfyNode({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as ComfyNodeData;
   const accentColor = getCatColor(nodeData.category);
   const connectionInputs = getConnectionInputs(nodeData.inputs);
+  const connectingType = useWorkflowStore((s) => s.connectingType);
+  const connectingDir = useWorkflowStore((s) => s.connectingDirection);
+  const connectingNodeId = useWorkflowStore((s) => s.connectingNodeId);
+  const connectingHandleId = useWorkflowStore((s) => s.connectingHandleId);
+  const isSourceNode = connectingNodeId === id;
+
+  // If dragging from output → only inputs can receive. If from input → only outputs.
+  const hasCompatible = connectingType ? (
+    (connectingDir === "source" && connectionInputs.some(name => {
+      const config = (nodeData.inputs.required?.[name] || nodeData.inputs.optional?.[name]) as any[];
+      return config?.[0] === connectingType || config?.[0] === "*" || connectingType === "*";
+    })) ||
+    (connectingDir === "target" && nodeData.outputs.some(t =>
+      t === connectingType || t === "*" || connectingType === "*"
+    ))
+  ) : false;
 
   return (
     <div
-      className={`comfy-node ${selected ? "selected" : ""}`}
+      className={`comfy-node ${selected ? "selected" : ""} ${connectingType ? (hasCompatible ? "compatible" : "incompatible") : ""}`}
       style={{ "--accent": accentColor } as React.CSSProperties}
     >
-      {/* Color bar */}
-      <div className="node-accent" style={{ background: accentColor }} />
+      {/* Inner wrapper clips accent bar to rounded corners */}
+      <div className="node-inner">
+        {/* Color bar */}
+        <div className="node-accent" style={{ background: accentColor }} />
 
-      {/* Header */}
-      <div className="node-header">
-        <span className="node-title">{nodeData.label}</span>
+        {/* Header */}
+        <div className="node-header">
+          <span className="node-title">{nodeData.label}</span>
+        </div>
       </div>
 
       {/* Connection inputs (left handles) */}
@@ -74,13 +93,13 @@ function ComfyNode({ data, selected }: NodeProps) {
           const type = config?.[0] || "*";
           const color = getSlotColor(type);
           return (
-            <div key={name} className="node-slot input-slot">
+            <div key={name} className="node-slot input-slot" data-slot-type={type}>
               <Handle
                 type="target"
                 position={Position.Left}
                 id={name}
-                className="slot-handle"
-                style={{ background: color, top: "50%" }}
+                className={`slot-handle ${connectingDir === "source" && connectingType && (type === connectingType || type === "*" || connectingType === "*") ? "highlight" : ""} ${isSourceNode && connectingHandleId === name ? "active-source" : ""}`}
+                style={{ color }}
               />
               <span className="slot-label" style={{ color: color + "cc" }}>
                 {name}
@@ -95,7 +114,7 @@ function ComfyNode({ data, selected }: NodeProps) {
           const color = getSlotColor(type);
           const name = nodeData.outputNames[idx] || type;
           return (
-            <div key={`out_${idx}`} className="node-slot output-slot">
+            <div key={`out_${idx}`} className="node-slot output-slot" data-slot-type={type}>
               <span className="slot-type">{type}</span>
               <span className="slot-label" style={{ color: color + "cc" }}>
                 {name}
@@ -104,8 +123,8 @@ function ComfyNode({ data, selected }: NodeProps) {
                 type="source"
                 position={Position.Right}
                 id={`output_${idx}`}
-                className="slot-handle"
-                style={{ background: color, top: "50%" }}
+                className={`slot-handle ${connectingDir === "target" && connectingType && (type === connectingType || type === "*" || connectingType === "*") ? "highlight" : ""} ${isSourceNode && connectingHandleId === `output_${idx}` ? "active-source" : ""}`}
+                style={{ color }}
               />
             </div>
           );

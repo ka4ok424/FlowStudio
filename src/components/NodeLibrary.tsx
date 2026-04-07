@@ -1,9 +1,19 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+import { useReactFlow } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import type { ComfyNodeDef } from "../api/comfyApi";
 
 export default function NodeLibrary() {
-  const { nodeDefs, addNode } = useWorkflowStore();
+  const { nodeDefs, addNode, pushUndo } = useWorkflowStore();
+  const { getViewport } = useReactFlow();
+
+  const addNodeAtCenter = useCallback((type: string) => {
+    pushUndo();
+    const { x, y, zoom } = getViewport();
+    const centerX = (-x + window.innerWidth / 2) / zoom;
+    const centerY = (-y + window.innerHeight / 2) / zoom;
+    addNode(type, { x: centerX - 100, y: centerY - 50 });
+  }, [addNode, pushUndo, getViewport]);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -83,7 +93,7 @@ export default function NodeLibrary() {
                         className="library-node-card"
                         draggable
                         onDragStart={(e) => handleDragStart(e, name)}
-                        onDoubleClick={() => addNode(name, { x: 400, y: 300 })}
+                        onDoubleClick={() => addNodeAtCenter(name)}
                       >
                         <div className="card-name">{def.display_name || name}</div>
                         <div className="card-meta">
