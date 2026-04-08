@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 interface ApiKeys {
   google: string;
   openai: string;
+  claude: string;
   elevenlabs: string;
   kling: string;
 }
@@ -12,7 +13,7 @@ const STORAGE_KEY = "flowstudio_api_keys";
 export function getApiKeys(): ApiKeys {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-  } catch { return { google: "", openai: "", elevenlabs: "", kling: "" }; }
+  } catch { return { google: "", openai: "", claude: "", elevenlabs: "", kling: "" }; }
 }
 
 export function getApiKey(provider: string): string {
@@ -25,12 +26,12 @@ interface Props {
 }
 
 export default function SettingsModal({ open, onClose }: Props) {
-  const [keys, setKeys] = useState<ApiKeys>({ google: "", openai: "", elevenlabs: "", kling: "" });
+  const [keys, setKeys] = useState<ApiKeys>({ google: "", openai: "", claude: "", elevenlabs: "", kling: "" });
 
   useEffect(() => {
     if (open) {
       const saved = getApiKeys();
-      setKeys({ google: saved.google || "", openai: saved.openai || "", elevenlabs: saved.elevenlabs || "", kling: saved.kling || "" });
+      setKeys({ google: saved.google || "", openai: saved.openai || "", claude: saved.claude || "", elevenlabs: saved.elevenlabs || "", kling: saved.kling || "" });
     }
   }, [open]);
 
@@ -44,6 +45,7 @@ export default function SettingsModal({ open, onClose }: Props) {
   const fields: { key: keyof ApiKeys; label: string; hint: string }[] = [
     { key: "google", label: "Google AI (Gemini)", hint: "Nano Banana, Gemini Text, Veo" },
     { key: "openai", label: "OpenAI", hint: "GPT Image, ChatGPT" },
+    { key: "claude", label: "Claude (Anthropic)", hint: "AI Chat assistant" },
     { key: "elevenlabs", label: "ElevenLabs", hint: "Text-to-Speech" },
     { key: "kling", label: "Kling", hint: "Video generation" },
   ];

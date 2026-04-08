@@ -28,12 +28,16 @@ function PromptNode({ id, data, selected }: NodeProps) {
     [id, updateWidgetValue]
   );
 
-  // Highlight output if someone is dragging a connection that needs TEXT
   const outputHighlight =
     connectingDir === "target" && connectingType === "TEXT" ? "highlight" : "";
 
+  const hasCompatible = connectingType ? (
+    (connectingDir === "target" && "TEXT" === connectingType)
+  ) : false;
+  const dimClass = connectingType ? (hasCompatible ? "compatible" : "incompatible") : "";
+
   return (
-    <div className={`prompt-node ${selected ? "selected" : ""}`}>
+    <div className={`prompt-node ${selected ? "selected" : ""} ${dimClass}`}>
       {/* Accent bar */}
       <div className="prompt-node-inner">
         <div className="prompt-accent" />

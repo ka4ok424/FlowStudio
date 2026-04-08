@@ -181,6 +181,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         ImportNode: "importNode",
         NanoBananaNode: "nanoBananaNode",
         LocalGenerateNode: "localGenerateNode",
+        PreviewNode: "previewNode",
       };
       const newNode: Node<ComfyNodeData> = {
         id,

@@ -2,6 +2,7 @@ import { memo, useCallback, useState, useEffect } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt, getImageUrl } from "../api/comfyApi";
+import { addGenerationToLibrary } from "../store/mediaStore";
 
 function LocalGenerateNode({ id, data, selected }: NodeProps) {
   const nodeData = data as any;
@@ -77,8 +78,6 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
     }
 
     const actualSeed = seed ? parseInt(seed) : Math.floor(Math.random() * 2147483647);
-    // Force unique run ID to prevent ComfyUI cache
-    const cacheBreak = `_${Date.now()}`;
     const modelLower = selectedModel.toLowerCase();
 
     // Detect model type and build appropriate workflow
@@ -299,6 +298,20 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
                   const img = images[0];
                   const url = getImageUrl(img.filename, img.subfolder, img.type);
                   updateWidgetValue(id, "_previewUrl", url);
+                  // Convert to data URL for media library persistence
+                  fetch(url).then(r => r.blob()).then(blob => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      addGenerationToLibrary(reader.result as string, {
+                        prompt: promptText,
+                        model: selectedModel,
+                        seed: actualSeed.toString(),
+                        steps, cfg, width, height,
+                        nodeType: "fs:localGenerate",
+                      });
+                    };
+                    reader.readAsDataURL(blob);
+                  }).catch(() => {});
                   console.log("[LocalGen] Image ready:", url);
                   setGenerating(false);
                   setProgress(null);
@@ -346,9 +359,12 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
   const promptHL = connectingDir === "source" && connectingType === "TEXT" ? "highlight" : "";
   const outputHL = connectingDir === "target" && (connectingType === "IMAGE" || connectingType === "*") ? "highlight" : "";
 
+  const hasCompatible = connectingType ? (promptHL || outputHL) : false;
+  const dimClass = connectingType ? (hasCompatible ? "compatible" : "incompatible") : "";
+
   return (
     <div
-      className={`localgen-node ${selected ? "selected" : ""}`}
+      className={`localgen-node ${selected ? "selected" : ""} ${dimClass}`}
       onClick={() => setSelectedNode(id)}
     >
       <div className="localgen-node-inner">

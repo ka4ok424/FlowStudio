@@ -156,9 +156,12 @@ function ImportNode({ id, data, selected }: NodeProps) {
      (mediaType === "none" && ["IMAGE", "VIDEO", "AUDIO"].includes(connectingType)))
       ? "highlight" : "";
 
+  const hasCompatible = connectingType ? !!outputHighlight : false;
+  const dimClass = connectingType ? (hasCompatible ? "compatible" : "incompatible") : "";
+
   return (
     <div
-      className={`import-node ${selected ? "selected" : ""}`}
+      className={`import-node ${selected ? "selected" : ""} ${dimClass}`}
       onClick={() => setSelectedNode(id)}
     >
       <div className="import-node-inner">

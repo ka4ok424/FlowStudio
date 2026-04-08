@@ -198,6 +198,34 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:preview",
+  label: "Preview",
+  icon: "👁",
+  accentColor: "#81c784",
+  component: "PreviewNode",
+  description: "Preview any media output. Fullscreen view, download, and compare results from generation nodes.",
+  inputs: [
+    { name: "input", type: "MEDIA" },
+  ],
+  outputs: [],
+  aiDoc: {
+    purpose: "Display and inspect output from generation or processing nodes. Supports image, video, and audio preview with fullscreen and download.",
+    skills: [
+      "Preview generated images at full resolution",
+      "View intermediate results in a pipeline",
+      "Download generated media",
+      "Fullscreen comparison view",
+    ],
+    params: {},
+    connectsFrom: ["fs:nanoBanana", "fs:localGenerate", "fs:import"],
+    examples: [
+      "Connect Local Gen output → Preview to see generated image",
+      "Add multiple Previews after each step: generate → upscale → preview both",
+    ],
+  },
+});
+
+registerNativeNode({
   type: "fs:import",
   label: "Import",
   icon: "⬆",

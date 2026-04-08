@@ -7,6 +7,15 @@ export default function Toolbar() {
   const { isConnected, progress, buildWorkflow } = useWorkflowStore();
   const [showSettings, setShowSettings] = useState(false);
 
+  const handleStop = async () => {
+    try {
+      await fetch("/api/interrupt", { method: "POST" });
+      console.log("[Toolbar] Generation interrupted");
+    } catch (err) {
+      console.error("[Toolbar] Failed to interrupt:", err);
+    }
+  };
+
   const handleRun = async () => {
     const workflow = buildWorkflow();
     if (Object.keys(workflow).length === 0) return;
@@ -44,6 +53,9 @@ export default function Toolbar() {
       <div className="toolbar-right">
         <button className="btn-settings" onClick={() => setShowSettings(true)} title="Settings">
           ⚙
+        </button>
+        <button className="btn-stop" onClick={handleStop} title="Stop generation">
+          ■
         </button>
         <button className="btn-run" onClick={handleRun}>
           ▶ Run

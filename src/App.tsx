@@ -17,6 +17,10 @@ import PromptNode from "./nodes/PromptNode";
 import ImportNode from "./nodes/ImportNode";
 import NanoBananaNode from "./nodes/NanoBananaNode";
 import LocalGenerateNode from "./nodes/LocalGenerateNode";
+import PreviewNode from "./nodes/PreviewNode";
+import AiChat from "./components/AiChat";
+import MediaLibrary from "./components/MediaLibrary";
+import { useMediaStore } from "./store/mediaStore";
 import NodeLibrary from "./components/NodeLibrary";
 import Toolbar from "./components/Toolbar";
 import PropertiesPanel from "./components/PropertiesPanel";
@@ -29,6 +33,7 @@ const nodeTypes = {
   importNode: ImportNode,
   nanoBananaNode: NanoBananaNode,
   localGenerateNode: LocalGenerateNode,
+  previewNode: PreviewNode,
 };
 
 function App() {
@@ -57,6 +62,7 @@ function App() {
         setConnected(true);
         console.log(`Loaded ${Object.keys(defs).length} node definitions`);
         loadWorkflow();
+        useMediaStore.getState().loadFromStorage();
       })
       .catch((err) => {
         console.error("Failed to connect to ComfyUI:", err);
@@ -246,6 +252,8 @@ function App() {
   // Minimap & Logs toggle
   const [showMinimap, setShowMinimap] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
+  const [showAiChat, setShowAiChat] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<"nodes" | "media">("nodes");
   const [logs, setLogs] = useState<string[]>([]);
 
   // Node click → select for properties panel
@@ -280,7 +288,13 @@ function App() {
     <>
       <Toolbar />
       <div className="main-layout">
-        <NodeLibrary />
+        <div className="node-library">
+          <div className="sidebar-tabs">
+            <button className={`sidebar-tab ${sidebarTab === "nodes" ? "active" : ""}`} onClick={() => setSidebarTab("nodes")}>Nodes</button>
+            <button className={`sidebar-tab ${sidebarTab === "media" ? "active" : ""}`} onClick={() => setSidebarTab("media")}>Media</button>
+          </div>
+          {sidebarTab === "nodes" ? <NodeLibrary /> : <MediaLibrary />}
+        </div>
         <div className="canvas-wrapper" onDrop={onDrop} onDragOver={onDragOver}>
           <ReactFlow
             nodes={nodes}
@@ -295,6 +309,8 @@ function App() {
             nodeTypes={nodeTypes}
             proOptions={{ hideAttribution: true }}
             fitView
+            minZoom={0.1}
+            maxZoom={4}
             defaultEdgeOptions={{
               type: "default",
               animated: false,
@@ -311,6 +327,7 @@ function App() {
             )}
           </ReactFlow>
           <div className="canvas-bottom-buttons">
+            <button className={`canvas-btn ${showAiChat ? "active" : ""}`} onClick={() => setShowAiChat(!showAiChat)}>AI</button>
             <button className="canvas-btn" onClick={() => setShowLogs(!showLogs)}>Logs</button>
             <button className="canvas-btn" onClick={() => setShowMinimap(!showMinimap)}>Map</button>
           </div>
@@ -328,7 +345,8 @@ function App() {
             </div>
           )}
         </div>
-        {selectedNodeId && <PropertiesPanel />}
+        {selectedNodeId && !showAiChat && <PropertiesPanel />}
+        <AiChat open={showAiChat} onClose={() => setShowAiChat(false)} />
       </div>
     </>
   );

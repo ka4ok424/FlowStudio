@@ -2,6 +2,7 @@ import { memo, useCallback, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { generateImage } from "../api/geminiApi";
+import { addGenerationToLibrary } from "../store/mediaStore";
 
 const MAX_REFS = 14;
 
@@ -57,6 +58,12 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
     } else if (result.images.length > 0) {
       const dataUrl = `data:image/png;base64,${result.images[0]}`;
       updateWidgetValue(id, "_previewUrl", dataUrl);
+      addGenerationToLibrary(dataUrl, {
+        prompt: prompt || "",
+        model: nodeData.widgetValues?.model || "gemini-2.5-flash-image",
+        seed: nodeData.widgetValues?.seed || "random",
+        nodeType: "fs:nanoBanana",
+      });
     }
 
     setGenerating(false);
@@ -82,9 +89,12 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
   const imageHL = connectingDir === "source" && (connectingType === "IMAGE" || connectingType === "MEDIA") ? "highlight" : "";
   const outputHL = connectingDir === "target" && (connectingType === "IMAGE" || connectingType === "*") ? "highlight" : "";
 
+  const hasCompatible = connectingType ? (promptHL || imageHL || outputHL) : false;
+  const dimClass = connectingType ? (hasCompatible ? "compatible" : "incompatible") : "";
+
   return (
     <div
-      className={`nanob-node ${selected ? "selected" : ""}`}
+      className={`nanob-node ${selected ? "selected" : ""} ${dimClass}`}
       onClick={() => setSelectedNode(id)}
     >
       <div className="nanob-node-inner">

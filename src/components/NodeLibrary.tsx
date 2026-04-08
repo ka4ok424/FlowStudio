@@ -62,7 +62,7 @@ export default function NodeLibrary() {
   };
 
   return (
-    <div className="node-library">
+    <div className="node-library-content">
       <div className="library-header">
         <h2>Nodes</h2>
         <span className="node-count">{Object.keys(nodeDefs).length}</span>
