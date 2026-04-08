@@ -77,6 +77,8 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
     }
 
     const actualSeed = seed ? parseInt(seed) : Math.floor(Math.random() * 2147483647);
+    // Force unique run ID to prevent ComfyUI cache
+    const cacheBreak = `_${Date.now()}`;
     const modelLower = selectedModel.toLowerCase();
 
     // Detect model type and build appropriate workflow
