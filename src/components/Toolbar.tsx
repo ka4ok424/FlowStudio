@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt } from "../api/comfyApi";
+import SettingsModal from "./SettingsModal";
 
 export default function Toolbar() {
   const { isConnected, progress, buildWorkflow } = useWorkflowStore();
+  const [showSettings, setShowSettings] = useState(false);
 
   const handleRun = async () => {
     const workflow = buildWorkflow();
@@ -39,10 +42,15 @@ export default function Toolbar() {
       </div>
 
       <div className="toolbar-right">
+        <button className="btn-settings" onClick={() => setShowSettings(true)} title="Settings">
+          ⚙
+        </button>
         <button className="btn-run" onClick={handleRun}>
-          &#9654; Run
+          ▶ Run
         </button>
       </div>
+
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );
 }

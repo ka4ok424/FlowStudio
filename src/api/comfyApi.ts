@@ -33,7 +33,11 @@ export async function queuePrompt(workflow: Record<string, any>): Promise<QueueP
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt: workflow }),
   });
-  if (!res.ok) throw new Error(`Failed to queue: ${res.status}`);
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    console.error(`[ComfyUI] Queue error ${res.status}:`, errBody);
+    throw new Error(`ComfyUI ${res.status}: ${errBody.slice(0, 200)}`);
+  }
   return res.json();
 }
 

@@ -31,14 +31,20 @@ export function useSnappingNodes() {
         const newGuides: Guide[] = [];
 
         const modified = changes.map((change: any) => {
-          // Only intercept position changes
+          // Only intercept position changes while dragging
           if (change.type !== "position" || !change.position) {
             return change;
           }
 
-          // Clean up drag start on release (but still snap the final position)
+          // On release: don't re-snap, just keep current snapped position
           if (!change.dragging) {
+            const node = allNodes.find((n) => n.id === change.id);
+            if (node && dragStartRef.current[change.id]) {
+              // Use node's current position (already snapped) instead of React Flow's final position
+              change = { ...change, position: { ...node.position } };
+            }
             delete dragStartRef.current[change.id];
+            return change;
           }
 
           let { x, y } = change.position;

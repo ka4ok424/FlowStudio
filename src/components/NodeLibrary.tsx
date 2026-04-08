@@ -1,6 +1,8 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
+import { getAllNativeNodes } from "../nodes/registry";
 import type { ComfyNodeDef } from "../api/comfyApi";
 
 export default function NodeLibrary() {
@@ -16,6 +18,8 @@ export default function NodeLibrary() {
   }, [addNode, pushUndo, getViewport]);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
+  const tooltipTimer = useRef<number>(0);
 
   // Group by top-level category
   const categories = useMemo(() => {
@@ -73,6 +77,37 @@ export default function NodeLibrary() {
       />
 
       <div className="library-list">
+        {/* ── Native FlowStudio nodes ─────────────────────────── */}
+        <div className="library-category">
+          <div className="native-section-header">FlowStudio</div>
+          <div className="native-nodes-grid">
+            {getAllNativeNodes()
+              .filter((n) => !search || n.label.toLowerCase().includes(search.toLowerCase()))
+              .map((def) => (
+                <div
+                  key={def.type}
+                  className="native-node-card"
+                  style={{ "--card-accent": def.accentColor } as React.CSSProperties}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, def.type)}
+                  onDoubleClick={() => addNodeAtCenter(def.type)}
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    clearTimeout(tooltipTimer.current);
+                    tooltipTimer.current = window.setTimeout(() => {
+                      setTooltip({ text: def.description, x: rect.right + 4, y: rect.top });
+                    }, 500);
+                  }}
+                  onMouseLeave={() => { clearTimeout(tooltipTimer.current); setTooltip(null); }}
+                >
+                  <span className="native-icon">{def.icon}</span>
+                  <span className="native-label">{def.label}</span>
+                </div>
+              ))}
+          </div>
+        </div>
+
+        {/* ── ComfyUI nodes ───────────────────────────────────── */}
         {Object.entries(categories)
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([catName, nodes]) => {
@@ -108,6 +143,14 @@ export default function NodeLibrary() {
             );
           })}
       </div>
+
+      {/* Tooltip portal — renders outside sidebar DOM */}
+      {tooltip && createPortal(
+        <div className="fs-tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
+          {tooltip.text}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

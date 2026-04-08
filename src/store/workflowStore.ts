@@ -10,6 +10,7 @@ import {
   addEdge,
 } from "@xyflow/react";
 import type { ComfyNodeDef } from "../api/comfyApi";
+import { getNativeNode } from "../nodes/registry";
 
 const SLOT_COLORS: Record<string, string> = {
   IMAGE: "#64b5f6", LATENT: "#ab47bc", MODEL: "#b39ddb",
@@ -170,17 +171,45 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   addNode: (type, position) => {
+    const id = `node_${++nodeIdCounter}`;
+
+    // ── Native FlowStudio node ───────────────────────────────
+    const nativeDef = getNativeNode(type);
+    if (nativeDef) {
+      const componentMap: Record<string, string> = {
+        PromptNode: "promptNode",
+        ImportNode: "importNode",
+        NanoBananaNode: "nanoBananaNode",
+        LocalGenerateNode: "localGenerateNode",
+      };
+      const newNode: Node<ComfyNodeData> = {
+        id,
+        type: componentMap[nativeDef.component] || "comfyNode",
+        position,
+        data: {
+          label: nativeDef.label,
+          type: nativeDef.type,
+          category: "native",
+          inputs: {},
+          outputs: nativeDef.outputs.map((o) => o.type),
+          outputNames: nativeDef.outputs.map((o) => o.name),
+          widgetValues: {},
+          _native: true,
+        },
+      };
+      set({ nodes: [...get().nodes, newNode] });
+      return;
+    }
+
+    // ── ComfyUI node ─────────────────────────────────────────
     const def = get().nodeDefs[type];
     if (!def) return;
 
-    const id = `node_${++nodeIdCounter}`;
     const widgetValues: Record<string, any> = {};
-
-    // Set default widget values from required inputs
     if (def.input.required) {
       for (const [key, config] of Object.entries(def.input.required)) {
         if (Array.isArray(config) && Array.isArray(config[0])) {
-          widgetValues[key] = config[0][0]; // first option of enum
+          widgetValues[key] = config[0][0];
         } else if (Array.isArray(config) && config.length > 1 && typeof config[1] === "object") {
           widgetValues[key] = config[1].default ?? "";
         }
@@ -210,13 +239,49 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setProgress: (progress) => set({ progress }),
 
   updateWidgetValue: (nodeId, key, value) => {
-    set({
-      nodes: get().nodes.map((n) =>
-        n.id === nodeId
-          ? { ...n, data: { ...n.data, widgetValues: { ...n.data.widgetValues, [key]: value } } }
-          : n
-      ),
-    });
+    const nodes = get().nodes.map((n) =>
+      n.id === nodeId
+        ? { ...n, data: { ...n.data, widgetValues: { ...n.data.widgetValues, [key]: value } } }
+        : n
+    );
+    set({ nodes });
+
+    // When media type changes on Import node, validate edges
+    if (key === "_mediaType") {
+      const TYPE_MAP: Record<string, string> = { image: "IMAGE", video: "VIDEO", audio: "AUDIO" };
+      const newType = TYPE_MAP[value as string];
+      if (!newType) return;
+
+      const edges = get().edges.map((edge) => {
+        if (edge.source !== nodeId) return edge;
+        // Check if target accepts this type
+        const targetNode = nodes.find((n) => n.id === edge.target);
+        if (!targetNode || !edge.targetHandle) return edge;
+
+        const inputs = targetNode.data.inputs;
+        const config = inputs?.required?.[edge.targetHandle] || inputs?.optional?.[edge.targetHandle];
+        const acceptedType = config?.[0];
+
+        // Native nodes: check by handle ID
+        const isNative = (targetNode.data as any)._native;
+        let compatible = true;
+        if (isNative) {
+          // fs:nanoBanana accepts IMAGE on input_image/ref_*, TEXT on prompt
+          if (edge.targetHandle === "prompt" && newType !== "TEXT") compatible = false;
+          if ((edge.targetHandle === "input_image" || edge.targetHandle?.startsWith("ref_")) && newType !== "IMAGE") compatible = false;
+        } else if (acceptedType && acceptedType !== "*" && acceptedType !== newType) {
+          compatible = false;
+        }
+
+        if (!compatible) {
+          return { ...edge, style: { ...edge.style, stroke: "#ff2020", strokeWidth: 3 }, className: "edge-error", data: { error: true } };
+        }
+        // Restore normal color
+        const color = getSlotColor(newType);
+        return { ...edge, style: { ...edge.style, stroke: darken(color, 0.4), strokeWidth: 1 }, className: "", data: { error: false } };
+      });
+      set({ edges });
+    }
   },
 
   // Build ComfyUI-compatible workflow JSON
