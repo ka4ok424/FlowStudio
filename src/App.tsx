@@ -310,7 +310,7 @@ function App() {
             proOptions={{ hideAttribution: true }}
             fitView
             minZoom={0.1}
-            maxZoom={4}
+            maxZoom={2}
             defaultEdgeOptions={{
               type: "default",
               animated: false,
