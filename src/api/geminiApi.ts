@@ -108,6 +108,7 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
     }
 
     const data = await res.json();
+    console.log(`[NanoBanana] Response:`, JSON.stringify(data).slice(0, 500));
     const images: string[] = [];
 
     // Extract images from response
@@ -115,8 +116,10 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
       for (const candidate of data.candidates) {
         if (candidate.content?.parts) {
           for (const part of candidate.content.parts) {
-            if (part.inline_data?.data) {
-              images.push(part.inline_data.data);
+            // API returns either inline_data or inlineData depending on model version
+            const inl = part.inline_data || part.inlineData;
+            if (inl?.data) {
+              images.push(inl.data);
             }
           }
         }

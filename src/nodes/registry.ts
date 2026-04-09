@@ -226,6 +226,232 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:characterCard",
+  label: "Character Card",
+  icon: "🎭",
+  accentColor: "#a78bfa",
+  component: "CharacterCardNode",
+  description: "Character profile card with portrait, description, and approve/reject flow. For building character databases for animation pipelines.",
+  inputs: [
+    { name: "ai_input", type: "TEXT" },
+    { name: "portrait_input", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "character", type: "CHARACTER" },
+    { name: "portrait", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Create and manage character profiles for animation/storytelling pipelines. Stores character name, description, and reference portrait. Supports approve/reject workflow for curating AI-generated characters.",
+    skills: [
+      "Store character profiles with visual references",
+      "Approve or reject AI-generated characters",
+      "Provide character data to scene generation nodes",
+      "Feed portrait to IP-Adapter for character consistency",
+    ],
+    params: {
+      name: "Character name",
+      description: "Full character description (appearance, personality, traits)",
+      portraitUrl: "Reference portrait image (data URL or blob URL)",
+      status: "draft | approved | rejected",
+    },
+    connectsFrom: ["fs:prompt", "fs:nanoBanana", "fs:localGenerate"],
+    connectsTo: ["fs:scene", "fs:localGenerate", "fs:nanoBanana"],
+    examples: [
+      "AI generates character JSON → Character Card parses name + description",
+      "Connect Local Gen → Portrait Input to set reference image",
+      "Approve character → output feeds into Scene node for consistent generation",
+    ],
+  },
+});
+
+registerNativeNode({
+  type: "fs:scene",
+  label: "Scene",
+  icon: "🎬",
+  accentColor: "#e85d75",
+  component: "SceneNode",
+  description: "Generate a scene with characters. Uses IP-Adapter for character consistency. Connects to Storyboard for sequencing.",
+  inputs: [
+    { name: "action", type: "TEXT" },
+    { name: "background", type: "IMAGE" },
+    { name: "character_0", type: "CHARACTER" },
+  ],
+  outputs: [
+    { name: "scene", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Scene generation node for animation pipeline. Takes character cards + action description + optional background, generates a scene image with character consistency via IP-Adapter.",
+    skills: [
+      "Generate scenes with multiple characters",
+      "Maintain character consistency via IP-Adapter",
+      "Composite characters over backgrounds",
+      "Build animation storyboard frames",
+    ],
+    params: {
+      sceneTitle: "Scene title for storyboard display",
+      action: "Scene action/description text",
+      model: "Checkpoint model for generation",
+      width: "Output width, default 1024",
+      height: "Output height, default 576",
+      steps: "Sampling steps, default 20",
+      cfg: "CFG scale, default 7",
+      _characterCount: "Number of character input slots (1-8)",
+    },
+    connectsFrom: ["fs:characterCard", "fs:prompt", "fs:localGenerate", "fs:import"],
+    connectsTo: ["fs:storyboard", "fs:preview"],
+    examples: [
+      "Connect 2 CharacterCards + Prompt('They meet in a forest') → generates scene with both characters",
+      "Connect background from LocalGen + characters → composites scene",
+    ],
+  },
+});
+
+registerNativeNode({
+  type: "fs:storyboard",
+  label: "Storyboard",
+  icon: "📋",
+  accentColor: "#ff9800",
+  component: "StoryboardNode",
+  description: "Visual storyboard showing all scenes in sequence. Connect Scene nodes to build the complete story timeline.",
+  inputs: [
+    { name: "scene_0", type: "IMAGE" },
+  ],
+  outputs: [],
+  aiDoc: {
+    purpose: "Container node for organizing scenes into a visual storyboard/timeline. Shows thumbnails of all connected scenes in sequence.",
+    skills: [
+      "Display scenes in order",
+      "Visual timeline overview",
+      "Track storyboard progress",
+    ],
+    params: {
+      title: "Storyboard title",
+      _sceneCount: "Number of scene input slots (1-20)",
+    },
+    connectsFrom: ["fs:scene"],
+    examples: [
+      "Connect 8 Scene nodes → see full storyboard grid",
+    ],
+  },
+});
+
+registerNativeNode({
+  type: "fs:videoGen",
+  label: "Video Gen",
+  icon: "🎥",
+  accentColor: "#e85d75",
+  component: "VideoGenNode",
+  description: "Generate video using Google Veo API. Text-to-video and image-to-video.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "input_image", type: "IMAGE" },
+  ],
+  outputs: [{ name: "video", type: "VIDEO" }],
+  aiDoc: {
+    purpose: "Video generation via Google Veo API. Supports text-to-video and image-to-video.",
+    skills: ["Generate video from text", "Animate images", "Create scene clips"],
+    params: { model: "Veo 2/3/3.1 variants", aspectRatio: "16:9, 9:16, 1:1" },
+    connectsFrom: ["fs:prompt", "fs:import", "fs:scene"],
+    connectsTo: ["fs:storyboard", "fs:preview"],
+    examples: ["Prompt('A cat walking') → Video Gen → 5s video clip"],
+  },
+});
+
+registerNativeNode({
+  type: "fs:imagen",
+  label: "Imagen",
+  icon: "🖼",
+  accentColor: "#42a5f5",
+  component: "ImagenNode",
+  description: "Generate images using Google Imagen 4 API. High quality image generation.",
+  inputs: [{ name: "prompt", type: "TEXT" }],
+  outputs: [{ name: "image", type: "IMAGE" }],
+  aiDoc: {
+    purpose: "Image generation via Google Imagen 4 API.",
+    skills: ["Generate high quality images from text"],
+    params: { model: "Imagen 4 / 4 Fast / 4 Ultra", aspectRatio: "1:1, 16:9, etc." },
+    connectsFrom: ["fs:prompt"],
+    connectsTo: ["fs:preview", "fs:characterCard", "fs:scene"],
+    examples: ["Prompt('Sunset over mountains') → Imagen → HD image"],
+  },
+});
+
+registerNativeNode({
+  type: "fs:music",
+  label: "Music Gen",
+  icon: "🎵",
+  accentColor: "#e8a040",
+  component: "MusicNode",
+  description: "Generate music using Google Lyria 3 API. Create 30-second clips or full tracks.",
+  inputs: [{ name: "prompt", type: "TEXT" }],
+  outputs: [{ name: "audio", type: "AUDIO" }],
+  aiDoc: {
+    purpose: "Music generation via Google Lyria 3 API.",
+    skills: ["Generate music from text description", "Create background tracks"],
+    params: { model: "Lyria 3 Clip (30s) / Lyria 3 Pro" },
+    connectsFrom: ["fs:prompt"],
+    examples: ["Prompt('Epic orchestral battle music') → Music Gen → audio clip"],
+  },
+});
+
+registerNativeNode({
+  type: "fs:tts",
+  label: "TTS",
+  icon: "🗣",
+  accentColor: "#ce93d8",
+  component: "TtsNode",
+  description: "Text-to-Speech using Gemini TTS. Multiple voices available.",
+  inputs: [{ name: "text", type: "TEXT" }],
+  outputs: [{ name: "audio", type: "AUDIO" }],
+  aiDoc: {
+    purpose: "Text-to-Speech via Gemini TTS API. Convert text to natural speech.",
+    skills: ["Convert text to speech", "Multiple voice options", "Narration for animations"],
+    params: { model: "TTS Flash / TTS Pro", voice: "Kore, Charon, Fenrir, Aoede, Puck, Leda, Orus, Zephyr" },
+    connectsFrom: ["fs:prompt"],
+    examples: ["Prompt('Hello world') → TTS (voice: Kore) → audio"],
+  },
+});
+
+registerNativeNode({
+  type: "fs:multiRef",
+  label: "Multi Reference",
+  icon: "🔗",
+  accentColor: "#26c6da",
+  component: "MultiRefNode",
+  description: "Combine multiple reference images into one using IP-Adapter. Add style reference for visual consistency.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "ref_0", type: "IMAGE" },
+    { name: "style_ref", type: "IMAGE" },
+  ],
+  outputs: [{ name: "image", type: "IMAGE" }],
+  aiDoc: {
+    purpose: "Multi-reference image generation via chained Flux IP-Adapter. Each reference image influences the output. Style ref controls visual style separately.",
+    skills: [
+      "Combine multiple characters into one scene",
+      "Apply visual style from reference",
+      "IP-Adapter multi-reference generation",
+    ],
+    params: {
+      model: "Checkpoint model",
+      width: "Output width, default 1024",
+      height: "Output height, default 1024",
+      steps: "Sampling steps, default 4",
+      cfg: "CFG scale, default 7",
+      ipWeight: "IP-Adapter weight for content refs, default 0.7",
+      styleWeight: "IP-Adapter weight for style ref, default 0.3",
+      _refCount: "Number of reference inputs (1-8)",
+    },
+    connectsFrom: ["fs:prompt", "fs:localGenerate", "fs:nanoBanana", "fs:import", "fs:characterCard"],
+    connectsTo: ["fs:preview", "fs:scene", "fs:storyboard"],
+    examples: [
+      "Connect 3 character portraits + Prompt('group photo in a park') → combined scene",
+      "Connect style image to Style input → output matches visual style",
+    ],
+  },
+});
+
+registerNativeNode({
   type: "fs:import",
   label: "Import",
   icon: "⬆",

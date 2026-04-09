@@ -1,9 +1,10 @@
 import { create } from "zustand";
+import { saveImage, loadImage } from "./imageDb";
 
 export interface MediaItem {
   id: string;
   type: "image" | "video" | "audio";
-  url: string;           // blob URL or data URL
+  url: string;           // data URL (in memory), stored in IndexedDB
   thumbnail?: string;    // smaller preview
   fileName: string;
   source: "imported" | "generated";
@@ -40,6 +41,10 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   items: [],
 
   addItem: (item) => {
+    // Save image data to IndexedDB, keep metadata in memory + localStorage
+    if (item.url && item.url.startsWith("data:")) {
+      saveImage(`media_${item.id}`, item.url).catch(() => {});
+    }
     set({ items: [item, ...get().items] });
     get().saveToStorage();
   },
@@ -70,23 +75,38 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   loadFromStorage: () => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const items = JSON.parse(raw);
-        set({ items });
+      if (!raw) return;
+      const metaItems = JSON.parse(raw) as MediaItem[];
+      // Load image data from IndexedDB for each item
+      const items = metaItems.filter((i) => !!i.id);
+      set({ items });
+      // Restore URLs from IndexedDB in background
+      for (const item of items) {
+        if (!item.url || item.url === "__idb__") {
+          loadImage(`media_${item.id}`).then((dataUrl) => {
+            if (dataUrl) {
+              const updated = get().items.map((i) =>
+                i.id === item.id ? { ...i, url: dataUrl } : i
+              );
+              set({ items: updated });
+            }
+          }).catch(() => {});
+        }
       }
     } catch { /* ignore */ }
   },
 
   saveToStorage: () => {
     try {
-      // Save metadata only (not blob URLs — they expire)
+      // Save only metadata to localStorage (no image data — that's in IndexedDB)
       const items = get().items.map((i) => ({
         ...i,
-        // Keep data URLs, drop blob URLs
-        url: i.url.startsWith("data:") ? i.url : "",
+        url: (i.url && i.url.startsWith("data:")) ? "__idb__" : i.url || "",
       }));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    } catch { /* storage full */ }
+    } catch (e) {
+      console.error("[MediaStore] saveToStorage failed:", e);
+    }
   },
 }));
 

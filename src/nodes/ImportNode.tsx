@@ -1,6 +1,7 @@
 import { memo, useCallback, useRef, useState, useEffect } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
+import { useMediaStore, type MediaItem } from "../store/mediaStore";
 
 type MediaType = "none" | "image" | "video" | "audio";
 
@@ -90,6 +91,26 @@ function ImportNode({ id, data, selected }: NodeProps) {
     updateWidgetValue(id, "_fileName", file.name);
     updateWidgetValue(id, "_preview", url);
     updateWidgetValue(id, "_fileInfo", fileInfo);
+
+    // Save to media library as data URL for persistence (images only — video/audio too large for localStorage)
+    if (type === "image") {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (reader.result && typeof reader.result === "string") {
+          const item: MediaItem = {
+            id: `imp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            type: type as "image" | "video" | "audio",
+            url: reader.result,
+            fileName: file.name,
+            source: "imported",
+            favorite: false,
+            createdAt: Date.now(),
+          };
+          useMediaStore.getState().addItem(item);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   }, [id, updateWidgetValue]);
 
   const clearFile = useCallback((e: React.MouseEvent) => {
@@ -141,12 +162,38 @@ function ImportNode({ id, data, selected }: NodeProps) {
       .catch(() => {});
   }, [mediaType, preview]);
 
+  const handleMediaDrop = useCallback((url: string, fileName: string, type: string) => {
+    let mt: MediaType = "none";
+    if (type === "image") mt = "image";
+    else if (type === "video") mt = "video";
+    else if (type === "audio") mt = "audio";
+
+    setMediaType(mt);
+    setFileName(fileName);
+    setPreview(url);
+
+    updateWidgetValue(id, "_mediaType", mt);
+    updateWidgetValue(id, "_fileName", fileName);
+    updateWidgetValue(id, "_preview", url);
+    updateWidgetValue(id, "_fileInfo", { source: "media-library" });
+  }, [id, updateWidgetValue]);
+
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); e.stopPropagation();
     setDragOver(false);
+
+    // Check for media library drop first
+    const mediaData = e.dataTransfer.getData("application/flowstudio-media");
+    if (mediaData) {
+      try {
+        const { url, fileName: fn, type } = JSON.parse(mediaData);
+        if (url) { handleMediaDrop(url, fn, type); return; }
+      } catch { /* fall through to file drop */ }
+    }
+
     const file = e.dataTransfer.files?.[0];
     if (file) handleFile(file);
-  }, [handleFile]);
+  }, [handleFile, handleMediaDrop]);
 
   const portColor = TYPE_COLORS[mediaType];
   const actualType = TYPE_LABELS[mediaType];

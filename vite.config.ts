@@ -2,7 +2,28 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Debug API plugin — injects a script that exposes state via /debug endpoints
+    {
+      name: 'debug-api',
+      configureServer(server) {
+        server.middlewares.use('/debug', (req, res) => {
+          // This serves a page that communicates with the main app via BroadcastChannel
+          // The actual data comes from the browser (main.tsx __debug)
+          res.setHeader('Content-Type', 'text/html');
+          res.end(`
+            <html><body>
+            <h3>FlowStudio Debug</h3>
+            <p>Use curl or browser console in the main app:</p>
+            <pre>window.__debug.getState()</pre>
+            <p>Or open main app and run debug commands there.</p>
+            </body></html>
+          `);
+        });
+      },
+    },
+  ],
   server: {
     port: 3001,
     proxy: {

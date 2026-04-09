@@ -46,6 +46,30 @@ export function getImageUrl(filename: string, subfolder: string = "", type: stri
   return `${COMFY_URL}/api/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}&type=${type}`;
 }
 
+// ── Upload image to ComfyUI (returns filename) ───────────────────
+export async function uploadImage(dataUrl: string, filename?: string): Promise<string> {
+  // Convert data URL to blob
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  const name = filename || `fs_upload_${Date.now()}.png`;
+
+  const formData = new FormData();
+  formData.append("image", blob, name);
+  formData.append("overwrite", "true");
+
+  const uploadRes = await fetch(`${COMFY_URL}/api/upload/image`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!uploadRes.ok) {
+    throw new Error(`Upload failed: ${uploadRes.status}`);
+  }
+
+  const data = await uploadRes.json();
+  return data.name; // filename in ComfyUI input folder
+}
+
 // ── WebSocket for progress ─────────────────────────────────────────
 export function connectWebSocket(onMessage: (data: any) => void): WebSocket {
   const wsProto = location.protocol === "https:" ? "wss:" : "ws:";

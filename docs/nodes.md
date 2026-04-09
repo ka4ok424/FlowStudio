@@ -17,17 +17,25 @@ Native nodes can:
 2. Build and send ComfyUI workflows internally (Local Gen → ComfyUI API)
 3. Pass data to other nodes (Prompt → TEXT output)
 
-### Connection Types
-| Type | Color | Description |
-|------|-------|-------------|
-| TEXT | #f0c040 | Text/prompt data |
-| IMAGE | #64b5f6 | Image data |
-| VIDEO | #e85d75 | Video data |
-| AUDIO | #e8a040 | Audio data |
-| MEDIA | #888888 | Any media (auto-detects) |
-| MODEL | #b39ddb | AI model reference |
-| LATENT | #ab47bc | Latent space data |
-| CONDITIONING | #ef9a9a | Conditioning data |
+### Connection Types — Canonical Color Map
+
+> **MANDATORY RULE:** Every input/output Handle of a given type MUST use the exact
+> color from this table. No exceptions. This ensures visual consistency across all
+> nodes — a user must be able to identify the type by color alone.
+
+| Type | Color | Handle `style={{ color }}` | Badge border/text |
+|------|-------|---------------------------|-------------------|
+| TEXT | `#f0c040` | `#f0c040` | `#f0c040` |
+| IMAGE | `#64b5f6` | `#64b5f6` | `#64b5f6` |
+| VIDEO | `#e85d75` | `#e85d75` | `#e85d75` |
+| AUDIO | `#e8a040` | `#e8a040` | `#e8a040` |
+| MEDIA | `#888888` | `#888888` | `#888888` |
+| CHARACTER | `#a78bfa` | `#a78bfa` | `#a78bfa` |
+| MODEL | `#b39ddb` | `#b39ddb` | `#b39ddb` |
+| LATENT | `#ab47bc` | `#ab47bc` | `#ab47bc` |
+| CONDITIONING | `#ef9a9a` | `#ef9a9a` | `#ef9a9a` |
+
+**Badge format:** `<span style={{ color, borderColor: color+"66", backgroundColor: color+"12" }}>`
 
 ---
 
@@ -136,6 +144,105 @@ EmptyLatentImage (width, height) → KSampler → VAEDecode → SaveImage
 
 ---
 
+## fs:characterCard — Character Card
+
+**Purpose:** Character profile card with portrait, description, and approve/reject flow. For building character databases for animation pipelines.
+
+**Component:** `src/nodes/CharacterCardNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | ai_input | AI-generated character data (JSON or plain text) |
+| Input | IMAGE | portrait_input | Portrait image from generator |
+| Output | CHARACTER | character | Character data (name + description + portrait) |
+| Output | IMAGE | portrait | Reference portrait for IP-Adapter |
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| name | string | "" | Character name |
+| description | string | "" | Full character description (appearance, personality, traits) |
+| portraitUrl | string | null | Reference portrait (data URL or blob URL) |
+| status | string | "draft" | "draft", "approved", or "rejected" |
+
+**AI Input format:**
+- **JSON:** `{"name": "Masha", "description": "A 5-year-old girl with red pigtails..."}`
+- **Plain text:** treated as description
+
+**Behavior:**
+- Approve/Reject buttons on the node for curating characters
+- Visual status: green border (approved), red border (rejected), neutral (draft)
+- Portrait accepts drag-and-drop from Media Library or file system
+- Properties panel: full editing of name, description, status, portrait
+- Output CHARACTER type feeds into Scene nodes for consistent generation
+- Portrait output feeds into IP-Adapter for character consistency across scenes
+
+**Typical connections:**
+- `fs:prompt` → `ai_input` — manual character description
+- `fs:nanoBanana` / `fs:localGenerate` → `portrait_input` — generated portrait
+- `character` → `fs:scene` — character data for scene generation
+- `portrait` → IP-Adapter nodes — reference image for consistency
+
+---
+
+## fs:scene — Scene
+
+**Purpose:** Generate a scene with characters and background. Uses IP-Adapter for character consistency.
+
+**Component:** `src/nodes/SceneNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | action | Scene action/description |
+| Input | IMAGE | background | Optional background image |
+| Input | CHARACTER | character_0..7 | Dynamic character slots (up to 8) |
+| Output | IMAGE | scene | Generated scene image |
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| sceneTitle | string | "" | Scene title for storyboard |
+| action | string | "" | Manual action text (overridden by connected prompt) |
+| model | string | first checkpoint | Generation model |
+| width | number | 1024 | Output width |
+| height | number | 576 | Output height (16:9 default) |
+| steps | number | 20 | Sampling steps |
+| cfg | number | 7 | CFG scale |
+| _characterCount | number | 1 | Number of character input slots |
+
+**Behavior:**
+- Reads character name/description/portrait from connected CharacterCard nodes
+- Builds prompt from all character descriptions + action text
+- For SD/SDXL: attempts IP-Adapter workflow using portraits as reference images
+- Dynamic character slots: +/- buttons to add up to 8 characters
+- Includes image history navigation (< 1/N >)
+
+---
+
+## fs:storyboard — Storyboard
+
+**Purpose:** Visual timeline showing all scenes in sequence.
+
+**Component:** `src/nodes/StoryboardNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | IMAGE | scene_0..19 | Dynamic scene slots (up to 20) |
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| title | string | "Storyboard" | Storyboard title |
+| _sceneCount | number | 4 | Number of scene input slots |
+
+**Behavior:**
+- Shows 2-column grid of scene thumbnails
+- Auto-reads _previewUrl from connected Scene nodes
+- Numbered cells with scene titles
+- Dynamic scene slots: +/- buttons up to 20
+
+---
+
 ## fs:import — Import
 
 **Purpose:** Import any media file (image, video, audio) with preview and file info.
@@ -175,8 +282,9 @@ EmptyLatentImage (width, height) → KSampler → VAEDecode → SaveImage
 
 ---
 
-## Adding New Nodes — Checklist
+## Adding New Nodes — Checklist & Template
 
+### Files to create/modify
 1. **Create component:** `src/nodes/MyNode.tsx`
 2. **Register in registry:** `src/nodes/registry.ts` — include `description` and full `aiDoc`
 3. **Add to App.tsx:** import + add to `nodeTypes` object
@@ -184,6 +292,194 @@ EmptyLatentImage (width, height) → KSampler → VAEDecode → SaveImage
 5. **Add Properties panel:** section in `src/components/PropertiesPanel.tsx`
 6. **Update this doc:** add full node documentation section
 7. **CSS:** add styles in `src/styles/theme.css`
+8. **Add `.mynode.incompatible`** to the dimming rule in theme.css
+
+---
+
+### TSX Template — Copy this for every new node
+
+```tsx
+import { memo } from "react";
+import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { useWorkflowStore } from "../store/workflowStore";
+
+function MyNode({ id, data, selected }: NodeProps) {
+  const nodeData = data as any;
+  const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const setSelectedNode = useWorkflowStore((s) => s.setSelectedNode);
+  const connectingType = useWorkflowStore((s) => s.connectingType);
+  const connectingDir = useWorkflowStore((s) => s.connectingDirection);
+
+  // Highlight logic — use EXACT colors from Canonical Color Map
+  const inputHL = connectingDir === "source" && connectingType === "TEXT" ? "highlight" : "";
+  const outputHL = connectingDir === "target" && (connectingType === "IMAGE" || connectingType === "*") ? "highlight" : "";
+  const hasCompatible = connectingType ? !!(inputHL || outputHL) : false;
+  const dimClass = connectingType ? (hasCompatible ? "compatible" : "incompatible") : "";
+
+  return (
+    <div
+      className={`my-node ${selected ? "selected" : ""} ${dimClass}`}
+      onClick={() => setSelectedNode(id)}
+    >
+      {/* ── Header: accent bar + icon + title ── */}
+      <div className="my-node-inner">
+        <div className="my-accent" />
+        <div className="my-header">
+          <span className="my-icon">⚡</span>
+          <div className="my-header-text">
+            <span className="my-title">My Node</span>
+            <span className="my-status">READY</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Inputs ── */}
+      <div className="my-inputs">
+        <div className="nanob-input-row">
+          <Handle type="target" position={Position.Left} id="prompt"
+            className={`slot-handle ${inputHL}`} style={{ color: "#f0c040" }} />
+          <TypeBadge color="#f0c040">TEXT</TypeBadge>
+          <span className="nanob-input-label">Prompt</span>
+        </div>
+      </div>
+
+      {/* ── Content area ── */}
+      {/* ... preview, controls, etc ... */}
+
+      {/* ── Outputs ── */}
+      <div className="my-outputs">
+        <div className="nanob-input-row" style={{ justifyContent: "flex-end" }}>
+          <TypeBadge color="#64b5f6">IMAGE</TypeBadge>
+          <span className="nanob-output-label">Output</span>
+          <Handle type="source" position={Position.Right} id="output_0"
+            className={`slot-handle ${outputHL}`} style={{ color: "#64b5f6" }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TypeBadge({ color, children }: { color: string; children: React.ReactNode }) {
+  return (
+    <span className="type-badge" style={{
+      color, borderColor: color + "66", backgroundColor: color + "12",
+    }}>{children}</span>
+  );
+}
+
+export default memo(MyNode);
+```
+
+### CSS Template
+
+### Node Width System
+
+| Size | CSS Variable | Width | Use when |
+|------|-------------|-------|----------|
+| **S** | `var(--node-s)` | 260px | Text-only, no preview (Prompt, Music, TTS) |
+| **M** | `var(--node-m)` | 320px | Has image/video preview (LocalGen, Imagen, Scene, CharacterCard) |
+| **L** | `var(--node-l)` | 420px | Grid/collection inside (Storyboard) |
+| **XL** | `var(--node-xl)` | 500px | Reserved for future wide nodes |
+
+> **MANDATORY:** Every new node MUST use one of these four sizes. Pick the **smallest
+> size** that fits the content. Custom widths are NOT allowed unless explicitly
+> requested by the user with a clear justification (e.g. a node that displays
+> a timeline or dashboard). If in doubt — ask the user before using a non-standard width.
+
+### CSS Template
+
+```css
+/* ── My Node ── */
+.my-node {
+  background: var(--bg-node);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: var(--node-m);                  /* S=260, M=320, L=420, XL=500 */
+  overflow: visible;                     /* MUST be visible for handles */
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  transition: box-shadow 0.08s, border-color 0.08s;
+  position: relative;
+}
+.my-node.selected {
+  border-color: #5b9bd5;                 /* accent color */
+  box-shadow: 0 0 0 2px rgba(91,155,213,0.25), 0 4px 16px rgba(0,0,0,0.3);
+}
+
+/* Header: HORIZONTAL accent bar on top */
+.my-node-inner {
+  overflow: hidden;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.my-accent {
+  height: 3px;                           /* HORIZONTAL, NOT width */
+  background: #5b9bd5;                   /* accent color */
+}
+.my-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Inputs/Outputs containers */
+.my-inputs, .my-outputs { padding: 6px 0; }
+
+/* CRITICAL: Use nanob-input-row for ALL input/output rows.
+   It has position: relative + min-height: 26px which anchors
+   Handle dots to their row. Without this, handles float to center. */
+```
+
+### CRITICAL CSS Rules for Handle Positioning
+
+| Property | Value | Why |
+|----------|-------|-----|
+| Row `position` | `relative` | Handles are `position: absolute` — they need a relative parent to anchor to |
+| Row `min-height` | `26px` | Ensures consistent handle vertical position |
+| Row `padding` | `4px 14px` | Gives space for handle to sit on the edge |
+| Container `padding` | `6px 0` | No horizontal padding on container — rows handle it |
+| Node `overflow` | `visible` | Handles must extend beyond node border |
+
+> **TIP:** Prefer reusing `nanob-input-row` class directly instead of creating
+> custom row classes. It already has all the correct properties.
+
+---
+
+### MANDATORY Rules
+
+**Media Library:**
+> Every node that generates content (images, video, audio) MUST save results
+> to the Media Library via `addGenerationToLibrary()` or `useMediaStore.getState().addItem()`.
+> For large media (video, audio): save binary to IndexedDB via `saveImage()` from `imageDb.ts`.
+> Import: `import { addGenerationToLibrary } from "../store/mediaStore";`
+> Import: `import { saveImage } from "../store/imageDb";`
+
+**Generation History (variants):**
+> Every node that generates content MUST support history navigation using
+> the `ImageHistory` component. This allows users to browse through all
+> previous generations and switch between variants.
+>
+> Required widgetValues: `_history` (string[]), `_historyIndex` (number), `_previewUrl` (string).
+> On each generation: append to `_history`, set `_historyIndex` to last, update `_previewUrl`.
+> For video: use `<ImageHistory mediaType="video" />`. For audio: `mediaType="audio"`.
+
+**Colors:**
+> Every Handle and TypeBadge uses the **exact color** from the Canonical Color Map.
+> Same type = same color everywhere. No exceptions.
+
+**Highlights:**
+> Input handles: `connectingDir === "source" && connectingType === "MY_TYPE" ? "highlight" : ""`
+> Output handles: `connectingDir === "target" && connectingType === "MY_TYPE" ? "highlight" : ""`
+> Incompatible nodes: `.mynode.incompatible { opacity: 0.35; }` — add to theme.css dimming rule.
+
+**Visual structure:**
+> Accent bar: horizontal, `height: 3px`, full width, at top of node.
+> Handle dots: on edge of node, anchored to their row via `position: relative` on row.
+
+**Test procedure (manual):**
+1. Drag from every output handle → verify correct targets highlight
+2. Drag from external nodes toward every input → verify correct inputs highlight
+3. Verify type badge colors match handle colors
+4. Verify incompatible nodes dim when dragging
+5. Verify handle dots are next to their label, not floating to center
 
 ---
 

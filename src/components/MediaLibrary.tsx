@@ -1,6 +1,26 @@
 import { useState, useMemo } from "react";
 import { useMediaStore, type MediaItem } from "../store/mediaStore";
 
+function HeartIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? "#e74c6f" : "none"} stroke={filled ? "#e74c6f" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
+  );
+}
+
 type ViewMode = "gallery" | "timeline";
 type FilterType = "all" | "image" | "video" | "audio";
 type FilterSource = "all" | "imported" | "generated" | "favorites";
@@ -69,7 +89,7 @@ export default function MediaLibrary() {
               className={`media-filter-btn ${filterSource === f ? "active" : ""}`}
               onClick={() => setFilterSource(f)}
             >
-              {f === "all" ? "All" : f === "favorites" ? "⭐" : f === "imported" ? "Imported" : "Generated"}
+              {f === "all" ? "All" : f === "favorites" ? <HeartIcon filled /> : f === "imported" ? "Imported" : "Generated"}
             </button>
           ))}
         </div>
@@ -116,25 +136,40 @@ function GalleryView({
   onFav: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const handleDragStart = (e: React.DragEvent, item: MediaItem) => {
+    e.dataTransfer.setData("application/flowstudio-media", JSON.stringify({
+      url: item.url,
+      fileName: item.fileName,
+      type: item.type,
+    }));
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
   return (
     <div className="media-gallery">
       {items.map((item) => (
-        <div key={item.id} className="media-gallery-item" onClick={() => onSelect(item)}>
+        <div
+          key={item.id}
+          className={`media-gallery-item ${item.favorite ? "is-fav" : ""}`}
+          onClick={() => onSelect(item)}
+          draggable
+          onDragStart={(e) => handleDragStart(e, item)}
+        >
           {item.url && item.type === "image" ? (
-            <img src={item.url} alt="" className="media-thumb" />
+            <img src={item.url} alt="" className="media-thumb" draggable={false} />
           ) : (
             <div className="media-thumb-placeholder">
               {item.type === "video" ? "🎬" : item.type === "audio" ? "🎵" : "📄"}
             </div>
           )}
-          <div className="media-gallery-overlay">
-            <button className="media-mini-btn" onClick={(e) => { e.stopPropagation(); onFav(item.id); }}>
-              {item.favorite ? "⭐" : "☆"}
-            </button>
-            <button className="media-mini-btn media-mini-del" onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}>
-              ✕
-            </button>
-          </div>
+          {/* Heart — top right, always visible when favorited */}
+          <button className="media-fav-btn" onClick={(e) => { e.stopPropagation(); onFav(item.id); }}>
+            <HeartIcon filled={item.favorite} />
+          </button>
+          {/* Trash — bottom right, only on hover */}
+          <button className="media-del-btn" onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}>
+            <TrashIcon />
+          </button>
           {item.genMeta && (
             <div className="media-gallery-badge">AI</div>
           )}
@@ -193,7 +228,7 @@ function TimelineView({
               </div>
               <div className="timeline-actions">
                 <button className="media-mini-btn" onClick={(e) => { e.stopPropagation(); onFav(item.id); }}>
-                  {item.favorite ? "⭐" : "☆"}
+                  <HeartIcon filled={item.favorite} />
                 </button>
                 <button className="media-mini-btn media-mini-del" onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}>
                   ✕

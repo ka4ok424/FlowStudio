@@ -11,6 +11,18 @@ import {
 } from "@xyflow/react";
 import type { ComfyNodeDef } from "../api/comfyApi";
 import { getNativeNode } from "../nodes/registry";
+import { extractImages, restoreImages, saveImage, loadImage, deleteImagesByPrefix, copyImagesByPrefix } from "./imageDb";
+
+export interface ProjectMeta {
+  id: string;
+  name: string;
+  nodeCount: number;
+  updatedAt: number;
+  createdAt: number;
+  thumbnail?: string; // small data URL for project card preview
+}
+
+const PROJECTS_INDEX_KEY = "flowstudio_projects";
 
 const SLOT_COLORS: Record<string, string> = {
   IMAGE: "#64b5f6", LATENT: "#ab47bc", MODEL: "#b39ddb",
@@ -18,6 +30,7 @@ const SLOT_COLORS: Record<string, string> = {
   MASK: "#4dd0e1", INT: "#81c784", FLOAT: "#81c784",
   STRING: "#ce93d8", COMBO: "#90a4ae", BOOLEAN: "#e6ee9c",
   CONTROL_NET: "#a1887f", VIDEO: "#e85d75", AUDIO: "#e8a040",
+  TEXT: "#f0c040", CHARACTER: "#a78bfa", MEDIA: "#888888",
 };
 export function getSlotColor(type: string): string {
   return SLOT_COLORS[type] || "#aaaaaa";
@@ -79,6 +92,24 @@ interface WorkflowState {
   loadWorkflow: (name?: string) => void;
   listWorkflows: () => string[];
   deleteWorkflow: (name: string) => void;
+
+  // Project management
+  currentProjectId: string | null;
+  currentProjectName: string;
+  setCurrentProjectName: (name: string) => void;
+  saveProject: () => Promise<void>;
+  loadProject: (id: string) => Promise<void>;
+  createProject: (name: string) => Promise<string>;
+  deleteProject: (id: string) => Promise<void>;
+  cloneProject: (id: string) => Promise<string>;
+  renameProject: (id: string, name: string) => void;
+  listProjects: () => ProjectMeta[];
+
+  // Chat history (per project)
+  chatMessages: { role: "user" | "assistant"; content: string }[];
+  setChatMessages: (msgs: { role: "user" | "assistant"; content: string }[]) => void;
+  addChatMessage: (msg: { role: "user" | "assistant"; content: string }) => void;
+  clearChat: () => void;
 }
 
 let nodeIdCounter = 0;
@@ -139,29 +170,82 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({ edges: applyEdgeChanges(changes, get().edges) }),
 
   onConnect: (connection) => {
-    get().pushUndo();
-    // Determine edge color: use source output type, fallback to target input type
     const sourceNode = get().nodes.find(n => n.id === connection.source);
     const targetNode = get().nodes.find(n => n.id === connection.target);
-    let color = "#aaaaaa";
 
-    // Try source output type first
+    // ── Resolve source output type ──
+    let sourceType = "*";
     if (sourceNode && connection.sourceHandle) {
-      const idx = parseInt(connection.sourceHandle.replace("output_", ""));
-      const outputType = sourceNode.data.outputs[idx];
-      if (outputType && SLOT_COLORS[outputType]) {
-        color = SLOT_COLORS[outputType];
+      if (sourceNode.data._native) {
+        // Native nodes: handle IDs are like "character_out", "portrait_out", "output_0"
+        const handle = connection.sourceHandle;
+        const idx = parseInt(handle.replace("output_", ""));
+        if (!isNaN(idx) && sourceNode.data.outputs[idx]) {
+          sourceType = sourceNode.data.outputs[idx];
+        } else {
+          // Look up from registry
+          const nativeDef = getNativeNode(sourceNode.data.type);
+          if (nativeDef) {
+            const out = nativeDef.outputs.find(o => handle.includes(o.name.replace(/\s+/g, "_").toLowerCase()) || handle === `${o.name.replace(/\s+/g, "_").toLowerCase()}_out`);
+            if (out) sourceType = out.type;
+          }
+        }
+      } else {
+        const idx = parseInt(connection.sourceHandle.replace("output_", ""));
+        if (!isNaN(idx) && sourceNode.data.outputs[idx]) {
+          sourceType = sourceNode.data.outputs[idx];
+        }
       }
     }
 
-    // If source was fallback gray, try target input type
-    if (color === "#aaaaaa" && targetNode && connection.targetHandle) {
-      const inputName = connection.targetHandle;
-      const config = targetNode.data.inputs.required?.[inputName] || targetNode.data.inputs.optional?.[inputName];
-      if (config && Array.isArray(config) && typeof config[0] === "string" && SLOT_COLORS[config[0]]) {
-        color = SLOT_COLORS[config[0]];
+    // ── Resolve target input type ──
+    let targetType = "*";
+    if (targetNode && connection.targetHandle) {
+      if (targetNode.data._native && targetNode.data._nativeInputs) {
+        // Native node: check _nativeInputs map
+        const handle = connection.targetHandle;
+        // Direct match
+        if (targetNode.data._nativeInputs[handle]) {
+          targetType = targetNode.data._nativeInputs[handle];
+        } else {
+          // Dynamic handles like character_0, character_1 → match base name "character_0" from registry
+          const nativeDef = getNativeNode(targetNode.data.type);
+          if (nativeDef) {
+            // Try to match pattern: character_0 → find input starting with "character_"
+            const baseInput = nativeDef.inputs.find(i => handle.startsWith(i.name.replace(/_\d+$/, "")));
+            if (baseInput) targetType = baseInput.type;
+          }
+        }
+      } else if (targetNode.data.inputs) {
+        // ComfyUI node
+        const config = targetNode.data.inputs.required?.[connection.targetHandle] || targetNode.data.inputs.optional?.[connection.targetHandle];
+        if (config && Array.isArray(config) && typeof config[0] === "string") {
+          targetType = config[0];
+        }
       }
     }
+
+    // ── Type compatibility check ──
+    const compatible = (src: string, tgt: string) => {
+      if (src === "*" || tgt === "*") return true;
+      if (src === tgt) return true;
+      // MEDIA accepts IMAGE, VIDEO, AUDIO
+      if (tgt === "MEDIA" && ["IMAGE", "VIDEO", "AUDIO"].includes(src)) return true;
+      if (src === "MEDIA" && ["IMAGE", "VIDEO", "AUDIO"].includes(tgt)) return true;
+      // TEXT and STRING are interchangeable
+      if ((src === "TEXT" || src === "STRING") && (tgt === "TEXT" || tgt === "STRING")) return true;
+      return false;
+    };
+
+    if (!compatible(sourceType, targetType)) {
+      console.warn(`[Connect] Blocked: ${sourceType} → ${targetType}`);
+      return; // Block incompatible connection
+    }
+
+    get().pushUndo();
+
+    // Determine edge color
+    const color = SLOT_COLORS[sourceType] || SLOT_COLORS[targetType] || "#aaaaaa";
 
     const edge = {
       ...connection,
@@ -182,6 +266,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         NanoBananaNode: "nanoBananaNode",
         LocalGenerateNode: "localGenerateNode",
         PreviewNode: "previewNode",
+        CharacterCardNode: "characterCardNode",
+        SceneNode: "sceneNode",
+        StoryboardNode: "storyboardNode",
+        VideoGenNode: "videoGenNode",
+        ImagenNode: "imagenNode",
+        MusicNode: "musicNode",
+        TtsNode: "ttsNode",
+        MultiRefNode: "multiRefNode",
       };
       const newNode: Node<ComfyNodeData> = {
         id,
@@ -196,6 +288,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           outputNames: nativeDef.outputs.map((o) => o.name),
           widgetValues: {},
           _native: true,
+          _nativeInputs: Object.fromEntries(nativeDef.inputs.map((i) => [i.name, i.type])),
         },
       };
       set({ nodes: [...get().nodes, newNode] });
@@ -351,5 +444,274 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     localStorage.removeItem(`flowstudio_wf_${name}`);
     const list = JSON.parse(localStorage.getItem("flowstudio_wf_list") || "[]") as string[];
     localStorage.setItem("flowstudio_wf_list", JSON.stringify(list.filter(n => n !== name)));
+  },
+
+  // ── Project Management ────────────────────────────────────────
+  currentProjectId: null,
+  currentProjectName: "Untitled",
+
+  setCurrentProjectName: (name) => {
+    set({ currentProjectName: name });
+    const { currentProjectId } = get();
+    if (currentProjectId) {
+      const index = JSON.parse(localStorage.getItem(PROJECTS_INDEX_KEY) || "[]") as ProjectMeta[];
+      const updated = index.map((p) => p.id === currentProjectId ? { ...p, name } : p);
+      localStorage.setItem(PROJECTS_INDEX_KEY, JSON.stringify(updated));
+    }
+  },
+
+  _saving: false,
+  saveProject: async () => {
+    if ((get() as any)._saving) return; // prevent concurrent saves
+    (set as any)({ _saving: true });
+    try {
+    let { currentProjectId, currentProjectName, nodes, edges } = get();
+    if (!currentProjectId) {
+      currentProjectId = `proj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      set({ currentProjectId });
+    }
+
+    // Extract images → IndexedDB, stripped nodes → localStorage
+    const { strippedNodes, images } = await extractImages(currentProjectId, nodes as any[]);
+    for (const [key, dataUrl] of images) {
+      await saveImage(key, dataUrl);
+    }
+
+    const wfData = JSON.stringify({ nodes: strippedNodes, edges });
+    const wfSizeMB = (wfData.length / 1024 / 1024).toFixed(2);
+    console.log(`[SaveProject] Data size: ${wfSizeMB} MB, images: ${images.size}`);
+
+    // Save workflow to IndexedDB (no localStorage size limit)
+    await saveImage(`project_${currentProjectId}`, wfData);
+    await saveImage(`project_${currentProjectId}_backup`, wfData);
+
+    // Clean up old localStorage data (migration)
+    localStorage.removeItem(`flowstudio_proj_${currentProjectId}`);
+    localStorage.removeItem(`flowstudio_proj_${currentProjectId}_backup`);
+
+    // Find a thumbnail from node previews (first data URL image found)
+    let thumbnail: string | undefined;
+    for (const n of nodes as any[]) {
+      const wv = n.data?.widgetValues;
+      if (!wv) continue;
+      const url = wv._previewUrl || wv.portraitUrl || wv._preview;
+      if (url && typeof url === "string" && url.startsWith("data:image")) {
+        // Resize to small thumbnail (64px) to keep index lightweight
+        try {
+          const img = new Image();
+          img.src = url;
+          // Use first found as-is if canvas not available (will be resized on next save)
+          thumbnail = url.length < 5000 ? url : undefined;
+          // Try canvas resize
+          if (!thumbnail) {
+            const canvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
+            if (canvas) {
+              canvas.width = 120; canvas.height = 80;
+              const ctx = canvas.getContext("2d");
+              if (ctx) {
+                // Draw will happen async, skip for now — use raw for first save
+                thumbnail = url.slice(0, 4000); // truncated fallback
+              }
+            }
+          }
+        } catch { /* ignore */ }
+        break;
+      }
+    }
+
+    // Update index
+    const index = JSON.parse(localStorage.getItem(PROJECTS_INDEX_KEY) || "[]") as ProjectMeta[];
+    const existing = index.findIndex((p) => p.id === currentProjectId);
+    const meta: ProjectMeta = {
+      id: currentProjectId,
+      name: currentProjectName,
+      nodeCount: nodes.length,
+      updatedAt: Date.now(),
+      createdAt: existing >= 0 ? index[existing].createdAt : Date.now(),
+      thumbnail: thumbnail || (existing >= 0 ? index[existing].thumbnail : undefined),
+    };
+    if (existing >= 0) {
+      index[existing] = meta;
+    } else {
+      index.push(meta);
+    }
+    localStorage.setItem(PROJECTS_INDEX_KEY, JSON.stringify(index));
+    localStorage.setItem("flowstudio_current_project", currentProjectId);
+
+    // Save chat history
+    const chatMsgs = get().chatMessages;
+    if (chatMsgs.length > 0) {
+      localStorage.setItem(`flowstudio_chat_${currentProjectId}`, JSON.stringify(chatMsgs));
+    }
+    } finally {
+      (set as any)({ _saving: false });
+    }
+  },
+
+  loadProject: async (id) => {
+    // Save current project first
+    if (get().currentProjectId && get().nodes.length > 0) {
+      await get().saveProject();
+    }
+
+    // Load from IndexedDB first, fallback to localStorage (migration)
+    let raw = await loadImage(`project_${id}`);
+    if (!raw) {
+      raw = localStorage.getItem(`flowstudio_proj_${id}`);
+    }
+    if (!raw) return;
+
+    try {
+      const { nodes: rawNodes, edges } = JSON.parse(raw);
+      if (!rawNodes) return;
+
+      // Restore images from IndexedDB
+      const nodes = await restoreImages(rawNodes);
+
+      const maxId = nodes.reduce((max: number, n: any) => {
+        const num = parseInt(n.id?.replace("node_", "") || "0");
+        return Math.max(max, num);
+      }, 0);
+      nodeIdCounter = maxId;
+
+      const index = JSON.parse(localStorage.getItem(PROJECTS_INDEX_KEY) || "[]") as ProjectMeta[];
+      const meta = index.find((p) => p.id === id);
+
+      // Load chat history
+      let chatMessages: any[] = [];
+      try {
+        const chatRaw = localStorage.getItem(`flowstudio_chat_${id}`);
+        if (chatRaw) chatMessages = JSON.parse(chatRaw);
+      } catch { /* ignore */ }
+
+      set({
+        nodes,
+        edges: edges || [],
+        currentProjectId: id,
+        currentProjectName: meta?.name || "Untitled",
+        chatMessages,
+        _undoStack: [],
+        _redoStack: [],
+        selectedNodeId: null,
+      });
+      localStorage.setItem("flowstudio_current_project", id);
+    } catch { /* ignore corrupt data */ }
+  },
+
+  createProject: async (name) => {
+    // Save current first
+    if (get().currentProjectId && get().nodes.length > 0) {
+      await get().saveProject();
+    }
+
+    const id = `proj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const meta: ProjectMeta = {
+      id,
+      name,
+      nodeCount: 0,
+      updatedAt: Date.now(),
+      createdAt: Date.now(),
+    };
+    const index = JSON.parse(localStorage.getItem(PROJECTS_INDEX_KEY) || "[]") as ProjectMeta[];
+    index.push(meta);
+    localStorage.setItem(PROJECTS_INDEX_KEY, JSON.stringify(index));
+    await saveImage(`project_${id}`, JSON.stringify({ nodes: [], edges: [] }));
+    localStorage.setItem("flowstudio_current_project", id);
+
+    set({
+      nodes: [],
+      edges: [],
+      currentProjectId: id,
+      currentProjectName: name,
+      _undoStack: [],
+      _redoStack: [],
+      selectedNodeId: null,
+    });
+    return id;
+  },
+
+  deleteProject: async (id) => {
+    localStorage.removeItem(`flowstudio_proj_${id}`);
+    localStorage.removeItem(`flowstudio_proj_${id}_backup`);
+    await deleteImagesByPrefix(`${id}/`);
+    await deleteImagesByPrefix(`project_${id}`);
+
+    const index = JSON.parse(localStorage.getItem(PROJECTS_INDEX_KEY) || "[]") as ProjectMeta[];
+    localStorage.setItem(PROJECTS_INDEX_KEY, JSON.stringify(index.filter((p) => p.id !== id)));
+
+    // If deleting current project, switch to another or create new
+    if (get().currentProjectId === id) {
+      const remaining = index.filter((p) => p.id !== id);
+      if (remaining.length > 0) {
+        await get().loadProject(remaining[0].id);
+      } else {
+        await get().createProject("Untitled");
+      }
+    }
+  },
+
+  cloneProject: async (id) => {
+    let raw = await loadImage(`project_${id}`);
+    if (!raw) raw = localStorage.getItem(`flowstudio_proj_${id}`);
+    if (!raw) return "";
+
+    const index = JSON.parse(localStorage.getItem(PROJECTS_INDEX_KEY) || "[]") as ProjectMeta[];
+    const src = index.find((p) => p.id === id);
+    const newId = `proj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const newName = `Clone-${src?.name || "Untitled"}`;
+
+    // Copy workflow data (replace old ID references in image placeholders)
+    const newData = raw.replaceAll(id, newId);
+    await saveImage(`project_${newId}`, newData);
+
+    // Copy images in IndexedDB
+    await copyImagesByPrefix(`${id}/`, `${newId}/`);
+
+    const meta: ProjectMeta = {
+      id: newId,
+      name: newName,
+      nodeCount: src?.nodeCount || 0,
+      updatedAt: Date.now(),
+      createdAt: Date.now(),
+    };
+    index.push(meta);
+    localStorage.setItem(PROJECTS_INDEX_KEY, JSON.stringify(index));
+    return newId;
+  },
+
+  renameProject: (id, name) => {
+    const index = JSON.parse(localStorage.getItem(PROJECTS_INDEX_KEY) || "[]") as ProjectMeta[];
+    const updated = index.map((p) => p.id === id ? { ...p, name } : p);
+    localStorage.setItem(PROJECTS_INDEX_KEY, JSON.stringify(updated));
+    if (get().currentProjectId === id) {
+      set({ currentProjectName: name });
+    }
+  },
+
+  listProjects: () => {
+    return JSON.parse(localStorage.getItem(PROJECTS_INDEX_KEY) || "[]") as ProjectMeta[];
+  },
+
+  // ── Chat History ──────────────────────────────────────────────
+  chatMessages: [],
+
+  setChatMessages: (msgs) => set({ chatMessages: msgs }),
+
+  addChatMessage: (msg) => {
+    const msgs = [...get().chatMessages, msg];
+    set({ chatMessages: msgs });
+    // Auto-persist to localStorage
+    const pid = get().currentProjectId;
+    if (pid) {
+      localStorage.setItem(`flowstudio_chat_${pid}`, JSON.stringify(msgs));
+    }
+  },
+
+  clearChat: () => {
+    set({ chatMessages: [] });
+    const pid = get().currentProjectId;
+    if (pid) {
+      localStorage.removeItem(`flowstudio_chat_${pid}`);
+    }
   },
 }));

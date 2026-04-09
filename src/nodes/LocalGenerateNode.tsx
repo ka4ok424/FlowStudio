@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt, getImageUrl } from "../api/comfyApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
+import MediaHistory from "./MediaHistory";
 
 function LocalGenerateNode({ id, data, selected }: NodeProps) {
   const nodeData = data as any;
@@ -52,7 +53,7 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
   }, [nodeDefs]);
 
   const selectedModel = nodeData.widgetValues?.model || checkpoints[0] || "";
-  const steps = nodeData.widgetValues?.steps || 20;
+  const steps = nodeData.widgetValues?.steps || 4;
   const cfg = nodeData.widgetValues?.cfg || 7;
   const width = nodeData.widgetValues?.width || 512;
   const height = nodeData.widgetValues?.height || 512;
@@ -112,7 +113,7 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
         },
         "5": {
           class_type: "EmptySD3LatentImage",
-          inputs: { width: isKlein ? Math.min(width, 1024) : width, height: isKlein ? Math.min(height, 1024) : height, batch_size: 1 },
+          inputs: { width, height, batch_size: 1 },
         },
         "6": {
           class_type: "KSampler",
@@ -122,7 +123,7 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
             negative: ["4", 0],
             latent_image: ["5", 0],
             seed: actualSeed,
-            steps: isKlein ? Math.min(steps, 8) : steps,
+            steps,
             cfg: isKlein ? 1.0 : cfg,
             sampler_name: "euler",
             scheduler: "simple",
@@ -296,23 +297,39 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
                 const images = outputs[nodeId]?.images;
                 if (images && images.length > 0) {
                   const img = images[0];
-                  const url = getImageUrl(img.filename, img.subfolder, img.type);
-                  updateWidgetValue(id, "_previewUrl", url);
-                  // Convert to data URL for media library persistence
-                  fetch(url).then(r => r.blob()).then(blob => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      addGenerationToLibrary(reader.result as string, {
-                        prompt: promptText,
-                        model: selectedModel,
-                        seed: actualSeed.toString(),
-                        steps, cfg, width, height,
-                        nodeType: "fs:localGenerate",
-                      });
-                    };
-                    reader.readAsDataURL(blob);
-                  }).catch(() => {});
-                  console.log("[LocalGen] Image ready:", url);
+                  const apiUrl = getImageUrl(img.filename, img.subfolder, img.type);
+                  // Show API URL immediately for fast preview
+                  updateWidgetValue(id, "_previewUrl", apiUrl);
+                  console.log("[LocalGen] Image ready:", apiUrl);
+
+                  // Convert to data URL for persistence
+                  try {
+                    const resp = await fetch(apiUrl);
+                    const blob = await resp.blob();
+                    const dataUrl = await new Promise<string>((resolve) => {
+                      const reader = new FileReader();
+                      reader.onloadend = () => resolve(reader.result as string);
+                      reader.readAsDataURL(blob);
+                    });
+                    // Update preview + history with persistent data URL
+                    updateWidgetValue(id, "_previewUrl", dataUrl);
+                    const prevHist: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
+                    updateWidgetValue(id, "_history", [...prevHist, dataUrl]);
+                    updateWidgetValue(id, "_historyIndex", prevHist.length);
+                    // Save to media library
+                    addGenerationToLibrary(dataUrl, {
+                      prompt: promptText,
+                      model: selectedModel,
+                      seed: actualSeed.toString(),
+                      steps, cfg, width, height,
+                      nodeType: "fs:localGenerate",
+                    });
+                  } catch {
+                    // Fallback: use API URL (won't persist)
+                    const prevHist: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
+                    updateWidgetValue(id, "_history", [...prevHist, apiUrl]);
+                    updateWidgetValue(id, "_historyIndex", prevHist.length);
+                  }
                   setGenerating(false);
                   setProgress(null);
                   return;
@@ -390,16 +407,14 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
         </div>
       </div>
 
-      {/* Preview */}
-      <div className="nanob-preview">
-        {previewUrl ? (
-          <img src={previewUrl} alt="Generated" className="nanob-preview-img" />
-        ) : (
-          <div className="nanob-preview-empty">
-            <span className="nanob-preview-logo">⚡</span>
-          </div>
-        )}
-      </div>
+      {/* Preview with history */}
+      <MediaHistory
+        nodeId={id}
+        history={nodeData.widgetValues?._history || []}
+        historyIndex={nodeData.widgetValues?._historyIndex ?? -1}
+        fallbackUrl={previewUrl}
+        emptyIcon="⚡"
+      />
 
       {/* Progress bar */}
       {progress && (

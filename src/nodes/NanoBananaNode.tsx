@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { generateImage } from "../api/geminiApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
+import MediaHistory from "./MediaHistory";
 
 const MAX_REFS = 14;
 
@@ -58,6 +59,10 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
     } else if (result.images.length > 0) {
       const dataUrl = `data:image/png;base64,${result.images[0]}`;
       updateWidgetValue(id, "_previewUrl", dataUrl);
+      const prev = nodeData.widgetValues?._history || [];
+      const newHistory = [...prev, dataUrl];
+      updateWidgetValue(id, "_history", newHistory);
+      updateWidgetValue(id, "_historyIndex", newHistory.length - 1);
       addGenerationToLibrary(dataUrl, {
         prompt: prompt || "",
         model: nodeData.widgetValues?.model || "gemini-2.5-flash-image",
@@ -149,16 +154,14 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
         </div>
       </div>
 
-      {/* Preview */}
-      <div className="nanob-preview">
-        {previewUrl ? (
-          <img src={previewUrl} alt="Generated" className="nanob-preview-img" />
-        ) : (
-          <div className="nanob-preview-empty">
-            <span className="nanob-preview-logo">🍌</span>
-          </div>
-        )}
-      </div>
+      {/* Preview with history */}
+      <MediaHistory
+        nodeId={id}
+        history={nodeData.widgetValues?._history || []}
+        historyIndex={nodeData.widgetValues?._historyIndex ?? -1}
+        fallbackUrl={previewUrl}
+        emptyIcon="🍌"
+      />
 
       {/* Error message */}
       {error && (

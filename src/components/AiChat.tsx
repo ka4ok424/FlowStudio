@@ -139,7 +139,9 @@ async function callClaude(messages: Message[], systemPrompt: string): Promise<st
 }
 
 export default function AiChat({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const messages = useWorkflowStore((s) => s.chatMessages) as Message[];
+  const addChatMessage = useWorkflowStore((s) => s.addChatMessage);
+  const clearChat = useWorkflowStore((s) => s.clearChat);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [provider, setProvider] = useState<AiProvider>("gemini");
@@ -211,8 +213,8 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
     if (!input.trim() || loading) return;
 
     const userMsg: Message = { role: "user", content: input.trim() };
+    addChatMessage(userMsg);
     const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
     setInput("");
     setLoading(true);
 
@@ -236,12 +238,12 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
     }
 
     const assistantMsg: Message = { role: "assistant", content: response };
-    setMessages([...newMessages, assistantMsg]);
+    addChatMessage(assistantMsg);
     setLoading(false);
 
     // Try to execute workflow commands
     executeWorkflow(response);
-  }, [input, messages, loading, provider, executeWorkflow]);
+  }, [input, messages, loading, provider, addChatMessage, executeWorkflow]);
 
   if (!open) return null;
 
@@ -259,6 +261,11 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
               <option key={k} value={k}>{v}</option>
             ))}
           </select>
+          <button className="ai-chat-close" onClick={clearChat} title="Clear chat">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            </svg>
+          </button>
           <button className="ai-chat-close" onClick={onClose}>✕</button>
         </div>
       </div>

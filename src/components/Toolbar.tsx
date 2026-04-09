@@ -1,16 +1,20 @@
-import { useState } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt } from "../api/comfyApi";
 import SettingsModal from "./SettingsModal";
+import ProjectManager from "./ProjectManager";
 
 export default function Toolbar() {
-  const { isConnected, progress, buildWorkflow } = useWorkflowStore();
+  const { isConnected, progress, buildWorkflow, currentProjectName, setCurrentProjectName, saveProject } = useWorkflowStore();
   const [showSettings, setShowSettings] = useState(false);
+  const [showProjects, setShowProjects] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   const handleStop = async () => {
     try {
       await fetch("/api/interrupt", { method: "POST" });
-      console.log("[Toolbar] Generation interrupted");
     } catch (err) {
       console.error("[Toolbar] Failed to interrupt:", err);
     }
@@ -27,13 +31,65 @@ export default function Toolbar() {
     }
   };
 
+  const [saveNotice, setSaveNotice] = useState(false);
+  const handleSave = useCallback(async () => {
+    await saveProject();
+    setSaveNotice(true);
+    setTimeout(() => setSaveNotice(false), 1500);
+  }, [saveProject]);
+
+  // Edit project name
+  const startEditName = useCallback(() => {
+    setNameValue(currentProjectName);
+    setEditingName(true);
+    setTimeout(() => nameInputRef.current?.select(), 10);
+  }, [currentProjectName]);
+
+  const commitName = useCallback(() => {
+    setEditingName(false);
+    if (nameValue.trim() && nameValue.trim() !== currentProjectName) {
+      setCurrentProjectName(nameValue.trim());
+    }
+  }, [nameValue, currentProjectName, setCurrentProjectName]);
+
+  // Ctrl+S to save
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleSave]);
+
   return (
     <div className="toolbar">
       <div className="toolbar-left">
-        <span className="app-title">FlowStudio</span>
+        <span className="app-title" onClick={() => setShowProjects(true)} title="Open Projects">
+          FlowStudio
+        </span>
         <span className={`connection-status ${isConnected ? "connected" : "disconnected"}`}>
           {isConnected ? "Connected" : "Disconnected"}
         </span>
+        <span className="toolbar-separator">|</span>
+        {editingName ? (
+          <input
+            ref={nameInputRef}
+            className="toolbar-project-name-input"
+            value={nameValue}
+            onChange={(e) => setNameValue(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={(e) => { if (e.key === "Enter") commitName(); if (e.key === "Escape") setEditingName(false); }}
+            autoFocus
+          />
+        ) : (
+          <span className="toolbar-project-name" onClick={startEditName} title="Click to rename">
+            {currentProjectName}
+          </span>
+        )}
+        {saveNotice && <span className="toolbar-save-notice">Saved</span>}
       </div>
 
       <div className="toolbar-center">
@@ -63,6 +119,7 @@ export default function Toolbar() {
       </div>
 
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+      <ProjectManager open={showProjects} onClose={() => setShowProjects(false)} />
     </div>
   );
 }

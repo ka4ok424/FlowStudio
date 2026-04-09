@@ -21,15 +21,33 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
     const sourceNode = nodesAll.find((n) => n.id === inputEdge.source);
     if (sourceNode) {
       const srcData = sourceNode.data as any;
-      // From Local Gen or Nano Banana
-      if (srcData.widgetValues?._previewUrl) {
-        previewUrl = srcData.widgetValues._previewUrl;
-        mediaType = "image";
-      }
+      const srcType = srcData.type || "";
+
       // From Import
       if (srcData.widgetValues?._preview) {
         previewUrl = srcData.widgetValues._preview;
         mediaType = srcData.widgetValues._mediaType || "image";
+      }
+      // From generation nodes (_previewUrl)
+      if (srcData.widgetValues?._previewUrl) {
+        previewUrl = srcData.widgetValues._previewUrl;
+        // Detect media type from source node type or URL
+        if (srcType === "fs:videoGen") {
+          mediaType = "video";
+        } else if (srcType === "fs:music" || srcType === "fs:tts") {
+          mediaType = "audio";
+        } else if (previewUrl.startsWith("data:video/")) {
+          mediaType = "video";
+        } else if (previewUrl.startsWith("data:audio/")) {
+          mediaType = "audio";
+        } else {
+          mediaType = "image";
+        }
+      }
+      // Audio from Music/TTS nodes
+      if (srcData.widgetValues?._audioUrl) {
+        previewUrl = srcData.widgetValues._audioUrl;
+        mediaType = "audio";
       }
     }
   }
@@ -43,7 +61,8 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
     if (!previewUrl) return;
     const a = document.createElement("a");
     a.href = previewUrl;
-    a.download = `flowstudio_preview_${Date.now()}.png`;
+    const ext = mediaType === "video" ? "mp4" : mediaType === "audio" ? "wav" : "png";
+    a.download = `flowstudio_preview_${Date.now()}.${ext}`;
     a.click();
   }, [previewUrl]);
 
@@ -104,7 +123,13 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
       {/* Fullscreen overlay */}
       {fullscreen && previewUrl && (
         <div className="preview-fullscreen" onClick={() => setFullscreen(false)}>
-          <img src={previewUrl} alt="Fullscreen" className="preview-fullscreen-img" />
+          {mediaType === "video" ? (
+            <video src={previewUrl} className="preview-fullscreen-img" controls autoPlay onClick={(e) => e.stopPropagation()} />
+          ) : mediaType === "audio" ? (
+            <audio src={previewUrl} controls autoPlay onClick={(e) => e.stopPropagation()} style={{ width: "80%" }} />
+          ) : (
+            <img src={previewUrl} alt="Fullscreen" className="preview-fullscreen-img" />
+          )}
           <button className="preview-fullscreen-close" onClick={() => setFullscreen(false)}>✕</button>
         </div>
       )}

@@ -18,6 +18,14 @@ import ImportNode from "./nodes/ImportNode";
 import NanoBananaNode from "./nodes/NanoBananaNode";
 import LocalGenerateNode from "./nodes/LocalGenerateNode";
 import PreviewNode from "./nodes/PreviewNode";
+import CharacterCardNode from "./nodes/CharacterCardNode";
+import SceneNode from "./nodes/SceneNode";
+import StoryboardNode from "./nodes/StoryboardNode";
+import VideoGenNode from "./nodes/VideoGenNode";
+import ImagenNode from "./nodes/ImagenNode";
+import MusicNode from "./nodes/MusicNode";
+import TtsNode from "./nodes/TtsNode";
+import MultiRefNode from "./nodes/MultiRefNode";
 import AiChat from "./components/AiChat";
 import MediaLibrary from "./components/MediaLibrary";
 import { useMediaStore } from "./store/mediaStore";
@@ -34,6 +42,14 @@ const nodeTypes = {
   nanoBananaNode: NanoBananaNode,
   localGenerateNode: LocalGenerateNode,
   previewNode: PreviewNode,
+  characterCardNode: CharacterCardNode,
+  sceneNode: SceneNode,
+  storyboardNode: StoryboardNode,
+  videoGenNode: VideoGenNode,
+  imagenNode: ImagenNode,
+  musicNode: MusicNode,
+  ttsNode: TtsNode,
+  multiRefNode: MultiRefNode,
 };
 
 function App() {
@@ -41,7 +57,7 @@ function App() {
     nodes, edges,
     onNodesChange, onEdgesChange, onConnect,
     setNodeDefs, addNode, setConnected, setProgress,
-    saveWorkflow, loadWorkflow,
+    saveWorkflow, loadWorkflow, saveProject, loadProject, createProject, listProjects, currentProjectId,
     pushUndo, undo, redo,
     setConnecting, setSelectedNode, selectedNodeId,
   } = useWorkflowStore();
@@ -54,28 +70,50 @@ function App() {
     [wrapNodesChange, onNodesChange, nodes]
   );
 
-  // Load node defs + restore saved workflow
+  // Load node defs + restore saved project
   useEffect(() => {
     fetchNodeDefs()
-      .then((defs) => {
+      .then(async (defs) => {
         setNodeDefs(defs);
         setConnected(true);
         console.log(`Loaded ${Object.keys(defs).length} node definitions`);
-        loadWorkflow();
+
+        // Load last project or create first one
+        const lastId = localStorage.getItem("flowstudio_current_project");
+        const projects = listProjects();
+        if (lastId && projects.some((p) => p.id === lastId)) {
+          await loadProject(lastId);
+        } else if (projects.length > 0) {
+          await loadProject(projects[0].id);
+        } else {
+          await createProject("My First Project");
+        }
         useMediaStore.getState().loadFromStorage();
+
+        // Migrate: re-save to move any data URLs from localStorage to IndexedDB
+        // This frees up localStorage space
+        await saveProject();
+        console.log("[App] Project loaded and migrated");
       })
       .catch((err) => {
         console.error("Failed to connect to ComfyUI:", err);
         setConnected(false);
       });
-  }, [setNodeDefs, setConnected, loadWorkflow]);
+  }, [setNodeDefs, setConnected]);
 
-  // Autosave (debounced)
+  // Autosave (debounced, every 2 sec when changes happen)
   useEffect(() => {
-    if (nodes.length === 0) return;
-    const timer = setTimeout(() => saveWorkflow(), 1000);
+    if (!currentProjectId || nodes.length === 0) return;
+    const timer = setTimeout(() => { saveProject(); }, 2000);
     return () => clearTimeout(timer);
-  }, [nodes, edges, saveWorkflow]);
+  }, [nodes, edges, currentProjectId]);
+
+  // Save on unload
+  useEffect(() => {
+    const handler = () => { saveWorkflow(); };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [saveWorkflow]);
 
   // Log helper
   const addLog = useCallback((msg: string) => {
@@ -103,34 +141,46 @@ function App() {
   const { screenToFlowPosition, getViewport } = useReactFlow();
 
   const getViewportCenter = useCallback(() => {
+    // Account for sidebars and toolbar
+    const canvas = document.querySelector(".canvas-wrapper");
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      return screenToFlowPosition({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      });
+    }
+    // Fallback
     const { x, y, zoom } = getViewport();
     return {
       x: (-x + window.innerWidth / 2) / zoom,
       y: (-y + window.innerHeight / 2) / zoom,
     };
-  }, [getViewport]);
+  }, [getViewport, screenToFlowPosition]);
 
   // Keyboard shortcuts: Copy/Paste/Undo/Redo
   const clipboard = useRef<{ nodes: any[]; edges: any[]; bounds: { cx: number; cy: number } } | null>(null);
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
+      const tag = (document.activeElement?.tagName || "").toLowerCase();
+      const isTextInput = tag === "input" || tag === "textarea" || (document.activeElement as HTMLElement)?.isContentEditable;
 
-      // Undo: Ctrl+Z
-      if (mod && e.key === "z" && !e.shiftKey) {
+      // Undo: Ctrl+Z (skip if in text input — let native undo work)
+      if (mod && e.key === "z" && !e.shiftKey && !isTextInput) {
         e.preventDefault();
         undo();
         return;
       }
-      // Redo: Ctrl+Shift+Z
-      if (mod && e.key === "z" && e.shiftKey) {
+      // Redo: Ctrl+Shift+Z (skip if in text input)
+      if (mod && e.key === "z" && e.shiftKey && !isTextInput) {
         e.preventDefault();
         redo();
         return;
       }
 
-      // Copy
-      if (mod && e.key === "c") {
+      // Copy (skip if in text input — let native copy work)
+      if (mod && e.key === "c" && !isTextInput) {
         const selected = nodes.filter(n => n.selected);
         if (selected.length === 0) return;
 
@@ -156,8 +206,8 @@ function App() {
         clipboard.current = { nodes: copiedNodes, edges: copiedEdges, bounds: { cx, cy } };
       }
 
-      // Paste
-      if (mod && e.key === "v") {
+      // Paste (skip if in text input)
+      if (mod && e.key === "v" && !isTextInput) {
         if (!clipboard.current || clipboard.current.nodes.length === 0) return;
         e.preventDefault();
         pushUndo();
@@ -218,13 +268,13 @@ function App() {
         }
       }
 
-      // Delete
-      if (e.key === "Delete" || e.key === "Backspace") {
+      // Delete (skip if in text input — let native backspace/delete work)
+      if ((e.key === "Delete" || e.key === "Backspace") && !isTextInput) {
         pushUndo();
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [nodes, addNode, undo, redo, pushUndo, getViewportCenter]);
 
   // Drop from library
@@ -253,12 +303,24 @@ function App() {
   const [showMinimap, setShowMinimap] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const [showAiChat, setShowAiChat] = useState(false);
+  const [rightTab, setRightTab] = useState<"inspector" | "ai">("inspector");
   const [sidebarTab, setSidebarTab] = useState<"nodes" | "media">("nodes");
   const [logs, setLogs] = useState<string[]>([]);
 
-  // Node click → select for properties panel
-  const onNodeClick = useCallback((_: any, node: any) => {
-    setSelectedNode(node.id);
+  // Node click → select for properties panel (Shift = multi-select toggle)
+  const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
+    if (_.shiftKey) {
+      // Toggle selection on this node
+      const isSelected = node.selected;
+      useWorkflowStore.setState({
+        nodes: useWorkflowStore.getState().nodes.map((n) =>
+          n.id === node.id ? { ...n, selected: !isSelected } : n
+        ),
+      });
+    } else {
+      setSelectedNode(node.id);
+    }
+    setRightTab("inspector");
   }, [setSelectedNode]);
 
   const onPaneClick = useCallback(() => {
@@ -327,7 +389,7 @@ function App() {
             )}
           </ReactFlow>
           <div className="canvas-bottom-buttons">
-            <button className={`canvas-btn ${showAiChat ? "active" : ""}`} onClick={() => setShowAiChat(!showAiChat)}>AI</button>
+            <button className={`canvas-btn ${rightTab === "ai" ? "active" : ""}`} onClick={() => setRightTab(rightTab === "ai" ? "inspector" : "ai")}>AI</button>
             <button className="canvas-btn" onClick={() => setShowLogs(!showLogs)}>Logs</button>
             <button className="canvas-btn" onClick={() => setShowMinimap(!showMinimap)}>Map</button>
           </div>
@@ -345,8 +407,23 @@ function App() {
             </div>
           )}
         </div>
-        {selectedNodeId && !showAiChat && <PropertiesPanel />}
-        <AiChat open={showAiChat} onClose={() => setShowAiChat(false)} />
+        {/* Right sidebar with tabs */}
+        {(selectedNodeId || rightTab === "ai") && (
+          <div className="right-sidebar">
+            <div className="sidebar-tabs">
+              <button
+                className={`sidebar-tab ${rightTab === "inspector" ? "active" : ""}`}
+                onClick={() => setRightTab("inspector")}
+              >Inspector</button>
+              <button
+                className={`sidebar-tab ${rightTab === "ai" ? "active" : ""}`}
+                onClick={() => setRightTab("ai")}
+              >AI Chat</button>
+            </div>
+            {rightTab === "inspector" && <PropertiesPanel />}
+            {rightTab === "ai" && <AiChat open onClose={() => setRightTab("inspector")} />}
+          </div>
+        )}
       </div>
     </>
   );
