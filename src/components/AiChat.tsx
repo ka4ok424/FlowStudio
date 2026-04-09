@@ -24,28 +24,73 @@ const PROVIDER_MODELS: Record<AiProvider, string> = {
 
 function buildSystemPrompt(): string {
   const nodeContext = getAIContext();
+
+  // Get current canvas state for AI context
+  const state = useWorkflowStore.getState();
+  const existingNodes = state.nodes.map((n: any) => ({
+    id: n.id,
+    type: n.data?.type,
+    label: n.data?.label,
+    x: Math.round(n.position.x),
+    y: Math.round(n.position.y),
+    width: n.measured?.width || 320,
+    height: n.measured?.height || 300,
+  }));
+  const canvasInfo = existingNodes.length > 0
+    ? `\n\nCurrent canvas (${existingNodes.length} nodes):\n${JSON.stringify(existingNodes, null, 1)}`
+    : "\n\nCanvas is empty.";
+
   return `You are FlowStudio AI assistant. You help users create and manage visual node-based workflows for image/video/audio generation.
 
 You can:
 1. Explain what nodes do and how to connect them
 2. Suggest workflows for user's goals
-3. Create nodes by responding with JSON commands
+3. Create nodes with precise positioning (x, y coordinates)
+4. Move existing nodes to rearrange the canvas
 
 Available native nodes:
 ${nodeContext}
+${canvasInfo}
 
-When the user asks to create a workflow, respond with explanation AND a JSON block:
+CREATING NODES — use x,y to position them. Avoid overlapping existing nodes.
+Space nodes ~400px apart horizontally, ~350px vertically. Layout left-to-right:
 \`\`\`workflow
 {
   "nodes": [
-    { "type": "fs:prompt", "values": { "text": "a cat in space" } },
-    { "type": "fs:localGenerate", "values": { "model": "flux-2-klein-4b.safetensors" } }
+    { "type": "fs:prompt", "x": 100, "y": 200, "values": { "text": "a cat in space" } },
+    { "type": "fs:localGenerate", "x": 500, "y": 200, "values": {} }
   ],
   "edges": [
     { "from": 0, "fromHandle": "output_0", "to": 1, "toHandle": "prompt" }
   ]
 }
 \`\`\`
+
+MOVING EXISTING NODES — use node IDs from canvas state:
+\`\`\`workflow
+{
+  "moveNodes": [
+    { "id": "node_5", "x": 800, "y": 300 },
+    { "id": "node_3", "x": 100, "y": 100 }
+  ]
+}
+\`\`\`
+
+GROUPS — visual containers to organize nodes:
+\`\`\`workflow
+{
+  "nodes": [
+    { "type": "fs:group", "x": 50, "y": 50, "values": { "title": "Scene 1: Forest", "color": "green", "width": 1200, "height": 500 } },
+    { "type": "fs:comment", "x": 70, "y": 560, "values": { "text": "Characters for scene 1", "color": "yellow" } },
+    { "type": "fs:prompt", "x": 100, "y": 130, "values": { "text": "..." } }
+  ]
+}
+\`\`\`
+Place nodes INSIDE the group area (between group x,y and x+width, y+height).
+Group colors: red, blue, green, purple, orange, cyan.
+Comment colors: yellow, blue, green, red, purple.
+
+You can combine all commands: create nodes, move existing ones, create groups/comments.
 
 The user speaks Russian primarily. Respond in the same language as the user.
 Be concise and helpful. Focus on practical solutions.`;
@@ -152,6 +197,35 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Find a free position that doesn't overlap with existing nodes
+  const findFreePosition = useCallback((preferX: number, preferY: number, nodeWidth = 350, nodeHeight = 400): { x: number; y: number } => {
+    const existing = useWorkflowStore.getState().nodes;
+    const isOverlapping = (x: number, y: number) => {
+      return existing.some((n) => {
+        const nx = n.position.x;
+        const ny = n.position.y;
+        const nw = (n.measured?.width || 320);
+        const nh = (n.measured?.height || 300);
+        return x < nx + nw + 30 && x + nodeWidth + 30 > nx && y < ny + nh + 30 && y + nodeHeight + 30 > ny;
+      });
+    };
+
+    // Try preferred position first
+    if (!isOverlapping(preferX, preferY)) return { x: preferX, y: preferY };
+
+    // Spiral search for free spot
+    for (let radius = 1; radius < 20; radius++) {
+      for (let angle = 0; angle < 8; angle++) {
+        const dx = Math.cos(angle * Math.PI / 4) * radius * 400;
+        const dy = Math.sin(angle * Math.PI / 4) * radius * 400;
+        const testX = preferX + dx;
+        const testY = preferY + dy;
+        if (!isOverlapping(testX, testY)) return { x: testX, y: testY };
+      }
+    }
+    return { x: preferX + 500, y: preferY }; // fallback
+  }, []);
+
   // Parse and execute workflow commands from AI response
   const executeWorkflow = useCallback((text: string) => {
     const match = text.match(/```workflow\s*([\s\S]*?)```/);
@@ -159,21 +233,55 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
 
     try {
       const wf = JSON.parse(match[1]);
+
+      // Handle moveNode commands
+      if (wf.moveNodes && Array.isArray(wf.moveNodes)) {
+        for (const mv of wf.moveNodes) {
+          if (mv.id && typeof mv.x === "number" && typeof mv.y === "number") {
+            useWorkflowStore.setState({
+              nodes: useWorkflowStore.getState().nodes.map((n) =>
+                n.id === mv.id ? { ...n, position: { x: mv.x, y: mv.y } } : n
+              ),
+            });
+          }
+        }
+      }
+
       if (!wf.nodes) return;
 
       const idMap = new Map<number, string>();
 
-      // Create nodes
+      // Create nodes with position support
       wf.nodes.forEach((n: any, i: number) => {
-        addNode(n.type, { x: 200 + i * 350, y: 200 });
+        // Use specified x,y or auto-layout
+        const preferX = typeof n.x === "number" ? n.x : 200 + i * 400;
+        const preferY = typeof n.y === "number" ? n.y : 200;
+        const pos = typeof n.x === "number" && typeof n.y === "number"
+          ? { x: n.x, y: n.y }  // exact position from AI
+          : findFreePosition(preferX, preferY); // auto-find free spot
+
+        addNode(n.type, pos);
         const state = useWorkflowStore.getState();
         const newNode = state.nodes[state.nodes.length - 1];
         if (newNode) {
           idMap.set(i, newNode.id);
+
+          // Set group size if specified
+          if (n.type === "fs:group" && n.values) {
+            const w = n.values.width || 800;
+            const h = n.values.height || 400;
+            useWorkflowStore.setState({
+              nodes: useWorkflowStore.getState().nodes.map((node) =>
+                node.id === newNode.id
+                  ? { ...node, style: { ...node.style, width: w, height: h } }
+                  : node
+              ),
+            });
+          }
+
           // Apply values
           if (n.values) {
             for (const [k, v] of Object.entries(n.values)) {
-              useWorkflowStore.getState();
               useWorkflowStore.setState({
                 nodes: useWorkflowStore.getState().nodes.map((node) =>
                   node.id === newNode.id
@@ -207,7 +315,7 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
     } catch (err) {
       console.error("[AiChat] Failed to parse workflow:", err);
     }
-  }, [addNode]);
+  }, [addNode, findFreePosition]);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || loading) return;

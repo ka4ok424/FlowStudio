@@ -34,6 +34,12 @@ export default function PropertiesPanel() {
         {/* Nano Banana properties */}
         {data.type === "fs:nanoBanana" && <NanoBananaProperties nodeId={node.id} data={data} />}
 
+        {/* Group properties */}
+        {data.type === "fs:group" && <GroupProperties nodeId={node.id} data={data} />}
+
+        {/* Comment properties */}
+        {data.type === "fs:comment" && <CommentProperties nodeId={node.id} data={data} />}
+
         {/* Video Gen properties */}
         {data.type === "fs:videoGen" && <VideoGenProperties nodeId={node.id} data={data} />}
 
@@ -365,10 +371,12 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
         <div className="props-section-title">Size</div>
         <div className="props-input-row">
           <input type="number" className="props-input" value={width} min={64} max={2048} step={64}
-            onChange={(e) => updateWidgetValue(nodeId, "width", parseInt(e.target.value) || 512)} />
+            onChange={(e) => updateWidgetValue(nodeId, "width", e.target.value === "" ? "" : parseInt(e.target.value) || "")}
+            onBlur={(e) => { if (!e.target.value) updateWidgetValue(nodeId, "width", 512); }} />
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>×</span>
           <input type="number" className="props-input" value={height} min={64} max={2048} step={64}
-            onChange={(e) => updateWidgetValue(nodeId, "height", parseInt(e.target.value) || 512)} />
+            onChange={(e) => updateWidgetValue(nodeId, "height", e.target.value === "" ? "" : parseInt(e.target.value) || "")}
+            onBlur={(e) => { if (!e.target.value) updateWidgetValue(nodeId, "height", 512); }} />
         </div>
       </div>
 
@@ -417,6 +425,61 @@ function PromptProperties({ data }: { data: any }) {
         <span className="props-info-value">{text ? text.trim().split(/\s+/).length : 0}</span>
       </div>
     </div>
+  );
+}
+
+// ── Group Properties ──────────────────────────────────────────────
+function GroupProperties({ nodeId, data }: { nodeId: string; data: any }) {
+  const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const title = data.widgetValues?.title ?? "";
+  const color = data.widgetValues?.color || "blue";
+  const COLORS = ["red", "blue", "green", "purple", "orange", "cyan"];
+  return (
+    <>
+      <div className="props-section">
+        <div className="props-section-title">Title</div>
+        <input type="text" className="props-input" value={title}
+          onChange={(e) => updateWidgetValue(nodeId, "title", e.target.value)} />
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Color</div>
+        <div className="props-aspect-row">
+          {COLORS.map((c) => (
+            <button key={c} className={`props-color-btn ${color === c ? "active" : ""}`}
+              style={{ background: c === "red" ? "#e85d75" : c === "blue" ? "#5b9bd5" : c === "green" ? "#81c784" : c === "purple" ? "#a78bfa" : c === "orange" ? "#ff9800" : "#26c6da" }}
+              onClick={() => updateWidgetValue(nodeId, "color", c)} />
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Comment Properties ───────────────────────────────────────────
+function CommentProperties({ nodeId, data }: { nodeId: string; data: any }) {
+  const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const text = data.widgetValues?.text || "";
+  const color = data.widgetValues?.color || "yellow";
+  const COLORS = ["yellow", "blue", "green", "red", "purple"];
+  return (
+    <>
+      <div className="props-section">
+        <div className="props-section-title">Comment</div>
+        <textarea className="props-textarea" value={text} rows={5}
+          onChange={(e) => updateWidgetValue(nodeId, "text", e.target.value)}
+          placeholder="Write a note..." />
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Color</div>
+        <div className="props-aspect-row">
+          {COLORS.map((c) => (
+            <button key={c} className={`props-color-btn ${color === c ? "active" : ""}`}
+              style={{ background: c === "yellow" ? "#f0c040" : c === "blue" ? "#5b9bd5" : c === "green" ? "#81c784" : c === "red" ? "#e85d75" : "#a78bfa" }}
+              onClick={() => updateWidgetValue(nodeId, "color", c)} />
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -560,7 +623,8 @@ function MultiRefProperties({ nodeId, data }: { nodeId: string; data: any }) {
         <div className="props-section-title">Size</div>
         <div className="props-input-row">
           <input type="number" className="props-input" value={width} min={64} max={2048} step={64}
-            onChange={(e) => updateWidgetValue(nodeId, "width", parseInt(e.target.value) || 1024)} />
+            onChange={(e) => updateWidgetValue(nodeId, "width", e.target.value === "" ? "" : parseInt(e.target.value) || "")}
+            onBlur={(e) => { if (!e.target.value) updateWidgetValue(nodeId, "width", 1024); }} />
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>×</span>
           <input type="number" className="props-input" value={height} min={64} max={2048} step={64}
             onChange={(e) => updateWidgetValue(nodeId, "height", parseInt(e.target.value) || 1024)} />
@@ -667,10 +731,12 @@ function SceneProperties({ nodeId, data }: { nodeId: string; data: any }) {
         <div className="props-section-title">Size</div>
         <div className="props-input-row">
           <input type="number" className="props-input" value={width} min={64} max={2048} step={64}
-            onChange={(e) => updateWidgetValue(nodeId, "width", parseInt(e.target.value) || 1024)} />
+            onChange={(e) => updateWidgetValue(nodeId, "width", e.target.value === "" ? "" : parseInt(e.target.value) || "")}
+            onBlur={(e) => { if (!e.target.value) updateWidgetValue(nodeId, "width", 1024); }} />
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>×</span>
           <input type="number" className="props-input" value={height} min={64} max={2048} step={64}
-            onChange={(e) => updateWidgetValue(nodeId, "height", parseInt(e.target.value) || 576)} />
+            onChange={(e) => updateWidgetValue(nodeId, "height", e.target.value === "" ? "" : parseInt(e.target.value) || "")}
+            onBlur={(e) => { if (!e.target.value) updateWidgetValue(nodeId, "height", 576); }} />
         </div>
       </div>
 
@@ -698,7 +764,7 @@ function SceneProperties({ nodeId, data }: { nodeId: string; data: any }) {
 // ── Storyboard Properties ─────────────────────────────────────────
 function StoryboardProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
-  const title = data.widgetValues?.title || "Storyboard";
+  const title = data.widgetValues?.title ?? "";
 
   return (
     <>

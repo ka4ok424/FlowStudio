@@ -89,6 +89,28 @@ import { useMediaStore } from "./store/mediaStore";
     }
     return { converted };
   },
+
+  // Move a node by ID
+  moveNode: (nodeId: string, x: number, y: number) => {
+    useWorkflowStore.setState({
+      nodes: useWorkflowStore.getState().nodes.map((n) =>
+        n.id === nodeId ? { ...n, position: { x, y } } : n
+      ),
+    });
+  },
+
+  // Get canvas layout info
+  getLayout: () => {
+    return useWorkflowStore.getState().nodes.map((n: any) => ({
+      id: n.id,
+      type: n.data?.type,
+      label: n.data?.label,
+      x: Math.round(n.position.x),
+      y: Math.round(n.position.y),
+      w: n.measured?.width || 320,
+      h: n.measured?.height || 300,
+    }));
+  },
 };
 
 createRoot(document.getElementById("root")!).render(

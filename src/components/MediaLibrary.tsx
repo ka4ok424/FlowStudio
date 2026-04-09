@@ -157,9 +157,18 @@ function GalleryView({
         >
           {item.url && item.type === "image" ? (
             <img src={item.url} alt="" className="media-thumb" draggable={false} />
+          ) : item.url && item.type === "video" ? (
+            <>
+              <video src={item.url} className="media-thumb" muted draggable={false} />
+              <div className="media-play-overlay">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="white" opacity="0.8">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+              </div>
+            </>
           ) : (
             <div className="media-thumb-placeholder">
-              {item.type === "video" ? "🎬" : item.type === "audio" ? "🎵" : "📄"}
+              {item.type === "audio" ? "🎵" : "📄"}
             </div>
           )}
           {/* Heart — top right, always visible when favorited */}
@@ -251,6 +260,12 @@ function MediaDetail({ item, onClose }: { item: MediaItem; onClose: () => void }
 
         {item.url && item.type === "image" && (
           <img src={item.url} alt="" className="media-detail-img" />
+        )}
+        {item.url && item.type === "video" && (
+          <video src={item.url} className="media-detail-video" controls autoPlay muted />
+        )}
+        {item.url && item.type === "audio" && (
+          <audio src={item.url} controls autoPlay style={{ width: "100%", margin: "16px 0" }} />
         )}
 
         <div className="media-detail-info">

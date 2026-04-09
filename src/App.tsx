@@ -26,6 +26,8 @@ import ImagenNode from "./nodes/ImagenNode";
 import MusicNode from "./nodes/MusicNode";
 import TtsNode from "./nodes/TtsNode";
 import MultiRefNode from "./nodes/MultiRefNode";
+import GroupNode from "./nodes/GroupNode";
+import CommentNode from "./nodes/CommentNode";
 import AiChat from "./components/AiChat";
 import MediaLibrary from "./components/MediaLibrary";
 import { useMediaStore } from "./store/mediaStore";
@@ -50,6 +52,8 @@ const nodeTypes = {
   musicNode: MusicNode,
   ttsNode: TtsNode,
   multiRefNode: MultiRefNode,
+  groupNode: GroupNode,
+  commentNode: CommentNode,
 };
 
 function App() {

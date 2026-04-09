@@ -274,11 +274,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         MusicNode: "musicNode",
         TtsNode: "ttsNode",
         MultiRefNode: "multiRefNode",
+        GroupNode: "groupNode",
+        CommentNode: "commentNode",
       };
+      const isGroup = nativeDef.type === "fs:group";
       const newNode: Node<ComfyNodeData> = {
         id,
         type: componentMap[nativeDef.component] || "comfyNode",
         position,
+        ...(isGroup ? {
+          style: { width: 800, height: 400 },
+          zIndex: -1,
+        } : {}),
         data: {
           label: nativeDef.label,
           type: nativeDef.type,

@@ -452,6 +452,53 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:group",
+  label: "Group",
+  icon: "📦",
+  accentColor: "#5b9bd5",
+  component: "GroupNode",
+  description: "Visual group box to organize nodes. Resizable, colored background. No inputs/outputs.",
+  inputs: [],
+  outputs: [],
+  aiDoc: {
+    purpose: "Visual container to group related nodes. Use for organizing scenes, characters, audio pipelines etc.",
+    skills: ["Organize nodes visually", "Label sections of the workflow"],
+    params: {
+      title: "Group title",
+      color: "red, blue, green, purple, orange, cyan",
+      width: "Group width in pixels (default 800)",
+      height: "Group height in pixels (default 400)",
+    },
+    examples: [
+      "Create group 'Scene 1' at x:50 y:50 with width:1200 height:600",
+      "Place prompt + localGen + preview nodes inside the group area",
+    ],
+  },
+});
+
+registerNativeNode({
+  type: "fs:comment",
+  label: "Comment",
+  icon: "📝",
+  accentColor: "#f0c040",
+  component: "CommentNode",
+  description: "Sticky note for comments and annotations. No inputs/outputs.",
+  inputs: [],
+  outputs: [],
+  aiDoc: {
+    purpose: "Add text notes/comments to the canvas. Use to explain logic, mark TODOs, or annotate sections.",
+    skills: ["Leave notes on canvas", "Explain workflow logic"],
+    params: {
+      text: "Comment text",
+      color: "yellow, blue, green, red, purple",
+    },
+    examples: [
+      "Add comment 'This generates character portraits' near the CharacterCard nodes",
+    ],
+  },
+});
+
+registerNativeNode({
   type: "fs:import",
   label: "Import",
   icon: "⬆",
