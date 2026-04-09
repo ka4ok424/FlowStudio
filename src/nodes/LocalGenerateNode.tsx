@@ -4,6 +4,7 @@ import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt, getImageUrl } from "../api/comfyApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
+import { addToHistory } from "../utils/historyLimit";
 
 function LocalGenerateNode({ id, data, selected }: NodeProps) {
   const nodeData = data as any;
@@ -314,8 +315,9 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
                     // Update preview + history with persistent data URL
                     updateWidgetValue(id, "_previewUrl", dataUrl);
                     const prevHist: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
-                    updateWidgetValue(id, "_history", [...prevHist, dataUrl]);
-                    updateWidgetValue(id, "_historyIndex", prevHist.length);
+                    const { history: newHist, index: newIdx } = addToHistory(prevHist, dataUrl);
+                    updateWidgetValue(id, "_history", newHist);
+                    updateWidgetValue(id, "_historyIndex", newIdx);
                     // Save to media library
                     addGenerationToLibrary(dataUrl, {
                       prompt: promptText,
@@ -326,9 +328,10 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
                     });
                   } catch {
                     // Fallback: use API URL (won't persist)
-                    const prevHist: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
-                    updateWidgetValue(id, "_history", [...prevHist, apiUrl]);
-                    updateWidgetValue(id, "_historyIndex", prevHist.length);
+                    const prevHist2: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
+                    const { history: newHist2, index: newIdx2 } = addToHistory(prevHist2, apiUrl);
+                    updateWidgetValue(id, "_history", newHist2);
+                    updateWidgetValue(id, "_historyIndex", newIdx2);
                   }
                   setGenerating(false);
                   setProgress(null);

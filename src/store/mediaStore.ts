@@ -41,11 +41,15 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   items: [],
 
   addItem: (item) => {
-    // Save image data to IndexedDB, keep metadata in memory + localStorage
+    // Save image data to IndexedDB, keep only small placeholder in memory
     if (item.url && item.url.startsWith("data:")) {
       saveImage(`media_${item.id}`, item.url).catch(() => {});
+      // Don't keep large data URL in memory — use placeholder, load on demand
+      const memItem = { ...item, url: `__idb_media__:${item.id}` };
+      set({ items: [memItem, ...get().items] });
+    } else {
+      set({ items: [item, ...get().items] });
     }
-    set({ items: [item, ...get().items] });
     get().saveToStorage();
   },
 

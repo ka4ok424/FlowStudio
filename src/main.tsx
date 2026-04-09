@@ -111,10 +111,89 @@ import { useMediaStore } from "./store/mediaStore";
       h: n.measured?.height || 300,
     }));
   },
+
+  // Get crash logs
+  getCrashLogs: () => {
+    try {
+      return JSON.parse(localStorage.getItem("flowstudio_crash_logs") || "[]");
+    } catch { return []; }
+  },
 };
+
+// ── Global Error Tracking ────────────────────────────────────────
+function logCrash(type: string, error: string, stack?: string) {
+  try {
+    const logs = JSON.parse(localStorage.getItem("flowstudio_crash_logs") || "[]");
+    logs.push({
+      time: new Date().toISOString(),
+      type,
+      error: error.slice(0, 500),
+      stack: stack?.slice(0, 1000),
+      nodes: useWorkflowStore.getState().nodes.length,
+      project: useWorkflowStore.getState().currentProjectName,
+    });
+    // Keep last 20 crashes
+    localStorage.setItem("flowstudio_crash_logs", JSON.stringify(logs.slice(-20)));
+  } catch { /* storage may be full */ }
+}
+
+// Catch unhandled errors
+window.addEventListener("error", (e) => {
+  logCrash("error", e.message, e.error?.stack);
+  console.error("[CRASH]", e.message, e.error);
+});
+
+// Catch unhandled promise rejections
+window.addEventListener("unhandledrejection", (e) => {
+  logCrash("unhandledrejection", String(e.reason), e.reason?.stack);
+  console.error("[CRASH] Unhandled promise:", e.reason);
+});
+
+// React Error Boundary
+import { Component, type ReactNode, type ErrorInfo } from "react";
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: string }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: "" };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error: error.message };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    logCrash("react", error.message, info.componentStack || error.stack);
+    console.error("[CRASH] React:", error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, color: "#ff6060", background: "#0d0d12", minHeight: "100vh", fontFamily: "sans-serif" }}>
+          <h2>FlowStudio crashed</h2>
+          <p style={{ color: "#aaa" }}>{this.state.error}</p>
+          <p style={{ color: "#888", fontSize: 13 }}>Your project was auto-saved. Reload to recover.</p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ marginTop: 16, padding: "8px 24px", background: "#5b9bd5", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14 }}
+          >
+            Reload
+          </button>
+          <p style={{ color: "#555", fontSize: 11, marginTop: 16 }}>
+            Check crash logs: open console (F12) → <code>__debug.getCrashLogs()</code>
+          </p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>
 );

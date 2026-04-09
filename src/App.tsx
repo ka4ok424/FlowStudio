@@ -105,10 +105,10 @@ function App() {
       });
   }, [setNodeDefs, setConnected]);
 
-  // Autosave (debounced, every 2 sec when changes happen)
+  // Autosave (debounced, every 5 sec when changes happen)
   useEffect(() => {
     if (!currentProjectId || nodes.length === 0) return;
-    const timer = setTimeout(() => { saveProject(); }, 2000);
+    const timer = setTimeout(() => { saveProject(); }, 5000);
     return () => clearTimeout(timer);
   }, [nodes, edges, currentProjectId]);
 

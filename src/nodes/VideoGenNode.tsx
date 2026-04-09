@@ -5,6 +5,7 @@ import { startVideoGeneration, pollOperation } from "../api/googleMediaApi";
 import { useMediaStore, type MediaItem } from "../store/mediaStore";
 import { saveImage } from "../store/imageDb";
 import MediaHistory from "./MediaHistory";
+import { addToHistory } from "../utils/historyLimit";
 
 const VEO_MODELS = [
   { id: "veo-2.0-generate-001", label: "Veo 2" },
@@ -140,9 +141,9 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
         if (videoSrc) {
           updateWidgetValue(id, "_previewUrl", videoSrc);
           const prev: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
-          const newHist = [...prev, videoSrc];
+          const { history: newHist, index: newIdx } = addToHistory(prev, videoSrc);
           updateWidgetValue(id, "_history", newHist);
-          updateWidgetValue(id, "_historyIndex", newHist.length - 1);
+          updateWidgetValue(id, "_historyIndex", newIdx);
 
           // Save video to IndexedDB + Media Library
           const mediaId = `vid_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;

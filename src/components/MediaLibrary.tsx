@@ -1,5 +1,26 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useMediaStore, type MediaItem } from "../store/mediaStore";
+import { loadImage } from "../store/imageDb";
+
+// Cache for loaded media URLs (lazy loaded from IndexedDB)
+const urlCache = new Map<string, string>();
+
+function useMediaUrl(item: MediaItem): string | null {
+  const [url, setUrl] = useState<string | null>(() => {
+    if (item.url && !item.url.startsWith("__idb")) return item.url;
+    return urlCache.get(item.id) || null;
+  });
+
+  useEffect(() => {
+    if (item.url && !item.url.startsWith("__idb")) { setUrl(item.url); return; }
+    if (urlCache.has(item.id)) { setUrl(urlCache.get(item.id)!); return; }
+    loadImage(`media_${item.id}`).then((data) => {
+      if (data) { urlCache.set(item.id, data); setUrl(data); }
+    }).catch(() => {});
+  }, [item.id, item.url]);
+
+  return url;
+}
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return (
@@ -148,42 +169,49 @@ function GalleryView({
   return (
     <div className="media-gallery">
       {items.map((item) => (
-        <div
-          key={item.id}
-          className={`media-gallery-item ${item.favorite ? "is-fav" : ""}`}
-          onClick={() => onSelect(item)}
-          draggable
-          onDragStart={(e) => handleDragStart(e, item)}
-        >
-          {item.url && item.type === "image" ? (
-            <img src={item.url} alt="" className="media-thumb" draggable={false} />
-          ) : item.url && item.type === "video" ? (
-            <>
-              <video src={item.url} className="media-thumb" muted draggable={false} />
-              <div className="media-play-overlay">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="white" opacity="0.8">
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
-              </div>
-            </>
-          ) : (
-            <div className="media-thumb-placeholder">
-              {item.type === "audio" ? "🎵" : "📄"}
-            </div>
-          )}
-          {/* Heart — top right, always visible when favorited */}
-          <button className="media-fav-btn" onClick={(e) => { e.stopPropagation(); onFav(item.id); }}>
-            <HeartIcon filled={item.favorite} />
-          </button>
-          {/* Trash — bottom right, only on hover */}
-          <button className="media-del-btn" onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}>
-            <TrashIcon />
-          </button>
-          {item.genMeta && (
-            <div className="media-gallery-badge">AI</div>
-          )}
-        </div>
+        <GalleryItem key={item.id} item={item} onSelect={onSelect} onFav={onFav} onDelete={onDelete} onDragStart={handleDragStart} />
       ))}
+    </div>
+  );
+}
+
+function GalleryItem({ item, onSelect, onFav, onDelete, onDragStart }: {
+  item: MediaItem; onSelect: (i: MediaItem) => void; onFav: (id: string) => void;
+  onDelete: (id: string) => void; onDragStart: (e: React.DragEvent, i: MediaItem) => void;
+}) {
+  const url = useMediaUrl(item);
+  return (
+    <div
+      className={`media-gallery-item ${item.favorite ? "is-fav" : ""}`}
+      onClick={() => onSelect({ ...item, url: url || item.url })}
+      draggable
+      onDragStart={(e) => onDragStart(e, { ...item, url: url || item.url })}
+    >
+      {url && item.type === "image" ? (
+        <img src={url} alt="" className="media-thumb" draggable={false} />
+      ) : url && item.type === "video" ? (
+        <>
+          <video src={url} className="media-thumb" muted draggable={false} />
+          <div className="media-play-overlay">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="white" opacity="0.8">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+          </div>
+        </>
+      ) : (
+        <div className="media-thumb-placeholder">
+          {item.type === "audio" ? "🎵" : "📄"}
+        </div>
+      )}
+      <button className="media-fav-btn" onClick={(e) => { e.stopPropagation(); onFav(item.id); }}>
+        <HeartIcon filled={item.favorite} />
+      </button>
+      <button className="media-del-btn" onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}>
+        <TrashIcon />
+      </button>
+      {item.genMeta && (
+        <div className="media-gallery-badge">AI</div>
+      )}
     </div>
   );
 }
@@ -214,7 +242,7 @@ function TimelineView({
             <div key={item.id} className="timeline-item" onClick={() => onSelect(item)}>
               <div className="timeline-thumb-wrap">
                 {item.url && item.type === "image" ? (
-                  <img src={item.url} alt="" className="timeline-thumb" />
+                  <img src={url} alt="" className="timeline-thumb" />
                 ) : (
                   <div className="timeline-thumb-placeholder">
                     {item.type === "video" ? "🎬" : "🎵"}
@@ -253,10 +281,12 @@ function TimelineView({
 
 // ── Detail Overlay ─────────────────────────────────────────────────
 function MediaDetail({ item, onClose }: { item: MediaItem; onClose: () => void }) {
+  const url = useMediaUrl(item);
+
   const handleDownload = () => {
-    if (!item.url) return;
+    if (!url) return;
     const a = document.createElement("a");
-    a.href = item.url;
+    a.href = url;
     a.download = item.fileName || `flowstudio_${item.type}_${Date.now()}.${item.type === "video" ? "mp4" : item.type === "audio" ? "wav" : "png"}`;
     a.click();
   };
@@ -275,14 +305,14 @@ function MediaDetail({ item, onClose }: { item: MediaItem; onClose: () => void }
           <button className="media-detail-close" onClick={onClose}>✕</button>
         </div>
 
-        {item.url && item.type === "image" && (
-          <img src={item.url} alt="" className="media-detail-img" />
+        {url && item.type === "image" && (
+          <img src={url} alt="" className="media-detail-img" />
         )}
-        {item.url && item.type === "video" && (
-          <video src={item.url} className="media-detail-video" controls autoPlay muted />
+        {url && item.type === "video" && (
+          <video src={url} className="media-detail-video" controls autoPlay muted />
         )}
-        {item.url && item.type === "audio" && (
-          <audio src={item.url} controls autoPlay style={{ width: "100%", margin: "16px 0" }} />
+        {url && item.type === "audio" && (
+          <audio src={url} controls autoPlay style={{ width: "100%", margin: "16px 0" }} />
         )}
 
         <div className="media-detail-info">

@@ -4,6 +4,7 @@ import { useWorkflowStore } from "../store/workflowStore";
 import { generateImage } from "../api/geminiApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
+import { addToHistory } from "../utils/historyLimit";
 
 const MAX_REFS = 14;
 
@@ -38,6 +39,51 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
       if (promptNode) prompt = (promptNode.data as any).widgetValues?.text || "";
     }
 
+    // Get input image from connected node (for image editing)
+    let inputImage: string | undefined;
+    const imgEdge = edgesAll.find((e) => e.target === id && e.targetHandle === "input_image");
+    if (imgEdge) {
+      const srcNode = nodes.find((n) => n.id === imgEdge.source);
+      if (srcNode) {
+        const sd = srcNode.data as any;
+        const url = sd.widgetValues?._previewUrl || sd.widgetValues?._preview || sd.widgetValues?.portraitUrl;
+        if (url) {
+          if (url.startsWith("data:")) {
+            inputImage = url.replace(/^data:image\/\w+;base64,/, "");
+          } else {
+            try {
+              const resp = await fetch(url);
+              const blob = await resp.blob();
+              const dataUrl = await new Promise<string>((r) => { const rd = new FileReader(); rd.onloadend = () => r(rd.result as string); rd.readAsDataURL(blob); });
+              inputImage = dataUrl.replace(/^data:image\/\w+;base64,/, "");
+            } catch { /* skip */ }
+          }
+        }
+      }
+    }
+
+    // Get reference images from connected ref nodes
+    const referenceImages: string[] = [];
+    for (let i = 0; i < refCount; i++) {
+      const refEdge = edgesAll.find((e) => e.target === id && e.targetHandle === `ref_${i}`);
+      if (!refEdge) continue;
+      const srcNode = nodes.find((n) => n.id === refEdge.source);
+      if (!srcNode) continue;
+      const sd = srcNode.data as any;
+      const url = sd.widgetValues?._previewUrl || sd.widgetValues?._preview || sd.widgetValues?.portraitUrl;
+      if (!url) continue;
+      if (url.startsWith("data:")) {
+        referenceImages.push(url.replace(/^data:image\/\w+;base64,/, ""));
+      } else {
+        try {
+          const resp = await fetch(url);
+          const blob = await resp.blob();
+          const dataUrl = await new Promise<string>((r) => { const rd = new FileReader(); rd.onloadend = () => r(rd.result as string); rd.readAsDataURL(blob); });
+          referenceImages.push(dataUrl.replace(/^data:image\/\w+;base64,/, ""));
+        } catch { /* skip */ }
+      }
+    }
+
     const result = await generateImage({
       prompt: prompt || "Generate an image",
       model: nodeData.widgetValues?.model || "gemini-2.5-flash-image",
@@ -45,6 +91,8 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
       seed: nodeData.widgetValues?.seed ? parseInt(nodeData.widgetValues.seed) : undefined,
       temperature: nodeData.widgetValues?.temperature,
       numberOfImages: nodeData.widgetValues?.numImages || 1,
+      inputImage,
+      referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
       safetySettings: {
         HARM_CATEGORY_HARASSMENT: nodeData.widgetValues?.safety_harassment || "BLOCK_MEDIUM_AND_ABOVE",
         HARM_CATEGORY_HATE_SPEECH: nodeData.widgetValues?.safety_hate || "BLOCK_MEDIUM_AND_ABOVE",
@@ -60,9 +108,9 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
       const dataUrl = `data:image/png;base64,${result.images[0]}`;
       updateWidgetValue(id, "_previewUrl", dataUrl);
       const prev = nodeData.widgetValues?._history || [];
-      const newHistory = [...prev, dataUrl];
+      const { history: newHistory, index: newIdx } = addToHistory(prev, dataUrl);
       updateWidgetValue(id, "_history", newHistory);
-      updateWidgetValue(id, "_historyIndex", newHistory.length - 1);
+      updateWidgetValue(id, "_historyIndex", newIdx);
       addGenerationToLibrary(dataUrl, {
         prompt: prompt || "",
         model: nodeData.widgetValues?.model || "gemini-2.5-flash-image",

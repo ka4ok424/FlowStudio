@@ -4,6 +4,7 @@ import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt, getImageUrl, uploadImage } from "../api/comfyApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
+import { addToHistory } from "../utils/historyLimit";
 
 const MAX_REFS = 8;
 
@@ -257,16 +258,17 @@ function MultiRefNode({ id, data, selected }: NodeProps) {
                   });
                   updateWidgetValue(id, "_previewUrl", dataUrl);
                   const prev: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
-                  updateWidgetValue(id, "_history", [...prev, dataUrl]);
-                  updateWidgetValue(id, "_historyIndex", prev.length);
+                  const { history: _h, index: _i } = addToHistory(prev, dataUrl); updateWidgetValue(id, "_history", _h);
+                  updateWidgetValue(id, "_historyIndex", _i);
                   addGenerationToLibrary(dataUrl, {
                     prompt: promptText, model: "sdxl_lightning_4step", seed: actualSeed.toString(),
                     steps, cfg, width, height, nodeType: "fs:multiRef",
                   });
                 } catch {
-                  const prev: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
-                  updateWidgetValue(id, "_history", [...prev, apiUrl]);
-                  updateWidgetValue(id, "_historyIndex", prev.length);
+                  const prev2: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
+                  const { history: _h2, index: _i2 } = addToHistory(prev2, apiUrl);
+                  updateWidgetValue(id, "_history", _h2);
+                  updateWidgetValue(id, "_historyIndex", _i2);
                 }
                 setGenerating(false);
                 return;

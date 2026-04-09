@@ -4,6 +4,7 @@ import { useWorkflowStore } from "../store/workflowStore";
 import { generateImagen } from "../api/googleMediaApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
+import { addToHistory } from "../utils/historyLimit";
 
 const IMAGEN_MODELS = [
   { id: "imagen-4.0-fast-generate-001", label: "Imagen 4 Fast" },
@@ -53,9 +54,9 @@ function ImagenNode({ id, data, selected }: NodeProps) {
       const dataUrl = `data:image/png;base64,${result.images[0]}`;
       updateWidgetValue(id, "_previewUrl", dataUrl);
       const prev = nodeData.widgetValues?._history || [];
-      const newHist = [...prev, dataUrl];
+      const { history: newHist, index: newIdx } = addToHistory(prev, dataUrl);
       updateWidgetValue(id, "_history", newHist);
-      updateWidgetValue(id, "_historyIndex", newHist.length - 1);
+      updateWidgetValue(id, "_historyIndex", newIdx);
       addGenerationToLibrary(dataUrl, {
         prompt: promptText, model, seed: "random", nodeType: "fs:imagen",
       });
