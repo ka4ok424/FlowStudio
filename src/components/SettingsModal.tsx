@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { getCustomRules, setCustomRules } from "../ai/rules";
 
 interface ApiKeys {
   google: string;
@@ -26,17 +27,20 @@ interface Props {
 }
 
 export default function SettingsModal({ open, onClose }: Props) {
+  const [aiRules, setAiRules] = useState("");
   const [keys, setKeys] = useState<ApiKeys>({ google: "", openai: "", claude: "", elevenlabs: "", kling: "" });
 
   useEffect(() => {
     if (open) {
       const saved = getApiKeys();
       setKeys({ google: saved.google || "", openai: saved.openai || "", claude: saved.claude || "", elevenlabs: saved.elevenlabs || "", kling: saved.kling || "" });
+      setAiRules(getCustomRules());
     }
   }, [open]);
 
   const save = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(keys));
+    setCustomRules(aiRules);
     onClose();
   };
 
@@ -77,6 +81,16 @@ export default function SettingsModal({ open, onClose }: Props) {
               />
             </div>
           ))}
+
+          <div className="settings-section-title" style={{ marginTop: 16 }}>AI Assistant Rules</div>
+          <p className="settings-hint">Custom instructions for the AI assistant. These are added to every conversation.</p>
+          <textarea
+            className="settings-textarea"
+            value={aiRules}
+            onChange={(e) => setAiRules(e.target.value)}
+            placeholder="Example: Always create groups when adding 3+ nodes. Use green for main story, blue for assets. Speak only Russian."
+            rows={5}
+          />
         </div>
 
         <div className="modal-footer">

@@ -350,11 +350,11 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
   }
 
   const model = data.widgetValues?.model || checkpoints[0] || "";
-  const steps = data.widgetValues?.steps || 4;
-  const cfg = data.widgetValues?.cfg || 7;
-  const width = data.widgetValues?.width || 512;
-  const height = data.widgetValues?.height || 512;
-  const seed = data.widgetValues?.seed || "";
+  const steps = data.widgetValues?.steps ?? 4;
+  const cfg = data.widgetValues?.cfg ?? 7;
+  const width = data.widgetValues?.width ?? 512;
+  const height = data.widgetValues?.height ?? 512;
+  const seed = data.widgetValues?.seed ?? "";
 
   return (
     <>
@@ -439,7 +439,9 @@ function GroupProperties({ nodeId, data }: { nodeId: string; data: any }) {
       <div className="props-section">
         <div className="props-section-title">Title</div>
         <input type="text" className="props-input" value={title}
-          onChange={(e) => updateWidgetValue(nodeId, "title", e.target.value)} />
+          onChange={(e) => updateWidgetValue(nodeId, "title", e.target.value)}
+          onBlur={(e) => { if (!e.target.value.trim()) updateWidgetValue(nodeId, "title", "Group"); }}
+          placeholder="Group" />
       </div>
       <div className="props-section">
         <div className="props-section-title">Color</div>
@@ -603,12 +605,12 @@ function TtsProperties({ nodeId, data }: { nodeId: string; data: any }) {
 function MultiRefProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
 
-  const width = data.widgetValues?.width || 1024;
-  const height = data.widgetValues?.height || 1024;
-  const steps = data.widgetValues?.steps || 4;
-  const cfg = data.widgetValues?.cfg || 1.5;
-  const ipWeight = data.widgetValues?.ipWeight || 0.35;
-  const styleWeight = data.widgetValues?.styleWeight || 0.3;
+  const width = data.widgetValues?.width ?? 1024;
+  const height = data.widgetValues?.height ?? 1024;
+  const steps = data.widgetValues?.steps ?? 4;
+  const cfg = data.widgetValues?.cfg ?? 1.5;
+  const ipWeight = data.widgetValues?.ipWeight ?? 0.35;
+  const styleWeight = data.widgetValues?.styleWeight ?? 0.3;
 
   return (
     <>
@@ -678,10 +680,10 @@ function SceneProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const sceneTitle = data.widgetValues?.sceneTitle || "";
   const action = data.widgetValues?.action || "";
   const model = data.widgetValues?.model || "";
-  const width = data.widgetValues?.width || 1024;
-  const height = data.widgetValues?.height || 576;
-  const steps = data.widgetValues?.steps || 4;
-  const cfg = data.widgetValues?.cfg || 7;
+  const width = data.widgetValues?.width ?? 1024;
+  const height = data.widgetValues?.height ?? 576;
+  const steps = data.widgetValues?.steps ?? 4;
+  const cfg = data.widgetValues?.cfg ?? 7;
   const previewUrl = data.widgetValues?._previewUrl || null;
 
   const checkpoints: string[] = [];
@@ -772,6 +774,7 @@ function StoryboardProperties({ nodeId, data }: { nodeId: string; data: any }) {
         <div className="props-section-title">Title</div>
         <input type="text" className="props-input" value={title}
           onChange={(e) => updateWidgetValue(nodeId, "title", e.target.value)}
+          onBlur={(e) => { if (!e.target.value.trim()) updateWidgetValue(nodeId, "title", "Storyboard"); }}
           placeholder="Storyboard title..." />
       </div>
     </>

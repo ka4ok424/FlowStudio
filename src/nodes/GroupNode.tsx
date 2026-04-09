@@ -16,7 +16,7 @@ function GroupNode({ id, data, selected }: NodeProps) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
   const setSelectedNode = useWorkflowStore((s) => s.setSelectedNode);
 
-  const title = nodeData.widgetValues?.title || "Group";
+  const title = nodeData.widgetValues?.title ?? "Group";
   const colorId = nodeData.widgetValues?.color || "blue";
   const scheme = GROUP_COLORS.find((c) => c.id === colorId) || GROUP_COLORS[1];
 
@@ -25,9 +25,7 @@ function GroupNode({ id, data, selected }: NodeProps) {
 
   const commitTitle = useCallback(() => {
     setEditing(false);
-    if (editValue.trim()) {
-      updateWidgetValue(id, "title", editValue.trim());
-    }
+    updateWidgetValue(id, "title", editValue.trim() || "Group");
   }, [id, editValue, updateWidgetValue]);
 
   return (
@@ -49,7 +47,6 @@ function GroupNode({ id, data, selected }: NodeProps) {
         isVisible={selected}
       />
       <div className="group-header" style={{ borderBottomColor: scheme.border }}>
-        <div className="group-accent" style={{ background: scheme.color }} />
         {editing ? (
           <input
             className="group-title-input"

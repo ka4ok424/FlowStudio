@@ -311,6 +311,11 @@ function App() {
   const [sidebarTab, setSidebarTab] = useState<"nodes" | "media">("nodes");
   const [logs, setLogs] = useState<string[]>([]);
 
+  // Save undo state when user starts dragging a node
+  const onNodeDragStart = useCallback(() => {
+    pushUndo();
+  }, [pushUndo]);
+
   // Node click → select for properties panel (Shift = multi-select toggle)
   const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
     if (_.shiftKey) {
@@ -370,6 +375,7 @@ function App() {
             onConnect={onConnect}
             onConnectStart={onConnectStart}
             onConnectEnd={onConnectEnd}
+            onNodeDragStart={onNodeDragStart}
             onNodeClick={onNodeClick}
             onPaneClick={onPaneClick}
             nodeTypes={nodeTypes}

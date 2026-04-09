@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { getAIContext } from "../nodes/registry";
 import { getApiKey } from "./SettingsModal";
+import { getConnectionRules, getProjectContext, getCustomRules, WORKFLOW_TEMPLATES, LAYOUT_RULES } from "../ai/rules";
 
 interface Message {
   role: "user" | "assistant";
@@ -24,21 +25,9 @@ const PROVIDER_MODELS: Record<AiProvider, string> = {
 
 function buildSystemPrompt(): string {
   const nodeContext = getAIContext();
-
-  // Get current canvas state for AI context
-  const state = useWorkflowStore.getState();
-  const existingNodes = state.nodes.map((n: any) => ({
-    id: n.id,
-    type: n.data?.type,
-    label: n.data?.label,
-    x: Math.round(n.position.x),
-    y: Math.round(n.position.y),
-    width: n.measured?.width || 320,
-    height: n.measured?.height || 300,
-  }));
-  const canvasInfo = existingNodes.length > 0
-    ? `\n\nCurrent canvas (${existingNodes.length} nodes):\n${JSON.stringify(existingNodes, null, 1)}`
-    : "\n\nCanvas is empty.";
+  const connectionRules = getConnectionRules();
+  const projectContext = getProjectContext();
+  const customRules = getCustomRules();
 
   return `You are FlowStudio AI assistant. You help users create and manage visual node-based workflows for image/video/audio generation.
 
@@ -47,17 +36,25 @@ You can:
 2. Suggest workflows for user's goals
 3. Create nodes with precise positioning (x, y coordinates)
 4. Move existing nodes to rearrange the canvas
+5. Create groups and comments for organization
 
-Available native nodes:
+═══ AVAILABLE NODES ═══
 ${nodeContext}
-${canvasInfo}
 
-CREATING NODES — use x,y to position them. Avoid overlapping existing nodes.
-Space nodes ~400px apart horizontally, ~350px vertically. Layout left-to-right:
+═══ CONNECTION RULES ═══
+${connectionRules}
+
+${WORKFLOW_TEMPLATES}
+
+${LAYOUT_RULES}
+
+═══ JSON COMMANDS ═══
+
+CREATING NODES — use x,y to position them:
 \`\`\`workflow
 {
   "nodes": [
-    { "type": "fs:prompt", "x": 100, "y": 200, "values": { "text": "a cat in space" } },
+    { "type": "fs:prompt", "x": 100, "y": 200, "values": { "text": "a cat" } },
     { "type": "fs:localGenerate", "x": 500, "y": 200, "values": {} }
   ],
   "edges": [
@@ -66,31 +63,28 @@ Space nodes ~400px apart horizontally, ~350px vertically. Layout left-to-right:
 }
 \`\`\`
 
-MOVING EXISTING NODES — use node IDs from canvas state:
+MOVING NODES — use node IDs from project state:
 \`\`\`workflow
-{
-  "moveNodes": [
-    { "id": "node_5", "x": 800, "y": 300 },
-    { "id": "node_3", "x": 100, "y": 100 }
-  ]
-}
+{ "moveNodes": [{ "id": "node_5", "x": 800, "y": 300 }] }
 \`\`\`
 
-GROUPS — visual containers to organize nodes:
+GROUPS + COMMENTS:
 \`\`\`workflow
 {
   "nodes": [
-    { "type": "fs:group", "x": 50, "y": 50, "values": { "title": "Scene 1: Forest", "color": "green", "width": 1200, "height": 500 } },
-    { "type": "fs:comment", "x": 70, "y": 560, "values": { "text": "Characters for scene 1", "color": "yellow" } },
-    { "type": "fs:prompt", "x": 100, "y": 130, "values": { "text": "..." } }
+    { "type": "fs:group", "x": 50, "y": 50, "values": { "title": "Scene 1", "color": "green", "width": 1200, "height": 500 } },
+    { "type": "fs:comment", "x": 70, "y": 560, "values": { "text": "Scene description", "color": "yellow" } }
   ]
 }
 \`\`\`
-Place nodes INSIDE the group area (between group x,y and x+width, y+height).
-Group colors: red, blue, green, purple, orange, cyan.
-Comment colors: yellow, blue, green, red, purple.
+Place nodes INSIDE group area. Group colors: red, blue, green, purple, orange, cyan.
+You can combine: create + move + groups in one command.
+JSON may include // comments (they are stripped before parsing).
 
-You can combine all commands: create nodes, move existing ones, create groups/comments.
+═══ CURRENT PROJECT ═══
+${projectContext}
+
+${customRules ? `═══ CUSTOM RULES ═══\n${customRules}\n` : ""}
 
 The user speaks Russian primarily. Respond in the same language as the user.
 Be concise and helpful. Focus on practical solutions.`;
@@ -190,12 +184,25 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [provider, setProvider] = useState<AiProvider>("gemini");
+  const [pendingWorkflow, setPendingWorkflow] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(100);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const addNode = useWorkflowStore((s) => s.addNode);
 
+  const isFirstRender = useRef(true);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Instant scroll on first render (open), smooth on new messages
+    messagesEndRef.current?.scrollIntoView(isFirstRender.current ? { behavior: "instant" } : { behavior: "smooth" });
+    isFirstRender.current = false;
   }, [messages]);
+
+  // Reset on reopen
+  useEffect(() => {
+    if (open) {
+      isFirstRender.current = true;
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "instant" }), 50);
+    }
+  }, [open]);
 
   // Find a free position that doesn't overlap with existing nodes
   const findFreePosition = useCallback((preferX: number, preferY: number, nodeWidth = 350, nodeHeight = 400): { x: number; y: number } => {
@@ -232,7 +239,9 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
     if (!match) return;
 
     try {
-      const wf = JSON.parse(match[1]);
+      // Strip JS-style comments (// ...) that AI sometimes includes
+      const cleanJson = match[1].replace(/\/\/.*$/gm, "").replace(/,\s*([}\]])/g, "$1");
+      const wf = JSON.parse(cleanJson);
 
       // Handle moveNode commands
       if (wf.moveNodes && Array.isArray(wf.moveNodes)) {
@@ -349,9 +358,24 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
     addChatMessage(assistantMsg);
     setLoading(false);
 
-    // Try to execute workflow commands
-    executeWorkflow(response);
-  }, [input, messages, loading, provider, addChatMessage, executeWorkflow]);
+    // Check for workflow commands — show confirmation popup
+    const wfMatch = response.match(/```workflow\s*([\s\S]*?)```/);
+    if (wfMatch) {
+      setPendingWorkflow(wfMatch[1]);
+    }
+  }, [input, messages, loading, provider, addChatMessage]);
+
+  const handleApplyWorkflow = useCallback(() => {
+    if (!pendingWorkflow) return;
+    // Save undo state before applying
+    useWorkflowStore.getState().pushUndo();
+    executeWorkflow("```workflow\n" + pendingWorkflow + "\n```");
+    setPendingWorkflow(null);
+  }, [pendingWorkflow, executeWorkflow]);
+
+  const handleRejectWorkflow = useCallback(() => {
+    setPendingWorkflow(null);
+  }, []);
 
   if (!open) return null;
 
@@ -385,9 +409,16 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
             <p className="ai-chat-hint">Try: "Create a text-to-image workflow"</p>
           </div>
         )}
-        {messages.map((msg, i) => (
-          <div key={i} className={`ai-msg ai-msg-${msg.role}`}>
-            <div className="ai-msg-content">{msg.content}</div>
+        {messages.length > visibleCount && (
+          <button className="ai-load-earlier" onClick={() => setVisibleCount((v) => v + 100)}>
+            Load {Math.min(messages.length - visibleCount, 100)} earlier messages
+          </button>
+        )}
+        {messages.slice(-visibleCount).map((msg, i) => (
+          <div key={messages.length - visibleCount + i} className={`ai-msg ai-msg-${msg.role}`}>
+            <div className="ai-msg-content">
+              <MessageContent content={msg.content} />
+            </div>
           </div>
         ))}
         {loading && (
@@ -397,6 +428,20 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Workflow confirmation popup */}
+      {pendingWorkflow && (
+        <div className="ai-workflow-confirm">
+          <div className="ai-workflow-confirm-header">
+            <span>Apply workflow changes?</span>
+          </div>
+          <WorkflowSummary json={pendingWorkflow} />
+          <div className="ai-workflow-confirm-actions">
+            <button className="ai-workflow-btn ai-workflow-apply" onClick={handleApplyWorkflow}>Apply</button>
+            <button className="ai-workflow-btn ai-workflow-reject" onClick={handleRejectWorkflow}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       <div className="ai-chat-input">
         <textarea
@@ -420,6 +465,83 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
           ▶
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── Message Content with collapsible JSON blocks ──────────────────
+function MessageContent({ content }: { content: string }) {
+  const parts = content.split(/(```workflow[\s\S]*?```)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith("```workflow")) {
+          const json = part.replace(/```workflow\s*/, "").replace(/```$/, "");
+          return <CollapsibleJson key={i} json={json} />;
+        }
+        // Render other code blocks normally
+        if (part.startsWith("```")) {
+          return <pre key={i} className="ai-code-block">{part.replace(/```\w*\n?/, "").replace(/```$/, "")}</pre>;
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+function CollapsibleJson({ json }: { json: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Parse summary
+  let summary = "Workflow command";
+  try {
+    const clean = json.replace(/\/\/.*$/gm, "").replace(/,\s*([}\]])/g, "$1");
+    const wf = JSON.parse(clean);
+    const parts: string[] = [];
+    if (wf.moveNodes?.length) parts.push(`Move ${wf.moveNodes.length} nodes`);
+    if (wf.nodes?.length) parts.push(`Create ${wf.nodes.length} nodes`);
+    if (wf.edges?.length) parts.push(`Create ${wf.edges.length} edges`);
+    summary = parts.join(" + ") || "Workflow command";
+  } catch { /* ignore */ }
+
+  return (
+    <div className="ai-json-block">
+      <button className="ai-json-toggle" onClick={() => setExpanded(!expanded)}>
+        <span className="ai-json-icon">{expanded ? "▼" : "▶"}</span>
+        <span className="ai-json-summary">{summary}</span>
+      </button>
+      {expanded && <pre className="ai-json-code">{json}</pre>}
+    </div>
+  );
+}
+
+function WorkflowSummary({ json }: { json: string }) {
+  const [showFull, setShowFull] = useState(false);
+
+  let summary = "";
+  try {
+    const clean = json.replace(/\/\/.*$/gm, "").replace(/,\s*([}\]])/g, "$1");
+    const wf = JSON.parse(clean);
+    const parts: string[] = [];
+    if (wf.moveNodes?.length) parts.push(`Move ${wf.moveNodes.length} nodes`);
+    if (wf.nodes?.length) {
+      const types = wf.nodes.map((n: any) => n.type?.replace("fs:", "")).join(", ");
+      parts.push(`Create ${wf.nodes.length} nodes (${types})`);
+    }
+    if (wf.edges?.length) parts.push(`${wf.edges.length} connections`);
+    summary = parts.join("\n");
+  } catch {
+    summary = "Invalid JSON — may not apply correctly";
+  }
+
+  return (
+    <div>
+      <div className="ai-workflow-summary">{summary}</div>
+      <button className="ai-json-toggle" onClick={() => setShowFull(!showFull)} style={{ marginBottom: 6 }}>
+        <span className="ai-json-icon">{showFull ? "▼" : "▶"}</span>
+        <span className="ai-json-summary">Show JSON</span>
+      </button>
+      {showFull && <pre className="ai-workflow-preview">{json}</pre>}
     </div>
   );
 }

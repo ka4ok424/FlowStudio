@@ -84,6 +84,12 @@ body {
   70% { opacity: 1; }
   100% { opacity: 0; }
 }
+.toolbar-undo-btn {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; padding: 2px; border-radius: 4px;
+  display: flex; align-items: center; transition: color 0.12s;
+}
+.toolbar-undo-btn:hover { color: var(--text-primary); background: var(--bg-widget); }
 .toolbar-project-name-input {
   font-size: 13px; background: var(--bg-widget); border: 1px solid var(--accent);
   border-radius: 4px; color: var(--text-primary); padding: 2px 6px;
@@ -1393,6 +1399,77 @@ body {
 }
 .ai-typing { color: var(--text-muted); font-style: italic; }
 
+/* Workflow confirmation popup */
+.ai-workflow-confirm {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  background: rgba(91,155,213,0.08);
+}
+.ai-workflow-confirm-header {
+  font-size: 12px; font-weight: 600; color: #5b9bd5;
+  margin-bottom: 6px;
+}
+.ai-workflow-preview {
+  font-size: 10px; color: var(--text-muted); background: var(--bg-widget);
+  border-radius: 4px; padding: 6px 8px; margin-bottom: 8px;
+  max-height: 120px; overflow-y: auto; white-space: pre-wrap;
+  word-break: break-word; line-height: 1.4;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+.ai-workflow-confirm-actions {
+  display: flex; gap: 8px;
+}
+.ai-workflow-btn {
+  flex: 1; padding: 6px 12px; border: none; border-radius: 6px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: opacity 0.12s;
+}
+.ai-workflow-btn:hover { opacity: 0.85; }
+.ai-workflow-apply {
+  background: #5b9bd5; color: #fff;
+}
+.ai-workflow-reject {
+  background: var(--bg-widget); color: var(--text-secondary);
+}
+
+/* Collapsible JSON in chat messages */
+.ai-json-block {
+  margin: 6px 0; border: 1px solid var(--border); border-radius: 6px;
+  overflow: hidden; background: var(--bg-widget);
+}
+.ai-json-toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: none; border: none; color: #5b9bd5;
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  padding: 6px 10px; text-align: left;
+}
+.ai-json-toggle:hover { background: rgba(91,155,213,0.08); }
+.ai-json-icon { font-size: 8px; flex-shrink: 0; }
+.ai-json-summary { flex: 1; }
+.ai-json-code {
+  font-size: 10px; color: var(--text-muted); padding: 8px 10px;
+  border-top: 1px solid var(--border); max-height: 200px;
+  overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+  line-height: 1.4; margin: 0;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+.ai-code-block {
+  font-size: 11px; background: var(--bg-widget); border-radius: 4px;
+  padding: 8px; margin: 4px 0; white-space: pre-wrap; word-break: break-word;
+  border: 1px solid var(--border);
+}
+.ai-load-earlier {
+  display: block; width: 100%; padding: 8px;
+  background: none; border: none; border-bottom: 1px solid var(--border);
+  color: #5b9bd5; font-size: 11px; cursor: pointer;
+  text-align: center;
+}
+.ai-load-earlier:hover { background: rgba(91,155,213,0.08); }
+.ai-workflow-summary {
+  font-size: 12px; color: var(--text-primary); white-space: pre-line;
+  margin-bottom: 6px; line-height: 1.5;
+}
+
 .ai-chat-input {
   padding: 12px; border-top: 1px solid var(--border);
   display: flex; gap: 8px;
@@ -1966,6 +2043,15 @@ body {
   box-sizing: border-box;
 }
 .settings-input:focus { border-color: var(--border-hover); }
+.settings-textarea {
+  width: 100%; background: var(--bg-widget);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-primary); font-size: 12px; line-height: 1.5;
+  padding: 8px 12px; outline: none; resize: vertical;
+  font-family: inherit; box-sizing: border-box;
+}
+.settings-textarea:focus { border-color: var(--border-hover); }
+.settings-textarea::placeholder { color: var(--text-muted); }
 
 /* Hide React Flow attribution */
 .react-flow__attribution { display: none !important; }
@@ -2573,6 +2659,9 @@ body {
 /* ══════════════════════════════════════════════════════════════════
    Group Node
    ══════════════════════════════════════════════════════════════════ */
+.react-flow__node-groupNode {
+  z-index: -1 !important;
+}
 .group-node {
   border: 2px dashed;
   border-radius: 12px;
