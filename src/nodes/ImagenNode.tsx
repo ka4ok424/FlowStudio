@@ -92,7 +92,7 @@ function ImagenNode({ id, data, selected }: NodeProps) {
 
       <MediaHistory nodeId={id} history={nodeData.widgetValues?._history || []} historyIndex={nodeData.widgetValues?._historyIndex ?? -1} fallbackUrl={previewUrl} emptyIcon="🖼" />
 
-      {error && <div className="nanob-error">{error}</div>}
+      {error && <div className="nanob-error nodrag">{error}</div>}
 
       <div className="nanob-actions">
         <button className={`localgen-generate-btn ${generating ? "generating" : ""}`} onClick={handleGenerate} disabled={generating}>

@@ -421,7 +421,7 @@ function SceneNode({ id, data, selected }: NodeProps) {
         </div>
       )}
 
-      {error && <div className="nanob-error">{error}</div>}
+      {error && <div className="nanob-error nodrag">{error}</div>}
 
       {/* Generate */}
       <div className="nanob-actions">

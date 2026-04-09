@@ -90,7 +90,7 @@ function MusicNode({ id, data, selected }: NodeProps) {
         )}
       </div>
 
-      {error && <div className="nanob-error">{error}</div>}
+      {error && <div className="nanob-error nodrag">{error}</div>}
 
       <div className="nanob-actions">
         <button className={`localgen-generate-btn ${generating ? "generating" : ""}`} onClick={handleGenerate} disabled={generating}>

@@ -505,8 +505,11 @@ body {
   background: rgba(255,255,255,0.15); border-radius: 3px;
 }
 .media-detail::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
-.media-detail-close {
-  position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.4);
+.media-detail-actions {
+  position: absolute; top: 12px; right: 12px; display: flex; gap: 6px; z-index: 1;
+}
+.media-detail-download, .media-detail-close {
+  background: rgba(0,0,0,0.4);
   border: none; border-radius: 50%; width: 28px; height: 28px; color: #fff;
   font-size: 14px; cursor: pointer; display: flex; align-items: center;
   justify-content: center; z-index: 1;
@@ -1179,6 +1182,8 @@ body {
   font-size: 11px;
   line-height: 1.4;
   word-break: break-word;
+  user-select: text;
+  cursor: text;
 }
 
 /* Generate button + dice */

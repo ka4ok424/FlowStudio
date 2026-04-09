@@ -235,7 +235,7 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
       />
 
       {status && <div className="videogen-status-bar">{status}</div>}
-      {error && <div className="nanob-error">{error}</div>}
+      {error && <div className="nanob-error nodrag">{error}</div>}
 
       {/* Generate */}
       <div className="nanob-actions">

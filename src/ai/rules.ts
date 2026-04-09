@@ -68,20 +68,34 @@ COMMON WORKFLOWS (suggest these when user asks):
 
 // ── Layout Rules ────────────────────────────────────────────────
 export const LAYOUT_RULES = `
-LAYOUT RULES (always follow when creating/moving nodes):
+LAYOUT RULES (MANDATORY — always follow when creating/moving nodes):
 
-- Flow direction: LEFT → RIGHT (inputs left, outputs right)
-- Horizontal spacing: 400px between connected nodes
-- Vertical spacing: 350px between parallel chains
-- Groups: wrap related nodes with 50px padding from edges
-- Comments: place below or beside the group they describe
-- When organizing: align nodes in rows, keep connected chains in same row
-- Node sizes: S=260px, M=320px, L=420px, XL=500px wide
+SPACING — nodes must NEVER touch or overlap:
+- Minimum gap between any two nodes: 40px on all sides
+- Horizontal spacing between connected nodes: 400px center-to-center
+- Vertical spacing between parallel chains: 350px center-to-center
+- Before placing a node, check existing positions and ensure no overlap
+- Node sizes: S=260px wide, M=320px, L=420px, XL=500px. Height varies 200-500px
+
+FLOW DIRECTION:
+- Always LEFT → RIGHT (inputs on left side, outputs on right side)
+- Align connected nodes horizontally in the same row
+- When organizing: keep connected chains in same row
+
+GROUP RULES — nodes must stay INSIDE their group:
+- Group padding: minimum 60px from group edges to any node inside it
+- Nodes belonging to a group must be fully contained within group boundaries
+- Node x must be > group.x + 60 AND node x + nodeWidth < group.x + group.width - 60
+- Node y must be > group.y + 80 (header) AND node y + nodeHeight < group.y + group.height - 60
+- Groups must NOT overlap other groups — minimum 40px gap between groups
+- When creating a group, calculate size to fit all nodes inside + padding
+- When moving nodes into a group, resize group if nodes don't fit
 
 GROUPING CONVENTIONS:
 - Each scene/chapter gets its own Group (fs:group)
 - Color coding: green=main story, blue=assets, purple=archive, orange=audio, red=important
 - Add Comment below each group explaining its purpose
+- Comments placed outside the group, 10px below group bottom edge
 - Archive unused nodes in a separate group far right (x > 2000)
 `;
 

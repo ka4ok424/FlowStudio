@@ -360,7 +360,7 @@ function MultiRefNode({ id, data, selected }: NodeProps) {
         emptyIcon="🔗"
       />
 
-      {error && <div className="nanob-error">{error}</div>}
+      {error && <div className="nanob-error nodrag">{error}</div>}
 
       <div className="nanob-actions">
         <button

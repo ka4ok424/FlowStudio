@@ -350,7 +350,7 @@ registerNativeNode({
   aiDoc: {
     purpose: "Video generation via Google Veo API. Supports text-to-video and image-to-video.",
     skills: ["Generate video from text", "Animate images", "Create scene clips"],
-    params: { model: "Veo 2/3/3.1 variants", aspectRatio: "16:9, 9:16, 1:1" },
+    params: { model: "MUST use exact API ID: veo-2.0-generate-001 (default), veo-3.0-fast-generate-001, veo-3.0-generate-001, veo-3.1-fast-generate-preview, veo-3.1-lite-generate-preview, veo-3.1-generate-preview", aspectRatio: "16:9, 9:16, 1:1" },
     connectsFrom: ["fs:prompt", "fs:import", "fs:scene"],
     connectsTo: ["fs:storyboard", "fs:preview"],
     examples: ["Prompt('A cat walking') → Video Gen → 5s video clip"],
@@ -369,7 +369,7 @@ registerNativeNode({
   aiDoc: {
     purpose: "Image generation via Google Imagen 4 API.",
     skills: ["Generate high quality images from text"],
-    params: { model: "Imagen 4 / 4 Fast / 4 Ultra", aspectRatio: "1:1, 16:9, etc." },
+    params: { model: "MUST use exact API ID: imagen-4.0-fast-generate-001 (default), imagen-4.0-generate-001, imagen-4.0-ultra-generate-001", aspectRatio: "1:1, 16:9, 9:16, 4:3, 3:4" },
     connectsFrom: ["fs:prompt"],
     connectsTo: ["fs:preview", "fs:characterCard", "fs:scene"],
     examples: ["Prompt('Sunset over mountains') → Imagen → HD image"],
@@ -388,7 +388,7 @@ registerNativeNode({
   aiDoc: {
     purpose: "Music generation via Google Lyria 3 API.",
     skills: ["Generate music from text description", "Create background tracks"],
-    params: { model: "Lyria 3 Clip (30s) / Lyria 3 Pro" },
+    params: { model: "MUST use exact API ID: lyria-3-clip-preview (default, 30s), lyria-3-pro-preview" },
     connectsFrom: ["fs:prompt"],
     examples: ["Prompt('Epic orchestral battle music') → Music Gen → audio clip"],
   },
@@ -406,7 +406,7 @@ registerNativeNode({
   aiDoc: {
     purpose: "Text-to-Speech via Gemini TTS API. Convert text to natural speech.",
     skills: ["Convert text to speech", "Multiple voice options", "Narration for animations"],
-    params: { model: "TTS Flash / TTS Pro", voice: "Kore, Charon, Fenrir, Aoede, Puck, Leda, Orus, Zephyr" },
+    params: { model: "MUST use exact API ID: gemini-2.5-flash-preview-tts (default), gemini-2.5-pro-preview-tts", voice: "Kore, Charon, Fenrir, Aoede, Puck, Leda, Orus, Zephyr" },
     connectsFrom: ["fs:prompt"],
     examples: ["Prompt('Hello world') → TTS (voice: Kore) → audio"],
   },

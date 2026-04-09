@@ -165,7 +165,7 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
 
       {/* Error message */}
       {error && (
-        <div className="nanob-error">{error}</div>
+        <div className="nanob-error nodrag">{error}</div>
       )}
 
       {/* Generate + Dice */}
