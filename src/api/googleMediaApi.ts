@@ -9,8 +9,16 @@ export interface VeoOptions {
   prompt: string;
   model?: string;
   aspectRatio?: string;
-  inputImage?: string; // base64 for image-to-video
+  inputImage?: string; // base64 for first frame (image-to-video)
   inputImageMime?: string;
+  // Extended params (Veo 3/3.1)
+  lastFrame?: string; // base64 for last frame (interpolation)
+  referenceImages?: Array<{ image: { bytesBase64Encoded: string }; referenceType: string }>; // up to 3, Veo 3.1 only
+  negativePrompt?: string;
+  durationSeconds?: number; // 4, 6, 8
+  resolution?: string; // "720p", "1080p", "4k"
+  seed?: number;
+  numberOfVideos?: number; // 1-4
 }
 
 export interface VeoResult {
@@ -29,7 +37,7 @@ export async function startVideoGeneration(options: VeoOptions): Promise<{ opera
 
   const instance: any = { prompt: options.prompt };
 
-  // Image-to-video
+  // First frame (image-to-video)
   if (options.inputImage) {
     instance.image = {
       bytesBase64Encoded: options.inputImage,
@@ -37,12 +45,33 @@ export async function startVideoGeneration(options: VeoOptions): Promise<{ opera
     };
   }
 
+  // Last frame (interpolation, requires first frame too)
+  if (options.lastFrame) {
+    instance.lastFrame = {
+      bytesBase64Encoded: options.lastFrame,
+      mimeType: "image/png",
+    };
+  }
+
+  // Reference images (Veo 3.1 only, up to 3)
+  if (options.referenceImages && options.referenceImages.length > 0) {
+    instance.referenceImages = options.referenceImages;
+  }
+
+  const parameters: any = {
+    aspectRatio: options.aspectRatio || "16:9",
+    personGeneration: "allow_adult",
+  };
+
+  if (options.negativePrompt) parameters.negativePrompt = options.negativePrompt;
+  if (options.durationSeconds) parameters.durationSeconds = options.durationSeconds;
+  if (options.resolution) parameters.resolution = options.resolution;
+  if (options.seed !== undefined) parameters.seed = options.seed;
+  if (options.numberOfVideos && options.numberOfVideos > 1) parameters.numberOfVideos = options.numberOfVideos;
+
   const body = {
     instances: [instance],
-    parameters: {
-      aspectRatio: options.aspectRatio || "16:9",
-      personGeneration: "allow_adult",
-    },
+    parameters,
   };
 
   try {

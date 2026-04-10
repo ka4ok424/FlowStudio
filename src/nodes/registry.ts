@@ -358,6 +358,42 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:videoGenPro",
+  label: "Video Gen Pro",
+  icon: "🎬",
+  accentColor: "#e85d75",
+  component: "VideoGenProNode",
+  description: "Advanced video generation with all Veo parameters: first/last frame, reference images, duration, resolution, negative prompt, seed.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "first_frame", type: "IMAGE" },
+    { name: "last_frame", type: "IMAGE" },
+    { name: "ref_0", type: "IMAGE" },
+  ],
+  outputs: [{ name: "video", type: "VIDEO" }],
+  aiDoc: {
+    purpose: "Advanced video generation via Veo API with full parameter control. Supports first/last frame interpolation, reference images, duration, resolution, negative prompts and seed.",
+    skills: ["Generate video with precise control", "First+last frame interpolation", "Reference-guided generation", "Multi-resolution output"],
+    params: {
+      model: "MUST use exact API ID: veo-2.0-generate-001 (default), veo-3.0-generate-001, veo-3.1-generate-preview, etc.",
+      aspectRatio: "16:9, 9:16",
+      duration: "4, 6, or 8 seconds",
+      resolution: "720p, 1080p, 4k (Veo 3.1 only)",
+      negativePrompt: "What to avoid in the video",
+      seed: "0-4294967295 (Veo 3+ only)",
+      numberOfVideos: "1-4 (Veo 3+ max 4, Veo 2 max 2)",
+    },
+    connectsFrom: ["fs:prompt", "fs:import", "fs:localGenerate", "fs:scene", "fs:characterCard"],
+    connectsTo: ["fs:preview", "fs:storyboard"],
+    examples: [
+      "First frame + Last frame → smooth interpolation video",
+      "3 reference images → style-consistent video (Veo 3.1)",
+      "Negative prompt 'no text, no watermark' + 1080p resolution",
+    ],
+  },
+});
+
+registerNativeNode({
   type: "fs:imagen",
   label: "Imagen",
   icon: "🖼",

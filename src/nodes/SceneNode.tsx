@@ -338,7 +338,7 @@ function SceneNode({ id, data, selected }: NodeProps) {
 
   // Connection highlighting
   const actionHL = connectingDir === "source" && connectingType === "TEXT" ? "highlight" : "";
-  const bgHL = connectingDir === "source" && connectingType === "IMAGE" ? "highlight" : "";
+  const bgHL = connectingDir === "source" && (connectingType === "IMAGE" || connectingType === "MEDIA") ? "highlight" : "";
   const charHL = connectingDir === "source" && (connectingType === "CHARACTER" || connectingType === "*") ? "highlight" : "";
   const outputHL = connectingDir === "target" && (connectingType === "IMAGE" || connectingType === "*") ? "highlight" : "";
 

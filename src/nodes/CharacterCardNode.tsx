@@ -123,7 +123,7 @@ function CharacterCardNode({ id, data, selected }: NodeProps) {
 
   // Connection highlighting
   const aiInputHL = connectingDir === "source" && connectingType === "TEXT" ? "highlight" : "";
-  const portraitInputHL = connectingDir === "source" && connectingType === "IMAGE" ? "highlight" : "";
+  const portraitInputHL = connectingDir === "source" && (connectingType === "IMAGE" || connectingType === "MEDIA") ? "highlight" : "";
   const charOutputHL = connectingDir === "target" && (connectingType === "CHARACTER" || connectingType === "TEXT" || connectingType === "*") ? "highlight" : "";
   const imgOutputHL = connectingDir === "target" && (connectingType === "IMAGE" || connectingType === "*") ? "highlight" : "";
 

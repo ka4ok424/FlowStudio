@@ -22,6 +22,7 @@ import CharacterCardNode from "./nodes/CharacterCardNode";
 import SceneNode from "./nodes/SceneNode";
 import StoryboardNode from "./nodes/StoryboardNode";
 import VideoGenNode from "./nodes/VideoGenNode";
+import VideoGenProNode from "./nodes/VideoGenProNode";
 import ImagenNode from "./nodes/ImagenNode";
 import MusicNode from "./nodes/MusicNode";
 import TtsNode from "./nodes/TtsNode";
@@ -52,6 +53,7 @@ const nodeTypes = {
   musicNode: MusicNode,
   ttsNode: TtsNode,
   multiRefNode: MultiRefNode,
+  videoGenProNode: VideoGenProNode,
   groupNode: GroupNode,
   commentNode: CommentNode,
 };

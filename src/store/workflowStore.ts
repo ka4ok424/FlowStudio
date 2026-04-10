@@ -133,8 +133,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   pushUndo: () => {
     const { nodes, edges, _undoStack } = get();
-    const snap: Snapshot = { nodes: structuredClone(nodes), edges: structuredClone(edges) };
-    set({ _undoStack: [..._undoStack.slice(-50), snap], _redoStack: [] });
+    // Lightweight snapshot: share heavy data (images) by reference, only clone structure
+    const lightNodes = nodes.map((n) => ({
+      ...n,
+      position: { ...n.position },
+      data: {
+        ...n.data,
+        // Share widgetValues by reference — don't deep clone data URLs
+        widgetValues: n.data.widgetValues,
+      },
+    }));
+    const snap: Snapshot = { nodes: lightNodes as any, edges: [...edges] };
+    set({ _undoStack: [..._undoStack.slice(-20), snap], _redoStack: [] });
   },
 
   undo: () => {
@@ -274,6 +284,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         MusicNode: "musicNode",
         TtsNode: "ttsNode",
         MultiRefNode: "multiRefNode",
+        VideoGenProNode: "videoGenProNode",
         GroupNode: "groupNode",
         CommentNode: "commentNode",
       };

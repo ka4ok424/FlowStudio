@@ -465,10 +465,41 @@ export default memo(MyNode);
 > Every Handle and TypeBadge uses the **exact color** from the Canonical Color Map.
 > Same type = same color everywhere. No exceptions.
 
-**Highlights:**
-> Input handles: `connectingDir === "source" && connectingType === "MY_TYPE" ? "highlight" : ""`
-> Output handles: `connectingDir === "target" && connectingType === "MY_TYPE" ? "highlight" : ""`
-> Incompatible nodes: `.mynode.incompatible { opacity: 0.35; }` — add to theme.css dimming rule.
+**Highlights (MANDATORY — verify for every new node):**
+> 
+> Every handle MUST have highlight logic. Without it, circles won't scale up when dragging connections.
+>
+> **Required store imports:**
+> ```tsx
+> const connectingType = useWorkflowStore((s) => s.connectingType);
+> const connectingDir = useWorkflowStore((s) => s.connectingDirection);
+> ```
+>
+> **For EACH input handle**, create a highlight variable:
+> ```tsx
+> const promptHL = connectingDir === "source" && connectingType === "TEXT" ? "highlight" : "";
+> const imgHL = connectingDir === "source" && connectingType === "IMAGE" ? "highlight" : "";
+> ```
+>
+> **For EACH output handle:**
+> ```tsx
+> const outputHL = connectingDir === "target" && (connectingType === "VIDEO" || connectingType === "*") ? "highlight" : "";
+> ```
+>
+> **Apply to Handle:** `className={`slot-handle ${promptHL}`}`
+>
+> **hasCompatible + dimClass (REQUIRED):**
+> ```tsx
+> const hasCompatible = connectingType ? !!(promptHL || imgHL || outputHL) : false;
+> const dimClass = connectingType ? (hasCompatible ? "compatible" : "incompatible") : "";
+> ```
+> Apply dimClass to root div: `className={`my-node ${dimClass}`}`
+>
+> **Incompatible CSS:** node class must be in the dimming rule in theme.css:
+> `.my-node.incompatible { opacity: 0.35; }` — add to existing group.
+>
+> **If node reuses another node's CSS class** (e.g. `videogen-node`), it's already in the dimming rule.
+> DO NOT create a new CSS class entry if reusing.
 
 **Visual structure:**
 > Accent bar: horizontal, `height: 3px`, full width, at top of node.

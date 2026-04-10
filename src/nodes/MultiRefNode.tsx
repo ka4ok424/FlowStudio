@@ -293,7 +293,7 @@ function MultiRefNode({ id, data, selected }: NodeProps) {
 
   // Highlighting
   const promptHL = connectingDir === "source" && connectingType === "TEXT" ? "highlight" : "";
-  const imgHL = connectingDir === "source" && connectingType === "IMAGE" ? "highlight" : "";
+  const imgHL = connectingDir === "source" && (connectingType === "IMAGE" || connectingType === "MEDIA") ? "highlight" : "";
   const outputHL = connectingDir === "target" && (connectingType === "IMAGE" || connectingType === "*") ? "highlight" : "";
   const hasCompatible = connectingType ? !!(promptHL || imgHL || outputHL) : false;
   const dimClass = connectingType ? (hasCompatible ? "compatible" : "incompatible") : "";
