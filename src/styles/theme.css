@@ -2106,6 +2106,7 @@ body {
 .imagen-node.incompatible,
 .music-node.incompatible,
 .tts-node.incompatible,
+.tiktok-node.incompatible,
 .multiref-node.incompatible {
   opacity: 0.35;
   transition: opacity 0.15s;
@@ -2739,3 +2740,40 @@ body {
 }
 .props-color-btn:hover { transform: scale(1.15); }
 .props-color-btn.active { border-color: #fff; transform: scale(1.2); }
+
+/* TikTok Publish Node */
+.tiktok-node {
+  background: var(--bg-node); border: 1px solid var(--border);
+  border-radius: var(--radius); width: var(--node-m);
+  overflow: visible; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  transition: box-shadow 0.08s, border-color 0.08s; position: relative;
+}
+.tiktok-node.selected {
+  border-color: #ff2d55;
+  box-shadow: 0 0 0 2px rgba(255,45,85,0.25), 0 4px 16px rgba(0,0,0,0.3);
+}
+.tiktok-node-inner { overflow: hidden; border-radius: var(--radius) var(--radius) 0 0; }
+.tiktok-accent { height: 3px; background: #ff2d55; }
+.tiktok-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
+}
+.tiktok-icon { font-size: 16px; }
+.tiktok-header-text { display: flex; flex-direction: column; }
+.tiktok-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.tiktok-status { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+.tiktok-inputs { padding: 6px 0; }
+.tiktok-content { padding: 8px 14px; }
+.tiktok-connect-btn {
+  width: 100%; padding: 10px; background: #ff2d55; color: #fff;
+  border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
+  cursor: pointer;
+}
+.tiktok-connect-btn:hover { opacity: 0.85; }
+.tiktok-privacy { display: flex; gap: 4px; flex-wrap: wrap; }
+.tiktok-privacy-btn {
+  padding: 4px 10px; border: 1px solid var(--border); border-radius: 12px;
+  background: none; color: var(--text-muted); font-size: 11px; cursor: pointer;
+}
+.tiktok-privacy-btn:hover { border-color: var(--text-secondary); color: var(--text-secondary); }
+.tiktok-privacy-btn.active { background: rgba(255,45,85,0.15); border-color: #ff2d55; color: #ff2d55; }

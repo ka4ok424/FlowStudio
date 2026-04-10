@@ -27,6 +27,7 @@ import ImagenNode from "./nodes/ImagenNode";
 import MusicNode from "./nodes/MusicNode";
 import TtsNode from "./nodes/TtsNode";
 import MultiRefNode from "./nodes/MultiRefNode";
+import TikTokPublishNode from "./nodes/TikTokPublishNode";
 import GroupNode from "./nodes/GroupNode";
 import CommentNode from "./nodes/CommentNode";
 import AiChat from "./components/AiChat";
@@ -54,6 +55,7 @@ const nodeTypes = {
   ttsNode: TtsNode,
   multiRefNode: MultiRefNode,
   videoGenProNode: VideoGenProNode,
+  tikTokPublishNode: TikTokPublishNode,
   groupNode: GroupNode,
   commentNode: CommentNode,
 };
@@ -116,7 +118,7 @@ function App() {
 
   // Save on unload
   useEffect(() => {
-    const handler = () => { saveWorkflow(); };
+    const handler = () => { saveProject(); };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [saveWorkflow]);

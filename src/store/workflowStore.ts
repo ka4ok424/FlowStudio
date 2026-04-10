@@ -285,6 +285,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         TtsNode: "ttsNode",
         MultiRefNode: "multiRefNode",
         VideoGenProNode: "videoGenProNode",
+        TikTokPublishNode: "tikTokPublishNode",
         GroupNode: "groupNode",
         CommentNode: "commentNode",
       };

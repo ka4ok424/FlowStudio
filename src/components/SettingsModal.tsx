@@ -7,6 +7,8 @@ interface ApiKeys {
   claude: string;
   elevenlabs: string;
   kling: string;
+  tiktok_client_key: string;
+  tiktok_client_secret: string;
 }
 
 const STORAGE_KEY = "flowstudio_api_keys";
@@ -28,12 +30,12 @@ interface Props {
 
 export default function SettingsModal({ open, onClose }: Props) {
   const [aiRules, setAiRules] = useState("");
-  const [keys, setKeys] = useState<ApiKeys>({ google: "", openai: "", claude: "", elevenlabs: "", kling: "" });
+  const [keys, setKeys] = useState<ApiKeys>({ google: "", openai: "", claude: "", elevenlabs: "", kling: "", tiktok_client_key: "", tiktok_client_secret: "" });
 
   useEffect(() => {
     if (open) {
       const saved = getApiKeys();
-      setKeys({ google: saved.google || "", openai: saved.openai || "", claude: saved.claude || "", elevenlabs: saved.elevenlabs || "", kling: saved.kling || "" });
+      setKeys({ google: saved.google || "", openai: saved.openai || "", claude: saved.claude || "", elevenlabs: saved.elevenlabs || "", kling: saved.kling || "", tiktok_client_key: saved.tiktok_client_key || "", tiktok_client_secret: saved.tiktok_client_secret || "" });
       setAiRules(getCustomRules());
     }
   }, [open]);
@@ -52,6 +54,8 @@ export default function SettingsModal({ open, onClose }: Props) {
     { key: "claude", label: "Claude (Anthropic)", hint: "AI Chat assistant" },
     { key: "elevenlabs", label: "ElevenLabs", hint: "Text-to-Speech" },
     { key: "kling", label: "Kling", hint: "Video generation" },
+    { key: "tiktok_client_key", label: "TikTok Client Key", hint: "Content Posting API" },
+    { key: "tiktok_client_secret", label: "TikTok Client Secret", hint: "Content Posting API" },
   ];
 
   return (

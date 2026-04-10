@@ -535,6 +535,30 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:tiktokPublish",
+  label: "TikTok Publish",
+  icon: "📤",
+  accentColor: "#ff2d55",
+  component: "TikTokPublishNode",
+  description: "Publish video to TikTok. Requires TikTok OAuth connection.",
+  inputs: [
+    { name: "video", type: "VIDEO" },
+    { name: "caption", type: "TEXT" },
+  ],
+  outputs: [],
+  aiDoc: {
+    purpose: "Publish generated video to TikTok. Connect Video Gen output → video input, Prompt → caption input.",
+    skills: ["Publish video to TikTok", "Set privacy level", "AI content disclosure"],
+    params: {
+      title: "Video caption/description",
+      privacy: "PUBLIC_TO_EVERYONE, FOLLOWER_OF_CREATOR, MUTUAL_FOLLOW_FRIENDS, SELF_ONLY",
+    },
+    connectsFrom: ["fs:videoGen", "fs:videoGenPro", "fs:prompt"],
+    examples: ["Video Gen → TikTok Publish + Prompt (caption)"],
+  },
+});
+
+registerNativeNode({
   type: "fs:import",
   label: "Import",
   icon: "⬆",
