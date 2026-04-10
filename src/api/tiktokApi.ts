@@ -2,9 +2,10 @@
 import { getApiKey } from "../components/SettingsModal";
 
 const TIKTOK_AUTH_URL = "https://www.tiktok.com/v2/auth/authorize";
-const TIKTOK_TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/";
-const TIKTOK_POST_URL = "https://open.tiktokapis.com/v2/post/publish/content/init/";
-const TIKTOK_STATUS_URL = "https://open.tiktokapis.com/v2/post/publish/status/fetch/";
+// Use Vite proxy to avoid CORS issues
+const TIKTOK_TOKEN_URL = "/tiktok-api/v2/oauth/token/";
+const TIKTOK_POST_URL = "/tiktok-api/v2/post/publish/content/init/";
+const TIKTOK_STATUS_URL = "/tiktok-api/v2/post/publish/status/fetch/";
 
 const TOKEN_STORAGE_KEY = "flowstudio_tiktok_token";
 
@@ -132,6 +133,7 @@ export interface PublishOptions {
   disableDuet?: boolean;
   disableStitch?: boolean;
   brandContent?: boolean;
+  isAiGenerated?: boolean;
 }
 
 export interface PublishResult {
@@ -153,13 +155,14 @@ export async function publishVideoByUrl(options: PublishOptions): Promise<Publis
       body: JSON.stringify({
         post_info: {
           title: options.title.slice(0, 2200),
-          privacy_level: options.privacy,
+          // Unaudited apps (sandbox) can only post as SELF_ONLY
+          privacy_level: "SELF_ONLY",
           disable_comment: options.disableComment || false,
           disable_duet: options.disableDuet || false,
           disable_stitch: options.disableStitch || false,
           brand_content_toggle: options.brandContent || false,
           brand_organic_toggle: false,
-          is_ai_generated: true, // Required disclosure for AI content
+          is_ai_generated: options.isAiGenerated !== false,
         },
         source_info: {
           source: "PULL_FROM_URL",
@@ -175,6 +178,83 @@ export async function publishVideoByUrl(options: PublishOptions): Promise<Publis
     return { error: data.error?.message || "Publish failed" };
   } catch (err: any) {
     return { error: `Network error: ${err.message}` };
+  }
+}
+
+// ── Direct Upload (for data URLs) ───────────────────────────────
+
+// inbox/video/init = draft mode (works in sandbox without review)
+// post/publish/video/init = direct post (requires app review for non-private)
+const TIKTOK_UPLOAD_INIT_URL = "/tiktok-api/v2/post/publish/inbox/video/init/";
+
+export interface UploadOptions {
+  videoDataUrl: string; // data:video/mp4;base64,...
+  title: string;
+  privacy: "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "SELF_ONLY";
+  disableComment?: boolean;
+  disableDuet?: boolean;
+  disableStitch?: boolean;
+  isAiGenerated?: boolean;
+}
+
+export async function uploadVideoFile(options: UploadOptions): Promise<PublishResult> {
+  const token = getTikTokToken();
+  if (!token) return { error: "Not authenticated. Click 'Connect TikTok' first." };
+
+  // Convert data URL to blob
+  const resp = await fetch(options.videoDataUrl);
+  const blob = await resp.blob();
+  const fileSize = blob.size;
+
+  try {
+    // Step 1: Initialize upload
+    const initRes = await fetch(TIKTOK_UPLOAD_INIT_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        source_info: {
+          source: "FILE_UPLOAD",
+          video_size: fileSize,
+          chunk_size: fileSize,
+          total_chunk_count: 1,
+        },
+      }),
+    });
+
+    const initText = await initRes.text();
+    console.log("[TikTok] Upload init response:", initRes.status, initText);
+    let initData;
+    try { initData = JSON.parse(initText); } catch { return { error: `Upload init ${initRes.status}: ${initText.slice(0, 200)}` }; }
+    if (!initRes.ok || (initData.error?.code && initData.error.code !== "ok")) {
+      return { error: initData.error?.message || `Upload init failed (${initRes.status})` };
+    }
+
+    const uploadUrl = initData.data?.upload_url;
+    const publishId = initData.data?.publish_id;
+
+    if (!uploadUrl) return { error: "No upload URL received" };
+
+    // Step 2: Upload video file — proxy through Vite to avoid CORS
+    const proxiedUrl = uploadUrl.replace("https://open-upload-i18n.tiktokapis.com", "/tiktok-upload");
+    const uploadRes = await fetch(proxiedUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Range": `bytes 0-${fileSize - 1}/${fileSize}`,
+      },
+      body: blob,
+    });
+
+    if (!uploadRes.ok) {
+      return { error: `Upload failed: ${uploadRes.status}` };
+    }
+
+    return { publishId };
+  } catch (err: any) {
+    return { error: `Upload error: ${err.message}` };
   }
 }
 

@@ -2777,3 +2777,13 @@ body {
 }
 .tiktok-privacy-btn:hover { border-color: var(--text-secondary); color: var(--text-secondary); }
 .tiktok-privacy-btn.active { background: rgba(255,45,85,0.15); border-color: #ff2d55; color: #ff2d55; }
+
+/* Checkbox rows in properties */
+.props-checkbox-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0; cursor: pointer; font-size: 12px;
+  color: var(--text-secondary);
+}
+.props-checkbox-row input[type="checkbox"] {
+  accent-color: #5b9bd5; width: 14px; height: 14px; cursor: pointer;
+}

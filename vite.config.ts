@@ -37,6 +37,16 @@ export default defineConfig({
         target: 'ws://127.0.0.1:8188',
         ws: true,
       },
+      '/tiktok-api': {
+        target: 'https://open.tiktokapis.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/tiktok-api/, ''),
+      },
+      '/tiktok-upload': {
+        target: 'https://open-upload-i18n.tiktokapis.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/tiktok-upload/, ''),
+      },
     },
   },
 })

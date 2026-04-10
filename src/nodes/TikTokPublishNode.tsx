@@ -52,9 +52,10 @@ function TikTokPublishNode({ id, data, selected }: NodeProps) {
       setError("Source node not found");
       return;
     }
-    const videoUrl = (srcNode.data as any).widgetValues?._previewUrl;
+    const srcData = srcNode.data as any;
+    const videoUrl = srcData.widgetValues?._previewUrl || srcData.widgetValues?._preview;
     if (!videoUrl) {
-      setError("No video in connected node. Generate first.");
+      setError("No video in connected node. Generate or import first.");
       return;
     }
 
@@ -75,25 +76,35 @@ function TikTokPublishNode({ id, data, selected }: NodeProps) {
     setError(null);
     setStatus("Publishing to TikTok...");
 
-    // TikTok needs a public URL, not data URL
-    // For sandbox/testing, we need to host the video temporarily
-    // For now, if it's a data URL we'll show an error
-    if (videoUrl.startsWith("data:")) {
-      setError("TikTok requires a public video URL. Upload video to a hosting service first, or use a Video Gen node with Veo (which provides a URL).");
-      setPublishing(false);
-      setStatus(null);
-      return;
-    }
+    const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
+    const isAiGenerated = freshWv.aiGenerated !== false; // default true
 
-    const result = await publishVideoByUrl({
-      videoUrl,
-      title: publishTitle,
-      privacy: privacy as any,
-      disableComment: nodeData.widgetValues?.disableComment || false,
-      disableDuet: nodeData.widgetValues?.disableDuet || false,
-      disableStitch: nodeData.widgetValues?.disableStitch || false,
-      brandContent: false,
-    });
+    let result;
+    if (videoUrl.startsWith("data:")) {
+      // Direct upload via TikTok file upload API
+      setStatus("Uploading video to TikTok...");
+      const { uploadVideoFile } = await import("../api/tiktokApi");
+      result = await uploadVideoFile({
+        videoDataUrl: videoUrl,
+        title: publishTitle,
+        privacy: (freshWv.privacy || privacy) as any,
+        disableComment: freshWv.disableComment || false,
+        disableDuet: freshWv.disableDuet || false,
+        disableStitch: freshWv.disableStitch || false,
+        isAiGenerated,
+      });
+    } else {
+      result = await publishVideoByUrl({
+        videoUrl,
+        title: publishTitle,
+        privacy: (freshWv.privacy || privacy) as any,
+        disableComment: freshWv.disableComment || false,
+        disableDuet: freshWv.disableDuet || false,
+        disableStitch: freshWv.disableStitch || false,
+        brandContent: false,
+        isAiGenerated,
+      });
+    }
 
     if (result.error) {
       setError(result.error);
@@ -109,8 +120,8 @@ function TikTokPublishNode({ id, data, selected }: NodeProps) {
         await new Promise((r) => setTimeout(r, 3000));
         const check = await checkPublishStatus(result.publishId!);
 
-        if (check.status === "PUBLISH_COMPLETE") {
-          setStatus("Published!");
+        if (check.status === "PUBLISH_COMPLETE" || check.status === "SEND_TO_USER_INBOX") {
+          setStatus(check.status === "SEND_TO_USER_INBOX" ? "Sent to Drafts!" : "Published!");
           setPublishing(false);
           setTimeout(() => setStatus(null), 5000);
           return;
@@ -129,8 +140,8 @@ function TikTokPublishNode({ id, data, selected }: NodeProps) {
     setStatus(null);
   }, [id, edgesAll, nodesAll, title, privacy, connected, nodeData.widgetValues]);
 
-  // Highlighting
-  const videoHL = connectingDir === "source" && (connectingType === "VIDEO" || connectingType === "*") ? "highlight" : "";
+  // Highlighting — accept VIDEO, IMAGE, MEDIA for video input
+  const videoHL = connectingDir === "source" && (connectingType === "VIDEO" || connectingType === "IMAGE" || connectingType === "MEDIA" || connectingType === "*") ? "highlight" : "";
   const textHL = connectingDir === "source" && connectingType === "TEXT" ? "highlight" : "";
   const hasCompatible = connectingType ? !!(videoHL || textHL) : false;
   const dimClass = connectingType ? (hasCompatible ? "compatible" : "incompatible") : "";
