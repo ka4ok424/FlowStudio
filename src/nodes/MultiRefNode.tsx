@@ -5,6 +5,7 @@ import { queuePrompt, getImageUrl, uploadImage } from "../api/comfyApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
+import { log } from "../store/logStore";
 
 const MAX_REFS = 8;
 
@@ -114,6 +115,7 @@ function MultiRefNode({ id, data, selected }: NodeProps) {
 
     setGenerating(true);
     setError(null);
+    log("Multi-ref generation started", { nodeId: id, nodeType: "fs:multiRef", nodeLabel: "Multi Ref", details: refImages.length + " refs" });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
     const width = freshWv.width || 1024;

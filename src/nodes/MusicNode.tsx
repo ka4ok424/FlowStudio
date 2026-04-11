@@ -37,6 +37,7 @@ function MusicNode({ id, data, selected }: NodeProps) {
 
     setGenerating(true);
     setError(null);
+    log("Music generation started", { nodeId: id, nodeType: "fs:music", nodeLabel: "Music Gen" });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
     const model = freshWv.model || LYRIA_MODELS[0].id;

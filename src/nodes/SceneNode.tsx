@@ -5,6 +5,7 @@ import { queuePrompt, getImageUrl } from "../api/comfyApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
+import { log } from "../store/logStore";
 
 const MAX_CHARACTERS = 8;
 
@@ -120,6 +121,7 @@ function SceneNode({ id, data, selected }: NodeProps) {
 
     setGenerating(true);
     setError(null);
+    log("Scene generation started", { nodeId: id, nodeType: "fs:scene", nodeLabel: "Scene", details: actionText?.slice(0,60) });
 
     // Read ALL fresh values from store to avoid stale closures
     const freshNode = useWorkflowStore.getState().nodes.find(n => n.id === id);

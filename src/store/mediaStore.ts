@@ -23,6 +23,15 @@ export interface MediaItem {
     nodeType: string;    // "fs:localGenerate" or "fs:nanoBanana"
     duration?: number;   // generation time in ms
   };
+  // Publishing metadata
+  publishMeta?: {
+    platform: string;    // "tiktok", "youtube", etc.
+    publishId: string;   // platform-specific ID for tracking
+    publishedAt: number;
+    caption?: string;
+    privacy?: string;
+    status: "sent" | "published" | "failed";
+  }[];
 }
 
 interface MediaState {

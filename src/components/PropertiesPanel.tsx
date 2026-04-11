@@ -548,6 +548,34 @@ function TikTokProperties({ nodeId, data }: { nodeId: string; data: any }) {
           <span>Disable Stitch</span>
         </label>
       </div>
+
+      {/* Publish History */}
+      {data.widgetValues?._publishHistory?.length > 0 && (
+        <div className="props-section">
+          <div className="props-section-title">Publish History</div>
+          <div className="tiktok-history-list">
+            {[...data.widgetValues._publishHistory].reverse().map((entry: any, i: number) => (
+              <div key={i} className={`tiktok-history-item ${entry.status}`}>
+                <div className="tiktok-history-row1">
+                  <span>{entry.status === "success" ? "\u2705" : "\u274C"}</span>
+                  <span className="tiktok-history-msg">
+                    {entry.caption ? `"${entry.caption}${entry.caption.length >= 50 ? "..." : ""}"` : entry.message}
+                  </span>
+                  <span className="tiktok-history-time">
+                    {new Date(entry.time).toLocaleDateString([], { day: "numeric", month: "short" })},{" "}
+                    {new Date(entry.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+                {entry.caption && (
+                  <div className="tiktok-history-row2">
+                    {entry.privacy === "SELF_ONLY" ? "Private" : entry.privacy === "PUBLIC_TO_EVERYONE" ? "Public" : entry.privacy?.split("_").pop()} · {entry.sourceNode?.replace("fs:", "")}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </>
   );
 }

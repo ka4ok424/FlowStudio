@@ -40,6 +40,7 @@ function TtsNode({ id, data, selected }: NodeProps) {
 
     setGenerating(true);
     setError(null);
+    log("TTS generation started", { nodeId: id, nodeType: "fs:tts", nodeLabel: "TTS" });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
     const model = freshWv.model || TTS_MODELS[0].id;

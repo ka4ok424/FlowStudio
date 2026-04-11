@@ -445,6 +445,20 @@ export default memo(MyNode);
 
 ### MANDATORY Rules
 
+**Logging (MANDATORY for generation/publishing nodes):**
+> Every node that generates content or performs actions (generate, publish, upload)
+> MUST log events using `log()` from `src/store/logStore.ts`.
+> Not required for passive nodes (Comment, Group, Prompt, Import).
+>
+> Import: `import { log } from "../store/logStore";`
+>
+> Required log points:
+> - On action start: `log("Generate started", { nodeId: id, nodeType: "fs:xxx", nodeLabel: "Name" })`
+> - On success: `log("Image ready", { ..., status: "success", details: "1024x1024" })`
+> - On error: `log("Failed", { ..., status: "error", details: error.message })`
+>
+> Log entries appear in the Logs panel with clickable node IDs.
+
 **Media Library:**
 > Every node that generates content (images, video, audio) MUST save results
 > to the Media Library via `addGenerationToLibrary()` or `useMediaStore.getState().addItem()`.

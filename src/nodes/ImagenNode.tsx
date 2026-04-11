@@ -5,6 +5,7 @@ import { generateImagen } from "../api/googleMediaApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
+import { log } from "../store/logStore";
 
 const IMAGEN_MODELS = [
   { id: "imagen-4.0-fast-generate-001", label: "Imagen 4 Fast" },
@@ -41,6 +42,7 @@ function ImagenNode({ id, data, selected }: NodeProps) {
 
     setGenerating(true);
     setError(null);
+    log("Generate started", { nodeId: id, nodeType: "fs:imagen", nodeLabel: "Imagen" });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
     const model = freshWv.model || IMAGEN_MODELS[0].id;
@@ -57,6 +59,7 @@ function ImagenNode({ id, data, selected }: NodeProps) {
       const { history: newHist, index: newIdx } = addToHistory(prev, dataUrl);
       updateWidgetValue(id, "_history", newHist);
       updateWidgetValue(id, "_historyIndex", newIdx);
+      log("Image ready", { nodeId: id, nodeType: "fs:imagen", nodeLabel: "Imagen", status: "success" });
       addGenerationToLibrary(dataUrl, {
         prompt: promptText, model, seed: "random", nodeType: "fs:imagen",
       });

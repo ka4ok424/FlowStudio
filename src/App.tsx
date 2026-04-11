@@ -11,6 +11,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { useWorkflowStore } from "./store/workflowStore";
+import { useLogStore, log } from "./store/logStore";
 import { fetchNodeDefs, connectWebSocket } from "./api/comfyApi";
 import ComfyNode from "./nodes/ComfyNode";
 import PromptNode from "./nodes/PromptNode";
@@ -125,7 +126,7 @@ function App() {
 
   // Log helper
   const addLog = useCallback((msg: string) => {
-    setLogs((prev) => [...prev.slice(-200), `[${new Date().toLocaleTimeString()}] ${msg}`]);
+    log(msg, { status: "info" });
   }, []);
 
 
@@ -408,18 +409,7 @@ function App() {
             <button className="canvas-btn" onClick={() => setShowMinimap(!showMinimap)}>Map</button>
           </div>
 
-          {showLogs && (
-            <div className="logs-panel">
-              <div className="logs-header">
-                <span>Logs</span>
-                <button onClick={() => setLogs([])}>Clear</button>
-              </div>
-              <div className="logs-content">
-                {logs.length === 0 && <div className="logs-empty">No logs yet</div>}
-                {logs.map((log, i) => <div key={i} className="log-line">{log}</div>)}
-              </div>
-            </div>
-          )}
+          {showLogs && <LogsPanel />}
         </div>
         {/* Right sidebar with tabs */}
         {(selectedNodeId || rightTab === "ai") && (
@@ -440,6 +430,84 @@ function App() {
         )}
       </div>
     </>
+  );
+}
+
+// ── Logs Panel ──────────────────────────────────────────────────
+function LogsPanel() {
+  const entries = useLogStore((s) => s.entries);
+  const clear = useLogStore((s) => s.clear);
+  const setSelectedNode = useWorkflowStore((s) => s.setSelectedNode);
+  const { fitView } = useReactFlow();
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [entries.length]);
+
+  const { setViewport, getViewport } = useReactFlow();
+
+  const handleNodeClick = useCallback((nodeId: string) => {
+    setSelectedNode(nodeId);
+    useWorkflowStore.setState({
+      nodes: useWorkflowStore.getState().nodes.map((n) => ({
+        ...n,
+        selected: n.id === nodeId,
+      })),
+    });
+
+    // Smooth fly-to animation
+    const node = useWorkflowStore.getState().nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+
+    const targetX = node.position.x + (node.measured?.width || 320) / 2;
+    const targetY = node.position.y + (node.measured?.height || 300) / 2;
+    const currentVp = getViewport();
+
+    // Calculate distance
+    const currentCenterX = (-currentVp.x + window.innerWidth / 2) / currentVp.zoom;
+    const currentCenterY = (-currentVp.y + window.innerHeight / 2) / currentVp.zoom;
+    const dist = Math.sqrt((targetX - currentCenterX) ** 2 + (targetY - currentCenterY) ** 2);
+
+    // Direct fly — one smooth move, zoom to 0.7 minimum
+    const finalZoom = Math.max(currentVp.zoom, 0.7);
+    // Duration based on distance: fast but capped
+    const duration = Math.min(Math.max(dist * 0.5, 300), 1200);
+
+    setViewport({
+      x: -targetX * finalZoom + window.innerWidth / 2,
+      y: -targetY * finalZoom + window.innerHeight / 2,
+      zoom: finalZoom,
+    }, { duration });
+  }, [setSelectedNode, setViewport, getViewport]);
+
+  const statusIcon = (s: string) => s === "success" ? "✅" : s === "error" ? "❌" : s === "warning" ? "⚠️" : "·";
+  const statusClass = (s: string) => s === "error" ? "log-error" : s === "success" ? "log-success" : s === "warning" ? "log-warning" : "";
+
+  return (
+    <div className="logs-panel">
+      <div className="logs-header">
+        <span>Logs ({entries.length})</span>
+        <button onClick={clear}>Clear</button>
+      </div>
+      <div className="logs-content">
+        {entries.length === 0 && <div className="logs-empty">No logs yet</div>}
+        {entries.map((e) => (
+          <div key={e.id} className={`log-line ${statusClass(e.status)}`}>
+            <span className="log-time">{new Date(e.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+            <span className="log-icon">{statusIcon(e.status)}</span>
+            {e.nodeId && (
+              <button className="log-node-id" onClick={() => handleNodeClick(e.nodeId!)} title={`Select ${e.nodeId}`}>
+                {e.nodeLabel || e.nodeType?.replace("fs:", "") || e.nodeId}
+              </button>
+            )}
+            <span className="log-action">{e.action}</span>
+            {e.details && <span className="log-details">{e.details}</span>}
+          </div>
+        ))}
+        <div ref={logsEndRef} />
+      </div>
+    </div>
   );
 }
 

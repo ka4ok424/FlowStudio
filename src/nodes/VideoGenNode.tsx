@@ -6,6 +6,7 @@ import { useMediaStore, type MediaItem } from "../store/mediaStore";
 import { saveImage } from "../store/imageDb";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
+import { log } from "../store/logStore";
 
 const VEO_MODELS = [
   { id: "veo-2.0-generate-001", label: "Veo 2" },
@@ -84,6 +85,7 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
     setGenerating(true);
     setError(null);
     setStatus("Starting generation...");
+    log("Video generation started", { nodeId: id, nodeType: "fs:videoGen", nodeLabel: "Video Gen" });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
     const model = freshWv.model || VEO_MODELS[0].id;

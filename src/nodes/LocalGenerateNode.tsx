@@ -5,6 +5,7 @@ import { queuePrompt, getImageUrl } from "../api/comfyApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
+import { log } from "../store/logStore";
 
 function LocalGenerateNode({ id, data, selected }: NodeProps) {
   const nodeData = data as any;
@@ -64,6 +65,7 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
     setGenerating(true);
     setError(null);
     setProgress(null);
+    log("Generate started", { nodeId: id, nodeType: "fs:localGenerate", nodeLabel: "Local Gen" });
 
     // Get prompt from connected Prompt node
     let promptText = "";
@@ -333,6 +335,7 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
                     updateWidgetValue(id, "_history", newHist2);
                     updateWidgetValue(id, "_historyIndex", newIdx2);
                   }
+                  log("Image ready", { nodeId: id, nodeType: "fs:localGenerate", nodeLabel: "Local Gen", status: "success", details: `${width}x${height}, ${steps} steps` });
                   setGenerating(false);
                   setProgress(null);
                   return;

@@ -2,6 +2,8 @@ import { memo, useCallback, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { startTikTokAuth, isTokenValid, publishVideoByUrl, checkPublishStatus } from "../api/tiktokApi";
+import { useMediaStore } from "../store/mediaStore";
+import { log } from "../store/logStore";
 
 const PRIVACY_OPTIONS = [
   { id: "PUBLIC_TO_EVERYONE", label: "Public" },
@@ -75,6 +77,7 @@ function TikTokPublishNode({ id, data, selected }: NodeProps) {
     setPublishing(true);
     setError(null);
     setStatus("Publishing to TikTok...");
+    log("Publishing to TikTok", { nodeId: id, nodeType: "fs:tiktokPublish", nodeLabel: "TikTok", details: publishTitle.slice(0, 60) });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
     const isAiGenerated = freshWv.aiGenerated !== false; // default true
@@ -121,13 +124,68 @@ function TikTokPublishNode({ id, data, selected }: NodeProps) {
         const check = await checkPublishStatus(result.publishId!);
 
         if (check.status === "PUBLISH_COMPLETE" || check.status === "SEND_TO_USER_INBOX") {
-          setStatus(check.status === "SEND_TO_USER_INBOX" ? "Sent to Drafts!" : "Published!");
+          const msg = check.status === "SEND_TO_USER_INBOX" ? "Sent to Drafts" : "Published";
+          const freshWv2 = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
+          const entry = {
+            status: "success",
+            message: msg,
+            caption: publishTitle.slice(0, 50),
+            privacy: freshWv2.privacy || privacy,
+            sourceNode: srcNode?.data?.type || "unknown",
+            time: Date.now(),
+          };
+          const prevHist = freshWv2._publishHistory || [];
+          const hist = [...prevHist, entry].slice(-50);
+          updateWidgetValue(id, "_publishHistory", hist);
+          updateWidgetValue(id, "_lastPublish", entry);
+          log(msg, { nodeId: id, nodeType: "fs:tiktokPublish", nodeLabel: "TikTok", status: "success", details: publishTitle.slice(0, 60) });
+
+          // Save publishId to MediaItem for analytics tracking
+          const mediaItems = useMediaStore.getState().items;
+          // Find the most recent video from source node
+          const sourceType = srcNode?.data?.type;
+          const recentVideo = mediaItems.find((m) =>
+            m.type === "video" && m.genMeta?.nodeType === sourceType
+          );
+          if (recentVideo) {
+            const publishEntry = {
+              platform: "tiktok" as const,
+              publishId: result.publishId!,
+              publishedAt: Date.now(),
+              caption: publishTitle.slice(0, 200),
+              privacy: (freshWv2.privacy || privacy) as string,
+              status: (check.status === "PUBLISH_COMPLETE" ? "published" : "sent") as "published" | "sent",
+            };
+            const existingMeta = recentVideo.publishMeta || [];
+            const updatedItems = mediaItems.map((m) =>
+              m.id === recentVideo.id
+                ? { ...m, publishMeta: [...existingMeta, publishEntry] }
+                : m
+            );
+            useMediaStore.setState({ items: updatedItems });
+            useMediaStore.getState().saveToStorage();
+          }
+
+          setStatus(null);
           setPublishing(false);
-          setTimeout(() => setStatus(null), 5000);
           return;
         }
         if (check.status === "FAILED") {
-          setError(check.error || "Publish failed");
+          const freshWv2 = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
+          const entry = {
+            status: "failed",
+            message: check.error || "Failed",
+            caption: publishTitle.slice(0, 50),
+            privacy: freshWv2.privacy || privacy,
+            sourceNode: srcNode?.data?.type || "unknown",
+            time: Date.now(),
+          };
+          const prevHist = freshWv2._publishHistory || [];
+          const hist = [...prevHist, entry].slice(-50);
+          updateWidgetValue(id, "_publishHistory", hist);
+          updateWidgetValue(id, "_lastPublish", entry);
+          log("Publish failed", { nodeId: id, nodeType: "fs:tiktokPublish", nodeLabel: "TikTok", status: "error", details: check.error });
+          setError(null);
           setPublishing(false);
           setStatus(null);
           return;
@@ -213,6 +271,16 @@ function TikTokPublishNode({ id, data, selected }: NodeProps) {
           {publishing ? "Publishing..." : "📤 Publish"}
         </button>
       </div>
+
+      {/* Last publish status — persistent, hidden while publishing */}
+      {nodeData.widgetValues?._lastPublish && !publishing && (
+        <div className="tiktok-last-status">
+          <span>{nodeData.widgetValues._lastPublish.message}</span>
+          <span className="tiktok-last-time">
+            {new Date(nodeData.widgetValues._lastPublish.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

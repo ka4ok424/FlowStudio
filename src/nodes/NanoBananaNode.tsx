@@ -5,6 +5,7 @@ import { generateImage } from "../api/geminiApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
+import { log } from "../store/logStore";
 
 const MAX_REFS = 14;
 
@@ -30,6 +31,7 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
   const handleGenerate = useCallback(async () => {
     setGenerating(true);
     setError(null);
+    log("Generate started", { nodeId: id, nodeType: "fs:nanoBanana", nodeLabel: "Nano Banana" });
 
     // Get prompt from connected Prompt node
     let prompt = "";
@@ -103,6 +105,7 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
 
     if (result.error) {
       setError(result.error);
+      log("Generation error", { nodeId: id, nodeType: "fs:nanoBanana", nodeLabel: "Nano Banana", status: "error", details: result.error });
       console.error("[NanoBanana]", result.error);
     } else if (result.images.length > 0) {
       const dataUrl = `data:image/png;base64,${result.images[0]}`;
@@ -111,6 +114,7 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
       const { history: newHistory, index: newIdx } = addToHistory(prev, dataUrl);
       updateWidgetValue(id, "_history", newHistory);
       updateWidgetValue(id, "_historyIndex", newIdx);
+      log("Image ready", { nodeId: id, nodeType: "fs:nanoBanana", nodeLabel: "Nano Banana", status: "success" });
       addGenerationToLibrary(dataUrl, {
         prompt: prompt || "",
         model: nodeData.widgetValues?.model || "gemini-2.5-flash-image",
