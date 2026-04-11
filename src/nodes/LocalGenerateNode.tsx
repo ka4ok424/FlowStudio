@@ -1,7 +1,7 @@
 import { memo, useCallback, useState, useEffect } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
-import { queuePrompt, getImageUrl } from "../api/comfyApi";
+import { queuePrompt, getImageUrl, getComfyUrl } from "../api/comfyApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
@@ -54,7 +54,8 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
     setCheckpoints(models);
   }, [nodeDefs]);
 
-  const selectedModel = nodeData.widgetValues?.model || checkpoints[0] || "";
+  const defaultModel = checkpoints.find(m => m.toLowerCase().includes("klein-9b") || m.toLowerCase().includes("klein_9b")) || checkpoints[0] || "";
+  const selectedModel = nodeData.widgetValues?.model || defaultModel;
   const steps = nodeData.widgetValues?.steps || 4;
   const cfg = nodeData.widgetValues?.cfg || 7;
   const width = nodeData.widgetValues?.width || 512;
@@ -65,6 +66,7 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
     setGenerating(true);
     setError(null);
     setProgress(null);
+    const startTime = Date.now();
     log("Generate started", { nodeId: id, nodeType: "fs:localGenerate", nodeLabel: "Local Gen" });
 
     // Get prompt from connected Prompt node
@@ -90,13 +92,21 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
     if (modelLower.includes("flux") && !modelLower.includes("gguf")) {
       // ── Flux workflow ──
       const isKlein = modelLower.includes("klein");
+      const isKlein9B = isKlein && modelLower.includes("9b");
+      const isFlux2Dev = !isKlein && (modelLower.includes("flux2-dev") || modelLower.includes("flux2") && modelLower.includes("dev"));
       const isFlux2 = modelLower.includes("flux-2") || modelLower.includes("flux2") || isKlein;
 
-      // Flux 2 Klein: CLIPLoader (single, qwen)
-      // Flux 1 dev: DualCLIPLoader (clip_l + t5xxl)
-      const clipNode = isFlux2
-        ? { class_type: "CLIPLoader", inputs: { clip_name: "qwen_3_4b_fp4_flux2.safetensors", type: "flux2", device: "default" } }
-        : { class_type: "DualCLIPLoader", inputs: { clip_name1: "clip_l.safetensors", clip_name2: "t5xxl_fp8_e4m3fn.safetensors", type: "flux" } };
+      // Select text encoder based on model variant
+      let clipNode: Record<string, any>;
+      if (isKlein9B) {
+        clipNode = { class_type: "CLIPLoader", inputs: { clip_name: "qwen3_8b_klein9b.safetensors", type: "flux2", device: "default" } };
+      } else if (isFlux2Dev) {
+        clipNode = { class_type: "CLIPLoader", inputs: { clip_name: "mistral_3_small_flux2_fp8.safetensors", type: "flux2", device: "default" } };
+      } else if (isFlux2) {
+        clipNode = { class_type: "CLIPLoader", inputs: { clip_name: "qwen_3_4b_fp4_flux2.safetensors", type: "flux2", device: "default" } };
+      } else {
+        clipNode = { class_type: "DualCLIPLoader", inputs: { clip_name1: "clip_l.safetensors", clip_name2: "t5xxl_fp8_e4m3fn.safetensors", type: "flux" } };
+      }
 
       const vaeModel = isFlux2 ? "flux2-vae.safetensors" : "ae.safetensors";
 
@@ -289,7 +299,7 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
           await new Promise((r) => setTimeout(r, 1000));
 
           try {
-            const histRes = await fetch(`/api/history/${promptId}`);
+            const histRes = await fetch(`${getComfyUrl()}/api/history/${promptId}`);
             if (!histRes.ok) continue;
             const history = await histRes.json();
 
@@ -315,9 +325,10 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
                       reader.readAsDataURL(blob);
                     });
                     // Update preview + history with persistent data URL
+                    updateWidgetValue(id, "_genTime", Date.now() - startTime);
                     updateWidgetValue(id, "_previewUrl", dataUrl);
                     const prevHist: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
-                    const { history: newHist, index: newIdx } = addToHistory(prevHist, dataUrl);
+                    const { history: newHist, index: newIdx } = await addToHistory(id, prevHist, dataUrl);
                     updateWidgetValue(id, "_history", newHist);
                     updateWidgetValue(id, "_historyIndex", newIdx);
                     // Save to media library
@@ -327,15 +338,18 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
                       seed: actualSeed.toString(),
                       steps, cfg, width, height,
                       nodeType: "fs:localGenerate",
+                      duration: Date.now() - startTime,
                     });
                   } catch {
                     // Fallback: use API URL (won't persist)
                     const prevHist2: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
-                    const { history: newHist2, index: newIdx2 } = addToHistory(prevHist2, apiUrl);
+                    const { history: newHist2, index: newIdx2 } = await addToHistory(id, prevHist2, apiUrl);
                     updateWidgetValue(id, "_history", newHist2);
                     updateWidgetValue(id, "_historyIndex", newIdx2);
                   }
                   log("Image ready", { nodeId: id, nodeType: "fs:localGenerate", nodeLabel: "Local Gen", status: "success", details: `${width}x${height}, ${steps} steps` });
+                  // Save project immediately to persist the result
+                  useWorkflowStore.getState().saveProject();
                   setGenerating(false);
                   setProgress(null);
                   return;
@@ -420,6 +434,7 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
         historyIndex={nodeData.widgetValues?._historyIndex ?? -1}
         fallbackUrl={previewUrl}
         emptyIcon="⚡"
+        genTime={nodeData.widgetValues?._genTime}
       />
 
       {/* Progress bar */}

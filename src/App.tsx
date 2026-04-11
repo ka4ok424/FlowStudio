@@ -11,7 +11,9 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { useWorkflowStore } from "./store/workflowStore";
-import { useLogStore, log } from "./store/logStore";
+import { useLogStore, log, saveLogsNow } from "./store/logStore";
+import { getPendingJobs, updatePendingJob, removePendingJob } from "./store/pendingJobs";
+import { pollOperation } from "./api/googleMediaApi";
 import { fetchNodeDefs, connectWebSocket } from "./api/comfyApi";
 import ComfyNode from "./nodes/ComfyNode";
 import PromptNode from "./nodes/PromptNode";
@@ -29,8 +31,11 @@ import MusicNode from "./nodes/MusicNode";
 import TtsNode from "./nodes/TtsNode";
 import MultiRefNode from "./nodes/MultiRefNode";
 import TikTokPublishNode from "./nodes/TikTokPublishNode";
+import UpscaleNode from "./nodes/UpscaleNode";
 import GroupNode from "./nodes/GroupNode";
 import CommentNode from "./nodes/CommentNode";
+import Img2ImgNode from "./nodes/Img2ImgNode";
+import KontextNode from "./nodes/KontextNode";
 import AiChat from "./components/AiChat";
 import MediaLibrary from "./components/MediaLibrary";
 import { useMediaStore } from "./store/mediaStore";
@@ -57,8 +62,11 @@ const nodeTypes = {
   multiRefNode: MultiRefNode,
   videoGenProNode: VideoGenProNode,
   tikTokPublishNode: TikTokPublishNode,
+  upscaleNode: UpscaleNode,
   groupNode: GroupNode,
   commentNode: CommentNode,
+  img2ImgNode: Img2ImgNode,
+  kontextNode: KontextNode,
 };
 
 function App() {
@@ -100,9 +108,11 @@ function App() {
         useMediaStore.getState().loadFromStorage();
 
         // Migrate: re-save to move any data URLs from localStorage to IndexedDB
-        // This frees up localStorage space
         await saveProject();
         console.log("[App] Project loaded and migrated");
+
+        // Resume pending cloud generation jobs
+        resumePendingJobs();
       })
       .catch((err) => {
         console.error("Failed to connect to ComfyUI:", err);
@@ -113,16 +123,79 @@ function App() {
   // Autosave (debounced, every 5 sec when changes happen)
   useEffect(() => {
     if (!currentProjectId || nodes.length === 0) return;
-    const timer = setTimeout(() => { saveProject(); }, 5000);
+    const timer = setTimeout(() => { saveProject(); saveLogsNow(); }, 5000);
     return () => clearTimeout(timer);
   }, [nodes, edges, currentProjectId]);
 
-  // Save on unload
+  // Save on unload + warn if pending jobs
   useEffect(() => {
-    const handler = () => { saveProject(); };
+    const handler = (e: BeforeUnloadEvent) => {
+      saveProject();
+      const pendingJobs = getPendingJobs();
+      const active = pendingJobs.filter((j) => j.status === "pending" || j.status === "polling");
+      if (active.length > 0) {
+        e.preventDefault();
+        e.returnValue = `${active.length} generation(s) in progress. Leave anyway?`;
+      }
+    };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [saveWorkflow]);
+
+  // Resume pending cloud jobs after reload
+  const resumePendingJobs = useCallback(async () => {
+    const jobs = getPendingJobs();
+    const active = jobs.filter((j) => (j.status === "pending" || j.status === "polling") && j.operationName);
+    if (active.length === 0) return;
+
+    log(`Resuming ${active.length} pending generation(s)`, { status: "warning" });
+
+    for (const job of active) {
+      updatePendingJob(job.id, { status: "polling" });
+      log(`Resuming: ${job.model}`, { nodeId: job.nodeId, nodeType: job.nodeType, status: "info", details: job.prompt.slice(0, 50) });
+
+      // Poll for Veo result
+      (async () => {
+        for (let i = 0; i < 300; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          try {
+            const poll = await pollOperation(job.operationName!);
+            if (poll.error) {
+              log(`Generation failed: ${poll.error}`, { nodeId: job.nodeId, nodeType: job.nodeType, status: "error" });
+              updatePendingJob(job.id, { status: "failed" });
+              return;
+            }
+            if (poll.done && poll.result) {
+              let videoSrc: string | null = null;
+              if (poll.result.videoBase64) {
+                videoSrc = `data:video/mp4;base64,${poll.result.videoBase64}`;
+              } else if (poll.result.videoUrl) {
+                try {
+                  const vRes = await fetch(poll.result.videoUrl);
+                  const blob = await vRes.blob();
+                  videoSrc = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.readAsDataURL(blob);
+                  });
+                } catch {
+                  videoSrc = poll.result.videoUrl;
+                }
+              }
+              if (videoSrc) {
+                useWorkflowStore.getState().updateWidgetValue(job.nodeId, "_previewUrl", videoSrc);
+                log(`Generation complete (resumed)`, { nodeId: job.nodeId, nodeType: job.nodeType, status: "success" });
+              }
+              removePendingJob(job.id);
+              return;
+            }
+          } catch { /* keep polling */ }
+        }
+        updatePendingJob(job.id, { status: "failed" });
+        log(`Generation timeout (resumed)`, { nodeId: job.nodeId, nodeType: job.nodeType, status: "error" });
+      })();
+    }
+  }, []);
 
   // Log helper
   const addLog = useCallback((msg: string) => {
@@ -437,9 +510,14 @@ function App() {
 function LogsPanel() {
   const entries = useLogStore((s) => s.entries);
   const clear = useLogStore((s) => s.clear);
+  const loadLogs = useLogStore((s) => s.loadLogs);
+  const loaded = useLogStore((s) => s.loaded);
   const setSelectedNode = useWorkflowStore((s) => s.setSelectedNode);
   const { fitView } = useReactFlow();
   const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // Load persisted logs on first open
+  useEffect(() => { loadLogs(); }, [loadLogs]);
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });

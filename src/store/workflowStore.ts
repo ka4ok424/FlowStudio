@@ -286,8 +286,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         MultiRefNode: "multiRefNode",
         VideoGenProNode: "videoGenProNode",
         TikTokPublishNode: "tikTokPublishNode",
+        UpscaleNode: "upscaleNode",
         GroupNode: "groupNode",
         CommentNode: "commentNode",
+        Img2ImgNode: "img2ImgNode",
+        KontextNode: "kontextNode",
       };
       const isGroup = nativeDef.type === "fs:group";
       const newNode: Node<ComfyNodeData> = {

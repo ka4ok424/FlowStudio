@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getCustomRules, setCustomRules } from "../ai/rules";
+import { getComfyUrl, setComfyUrl } from "../api/comfyApi";
 
 interface ApiKeys {
   google: string;
@@ -31,20 +32,28 @@ interface Props {
 export default function SettingsModal({ open, onClose }: Props) {
   const [aiRules, setAiRules] = useState("");
   const [keys, setKeys] = useState<ApiKeys>({ google: "", openai: "", claude: "", elevenlabs: "", kling: "", tiktok_client_key: "", tiktok_client_secret: "" });
+  const [comfyServer, setComfyServer] = useState("");
 
   useEffect(() => {
     if (open) {
       const saved = getApiKeys();
       setKeys({ google: saved.google || "", openai: saved.openai || "", claude: saved.claude || "", elevenlabs: saved.elevenlabs || "", kling: saved.kling || "", tiktok_client_key: saved.tiktok_client_key || "", tiktok_client_secret: saved.tiktok_client_secret || "" });
       setAiRules(getCustomRules());
+      setComfyServer(getComfyUrl());
     }
   }, [open]);
 
   const save = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(keys));
     setCustomRules(aiRules);
+    setComfyUrl(comfyServer);
     onClose();
   };
+
+  const comfyPresets = [
+    { label: "Local (Vite Proxy)", value: "" },
+    { label: "Windows PC (RTX 5090)", value: "http://192.168.0.67:8188" },
+  ];
 
   if (!open) return null;
 
@@ -67,7 +76,29 @@ export default function SettingsModal({ open, onClose }: Props) {
         </div>
 
         <div className="modal-body">
-          <div className="settings-section-title">API Keys</div>
+          <div className="settings-section-title">ComfyUI Server</div>
+          <p className="settings-hint">Select which ComfyUI backend to use for local generation.</p>
+          <div className="settings-field">
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              {comfyPresets.map((p) => (
+                <button
+                  key={p.value}
+                  className={`settings-preset-btn ${comfyServer === p.value ? "active" : ""}`}
+                  onClick={() => setComfyServer(p.value)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <input
+              className="settings-input"
+              value={comfyServer}
+              onChange={(e) => setComfyServer(e.target.value)}
+              placeholder="http://127.0.0.1:8188 or empty for proxy"
+            />
+          </div>
+
+          <div className="settings-section-title" style={{ marginTop: 16 }}>API Keys</div>
           <p className="settings-hint">Keys are stored locally and never included in workflow exports.</p>
 
           {fields.map(({ key, label, hint }) => (

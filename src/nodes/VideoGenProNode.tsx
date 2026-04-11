@@ -7,6 +7,7 @@ import { saveImage } from "../store/imageDb";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
 import { log } from "../store/logStore";
+import { addPendingJob, removePendingJob } from "../store/pendingJobs";
 
 const VEO_MODELS = [
   { id: "veo-3.1-lite-generate-preview", label: "Veo 3.1 Lite" },
@@ -121,6 +122,14 @@ function VideoGenProNode({ id, data, selected }: NodeProps) {
       return;
     }
 
+    // Save pending job for resume after reload
+    const jobId = `job_${Date.now()}`;
+    addPendingJob({
+      id: jobId, nodeId: id, nodeType: "fs:videoGenPro",
+      operationName, model, prompt: promptText,
+      startTime: Date.now(), status: "polling",
+    });
+
     setStatus("Generating video...");
     for (let i = 0; i < 300; i++) {
       await new Promise((r) => setTimeout(r, 2000));
@@ -156,7 +165,7 @@ function VideoGenProNode({ id, data, selected }: NodeProps) {
         if (videoSrc) {
           updateWidgetValue(id, "_previewUrl", videoSrc);
           const prev: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
-          const { history: newHist, index: newIdx } = addToHistory(prev, videoSrc);
+          const { history: newHist, index: newIdx } = await addToHistory(id, prev, videoSrc);
           updateWidgetValue(id, "_history", newHist);
           updateWidgetValue(id, "_historyIndex", newIdx);
 
@@ -173,6 +182,7 @@ function VideoGenProNode({ id, data, selected }: NodeProps) {
             useMediaStore.getState().addItem(item);
           } catch { /* ignore */ }
         }
+        removePendingJob(jobId);
         setGenerating(false);
         setStatus(null);
         return;

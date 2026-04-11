@@ -50,10 +50,22 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   items: [],
 
   addItem: (item) => {
+    // Auto-detect dimensions for images
+    if (item.url && item.url.startsWith("data:image") && item.genMeta && !item.genMeta.width) {
+      const img = new Image();
+      img.onload = () => {
+        const updated = get().items.map((i) =>
+          i.id === item.id && i.genMeta ? { ...i, genMeta: { ...i.genMeta!, width: img.width, height: img.height } } : i
+        );
+        set({ items: updated });
+        get().saveToStorage();
+      };
+      img.src = item.url;
+    }
+
     // Save image data to IndexedDB, keep only small placeholder in memory
     if (item.url && item.url.startsWith("data:")) {
       saveImage(`media_${item.id}`, item.url).catch(() => {});
-      // Don't keep large data URL in memory — use placeholder, load on demand
       const memItem = { ...item, url: `__idb_media__:${item.id}` };
       set({ items: [memItem, ...get().items] });
     } else {

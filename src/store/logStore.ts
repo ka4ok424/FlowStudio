@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { saveImage, loadImage } from "./imageDb";
 
 export interface LogEntry {
   id: string;
@@ -13,14 +14,24 @@ export interface LogEntry {
 
 interface LogState {
   entries: LogEntry[];
+  loaded: boolean;
   addLog: (entry: Omit<LogEntry, "id" | "time">) => void;
   clear: () => void;
+  loadLogs: () => Promise<void>;
 }
 
 const MAX_LOGS = 500;
+const LOG_STORAGE_KEY = "flowstudio_logs";
+
+// Save with project autosave (every 5 sec) — called from App.tsx
+export function saveLogsNow() {
+  const entries = useLogStore.getState().entries;
+  saveImage(LOG_STORAGE_KEY, JSON.stringify(entries.slice(-MAX_LOGS))).catch(() => {});
+}
 
 export const useLogStore = create<LogState>((set, get) => ({
   entries: [],
+  loaded: false,
 
   addLog: (entry) => {
     const logEntry: LogEntry = {
@@ -28,10 +39,29 @@ export const useLogStore = create<LogState>((set, get) => ({
       id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       time: Date.now(),
     };
-    set({ entries: [...get().entries.slice(-(MAX_LOGS - 1)), logEntry] });
+    const updated = [...get().entries.slice(-(MAX_LOGS - 1)), logEntry];
+    set({ entries: updated });
   },
 
-  clear: () => set({ entries: [] }),
+  clear: () => {
+    set({ entries: [] });
+    saveImage(LOG_STORAGE_KEY, "[]").catch(() => {});
+  },
+
+  loadLogs: async () => {
+    if (get().loaded) return;
+    try {
+      const raw = await loadImage(LOG_STORAGE_KEY);
+      if (raw) {
+        const entries = JSON.parse(raw) as LogEntry[];
+        set({ entries: entries.slice(-MAX_LOGS), loaded: true });
+      } else {
+        set({ loaded: true });
+      }
+    } catch {
+      set({ loaded: true });
+    }
+  },
 }));
 
 // Global helper — call from anywhere

@@ -7,6 +7,7 @@ import { saveImage } from "../store/imageDb";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
 import { log } from "../store/logStore";
+import { addPendingJob, removePendingJob } from "../store/pendingJobs";
 
 const VEO_MODELS = [
   { id: "veo-2.0-generate-001", label: "Veo 2" },
@@ -105,6 +106,14 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
       return;
     }
 
+    // Save pending job for resume after reload
+    const jobId = `job_${Date.now()}`;
+    addPendingJob({
+      id: jobId, nodeId: id, nodeType: "fs:videoGen",
+      operationName, model, prompt: promptText,
+      startTime: Date.now(), status: "polling",
+    });
+
     // Poll for result
     setStatus("Generating video...");
     for (let i = 0; i < 300; i++) { // up to 5 min
@@ -143,7 +152,7 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
         if (videoSrc) {
           updateWidgetValue(id, "_previewUrl", videoSrc);
           const prev: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
-          const { history: newHist, index: newIdx } = addToHistory(prev, videoSrc);
+          const { history: newHist, index: newIdx } = await addToHistory(id, prev, videoSrc);
           updateWidgetValue(id, "_history", newHist);
           updateWidgetValue(id, "_historyIndex", newIdx);
 
@@ -171,6 +180,7 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
             console.warn("[VideoGen] Failed to save to library:", err);
           }
         }
+        removePendingJob(jobId);
         setGenerating(false);
         setStatus(null);
         return;

@@ -111,10 +111,11 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
       const dataUrl = `data:image/png;base64,${result.images[0]}`;
       updateWidgetValue(id, "_previewUrl", dataUrl);
       const prev = nodeData.widgetValues?._history || [];
-      const { history: newHistory, index: newIdx } = addToHistory(prev, dataUrl);
+      const { history: newHistory, index: newIdx } = await addToHistory(id, prev, dataUrl);
       updateWidgetValue(id, "_history", newHistory);
       updateWidgetValue(id, "_historyIndex", newIdx);
       log("Image ready", { nodeId: id, nodeType: "fs:nanoBanana", nodeLabel: "Nano Banana", status: "success" });
+      useWorkflowStore.getState().saveProject();
       addGenerationToLibrary(dataUrl, {
         prompt: prompt || "",
         model: nodeData.widgetValues?.model || "gemini-2.5-flash-image",

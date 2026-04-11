@@ -559,6 +559,28 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:upscale",
+  label: "Upscale",
+  icon: "🔍",
+  accentColor: "#4dd0e1",
+  component: "UpscaleNode",
+  description: "Upscale image using ComfyUI. Supports lanczos, bicubic, bilinear methods with 1.5x-4x scale.",
+  inputs: [{ name: "input", type: "IMAGE" }],
+  outputs: [{ name: "image", type: "IMAGE" }],
+  aiDoc: {
+    purpose: "Upscale images to higher resolution using various interpolation methods via ComfyUI.",
+    skills: ["Increase image resolution", "Multiple upscale methods", "Up to 4x scale"],
+    params: {
+      scale: "1.5, 2, 3, or 4 (multiplier)",
+      method: "lanczos (default), bicubic, bilinear, nearest-exact, area",
+    },
+    connectsFrom: ["fs:localGenerate", "fs:nanoBanana", "fs:imagen", "fs:scene", "fs:multiRef", "fs:import"],
+    connectsTo: ["fs:preview", "fs:videoGen", "fs:videoGenPro", "fs:characterCard"],
+    examples: ["Local Gen → Upscale (2x lanczos) → Preview"],
+  },
+});
+
+registerNativeNode({
   type: "fs:import",
   label: "Import",
   icon: "⬆",
@@ -589,5 +611,88 @@ registerNativeNode({
       "Drop audio → connect to future TTS/audio processing nodes",
     ],
     comfyMapping: "File uploaded to ComfyUI /upload/image endpoint, then referenced via LoadImage node",
+  },
+});
+
+registerNativeNode({
+  type: "fs:img2img",
+  label: "Img2Img",
+  icon: "🎨",
+  accentColor: "#e040fb",
+  component: "Img2ImgNode",
+  description: "Multi-reference image generation using FLUX.2 Dev. Up to 6 reference images for character/style/object consistency.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "ref_0", type: "IMAGE" },
+    { name: "ref_1", type: "IMAGE" },
+    { name: "ref_2", type: "IMAGE" },
+    { name: "ref_3", type: "IMAGE" },
+    { name: "ref_4", type: "IMAGE" },
+    { name: "ref_5", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "image", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Multi-reference generation using FLUX.2 Dev with ReferenceLatent chaining. Upload 1-4 reference images and describe what to generate.",
+    skills: [
+      "Character consistency across generations",
+      "Style transfer from reference images",
+      "Multi-reference composition (combine characters, objects, styles)",
+      "Editing with text instructions",
+    ],
+    params: {
+      steps: "Sampling steps, 20-50, default 28",
+      cfg: "CFG scale, 1-10, default 3.5",
+      denoise: "Denoise strength, 0.1-1.0, default 0.75",
+      width: "Output width, default 1024",
+      height: "Output height, default 1024",
+      seed: "Integer for reproducibility",
+    },
+    connectsFrom: ["fs:prompt", "fs:localGenerate", "fs:nanoBanana", "fs:import", "fs:characterCard"],
+    connectsTo: ["fs:preview", "fs:upscale", "fs:videoGen", "fs:videoGenPro"],
+    examples: [
+      "Import(face) + Import(outfit) → Img2Img('person wearing outfit in park') → Preview",
+      "CharacterCard(hero) + Import(background) → Img2Img('hero standing in scene') → Preview",
+    ],
+    comfyMapping: "UNETLoader(flux2-dev) + CLIPLoader(mistral) + ReferenceLatent chain + KSampler",
+  },
+});
+
+registerNativeNode({
+  type: "fs:kontext",
+  label: "Kontext",
+  icon: "✏️",
+  accentColor: "#ff7043",
+  component: "KontextNode",
+  description: "Edit images with text instructions using FLUX.1 Kontext. Change clothing, background, style — describe the edit in text.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "input", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "image", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Context-aware image editing using FLUX.1 Kontext Dev. Takes a source image and a text description of the desired edit.",
+    skills: [
+      "Change clothing, hair, accessories",
+      "Modify background or scene",
+      "Style transfer with text instructions",
+      "Object replacement",
+    ],
+    params: {
+      steps: "Sampling steps, 15-30, default 24",
+      cfg: "CFG scale, 1-7, default 3.5",
+      denoise: "Edit strength, 0.1-1.0, default 0.85. Lower = subtler edits",
+      seed: "Integer for reproducibility",
+    },
+    connectsFrom: ["fs:prompt", "fs:localGenerate", "fs:nanoBanana", "fs:import", "fs:characterCard"],
+    connectsTo: ["fs:preview", "fs:upscale", "fs:videoGen", "fs:videoGenPro"],
+    examples: [
+      "Local Gen(portrait) → Kontext('change shirt to red hoodie') → Preview",
+      "Import(photo) → Kontext('replace background with beach sunset') → Preview",
+    ],
+    comfyMapping: "UNETLoader(kontext) + DualCLIPLoader(clip_l+t5xxl) + FluxKontextImageScale + ReferenceLatent + KSampler",
   },
 });

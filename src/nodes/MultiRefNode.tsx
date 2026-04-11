@@ -1,7 +1,7 @@
 import { memo, useCallback, useState, useEffect } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
-import { queuePrompt, getImageUrl, uploadImage } from "../api/comfyApi";
+import { queuePrompt, getImageUrl, uploadImage, getComfyUrl } from "../api/comfyApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
@@ -238,7 +238,7 @@ function MultiRefNode({ id, data, selected }: NodeProps) {
       for (let attempt = 0; attempt < 120; attempt++) {
         await new Promise((r) => setTimeout(r, 1000));
         try {
-          const histRes = await fetch(`/api/history/${promptId}`);
+          const histRes = await fetch(`${getComfyUrl()}/api/history/${promptId}`);
           if (!histRes.ok) continue;
           const history = await histRes.json();
 
@@ -260,7 +260,7 @@ function MultiRefNode({ id, data, selected }: NodeProps) {
                   });
                   updateWidgetValue(id, "_previewUrl", dataUrl);
                   const prev: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
-                  const { history: _h, index: _i } = addToHistory(prev, dataUrl); updateWidgetValue(id, "_history", _h);
+                  const { history: _h, index: _i } = await addToHistory(id, prev, dataUrl); updateWidgetValue(id, "_history", _h);
                   updateWidgetValue(id, "_historyIndex", _i);
                   addGenerationToLibrary(dataUrl, {
                     prompt: promptText, model: "sdxl_lightning_4step", seed: actualSeed.toString(),
@@ -268,7 +268,7 @@ function MultiRefNode({ id, data, selected }: NodeProps) {
                   });
                 } catch {
                   const prev2: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
-                  const { history: _h2, index: _i2 } = addToHistory(prev2, apiUrl);
+                  const { history: _h2, index: _i2 } = await addToHistory(id, prev2, apiUrl);
                   updateWidgetValue(id, "_history", _h2);
                   updateWidgetValue(id, "_historyIndex", _i2);
                 }

@@ -29,12 +29,12 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8188',
+        target: 'http://192.168.0.67:8188',
         changeOrigin: true,
-        headers: { Origin: 'http://127.0.0.1:8188' },
+        headers: { Origin: 'http://192.168.0.67:8188' },
       },
       '/ws': {
-        target: 'ws://127.0.0.1:8188',
+        target: 'ws://192.168.0.67:8188',
         ws: true,
       },
       '/tiktok-api': {

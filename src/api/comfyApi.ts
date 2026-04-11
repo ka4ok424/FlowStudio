@@ -1,5 +1,17 @@
-// Uses Vite proxy — requests go to localhost:3000 → forwarded to ComfyUI 8188
-const COMFY_URL = "";
+// ComfyUI server URL — empty = Vite proxy, or direct URL like "http://192.168.0.67:8188"
+const COMFY_SERVER_KEY = "flowstudio_comfyui_server";
+
+export function getComfyUrl(): string {
+  return localStorage.getItem(COMFY_SERVER_KEY) || "";
+}
+
+export function setComfyUrl(url: string) {
+  if (url) {
+    localStorage.setItem(COMFY_SERVER_KEY, url.replace(/\/$/, ""));
+  } else {
+    localStorage.removeItem(COMFY_SERVER_KEY);
+  }
+}
 
 // ── Types ──────────────────────────────────────────────────────────
 export interface ComfyNodeDef {
@@ -21,14 +33,14 @@ export interface QueuePromptResult {
 
 // ── Fetch all node definitions ─────────────────────────────────────
 export async function fetchNodeDefs(): Promise<Record<string, ComfyNodeDef>> {
-  const res = await fetch(`${COMFY_URL}/api/object_info`);
+  const res = await fetch(`${getComfyUrl()}/api/object_info`);
   if (!res.ok) throw new Error(`Failed to fetch nodes: ${res.status}`);
   return res.json();
 }
 
 // ── Queue a workflow prompt ────────────────────────────────────────
 export async function queuePrompt(workflow: Record<string, any>): Promise<QueuePromptResult> {
-  const res = await fetch(`${COMFY_URL}/api/prompt`, {
+  const res = await fetch(`${getComfyUrl()}/api/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt: workflow }),
@@ -43,7 +55,7 @@ export async function queuePrompt(workflow: Record<string, any>): Promise<QueueP
 
 // ── Get generated image URL ────────────────────────────────────────
 export function getImageUrl(filename: string, subfolder: string = "", type: string = "output"): string {
-  return `${COMFY_URL}/api/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}&type=${type}`;
+  return `${getComfyUrl()}/api/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}&type=${type}`;
 }
 
 // ── Upload image to ComfyUI (returns filename) ───────────────────
@@ -57,7 +69,7 @@ export async function uploadImage(dataUrl: string, filename?: string): Promise<s
   formData.append("image", blob, name);
   formData.append("overwrite", "true");
 
-  const uploadRes = await fetch(`${COMFY_URL}/api/upload/image`, {
+  const uploadRes = await fetch(`${getComfyUrl()}/api/upload/image`, {
     method: "POST",
     body: formData,
   });
@@ -72,8 +84,19 @@ export async function uploadImage(dataUrl: string, filename?: string): Promise<s
 
 // ── WebSocket for progress ─────────────────────────────────────────
 export function connectWebSocket(onMessage: (data: any) => void): WebSocket {
-  const wsProto = location.protocol === "https:" ? "wss:" : "ws:";
-  const ws = new WebSocket(`${wsProto}//${location.host}/ws?clientId=comfy-react-ui`);
+  const comfyUrl = getComfyUrl();
+  let wsUrl: string;
+  if (comfyUrl) {
+    // Direct connection to ComfyUI server
+    const url = new URL(comfyUrl);
+    const wsProto = url.protocol === "https:" ? "wss:" : "ws:";
+    wsUrl = `${wsProto}//${url.host}/ws?clientId=comfy-react-ui`;
+  } else {
+    // Via Vite proxy
+    const wsProto = location.protocol === "https:" ? "wss:" : "ws:";
+    wsUrl = `${wsProto}//${location.host}/ws?clientId=comfy-react-ui`;
+  }
+  const ws = new WebSocket(wsUrl);
 
   ws.onmessage = (event) => {
     try {
@@ -95,6 +118,6 @@ export function connectWebSocket(onMessage: (data: any) => void): WebSocket {
 
 // ── Get queue status ───────────────────────────────────────────────
 export async function getQueueStatus(): Promise<{ queue_running: any[]; queue_pending: any[] }> {
-  const res = await fetch(`${COMFY_URL}/api/queue`);
+  const res = await fetch(`${getComfyUrl()}/api/queue`);
   return res.json();
 }

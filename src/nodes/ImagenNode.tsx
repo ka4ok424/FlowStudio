@@ -56,10 +56,11 @@ function ImagenNode({ id, data, selected }: NodeProps) {
       const dataUrl = `data:image/png;base64,${result.images[0]}`;
       updateWidgetValue(id, "_previewUrl", dataUrl);
       const prev = nodeData.widgetValues?._history || [];
-      const { history: newHist, index: newIdx } = addToHistory(prev, dataUrl);
+      const { history: newHist, index: newIdx } = await addToHistory(id, prev, dataUrl);
       updateWidgetValue(id, "_history", newHist);
       updateWidgetValue(id, "_historyIndex", newIdx);
       log("Image ready", { nodeId: id, nodeType: "fs:imagen", nodeLabel: "Imagen", status: "success" });
+      useWorkflowStore.getState().saveProject();
       addGenerationToLibrary(dataUrl, {
         prompt: promptText, model, seed: "random", nodeType: "fs:imagen",
       });
