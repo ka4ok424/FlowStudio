@@ -34,9 +34,12 @@ export default function ProjectManager({ open, onClose }: Props) {
   }, [loadProject, onClose]);
 
   const handleDelete = useCallback(async (id: string) => {
+    const project = projects.find((p) => p.id === id);
+    if (!window.confirm(`Delete "${project?.name || "project"}"? Backups will be kept.`)) return;
+    setMenuOpen(null);
     await deleteProject(id);
     refresh();
-  }, [deleteProject]);
+  }, [deleteProject, projects]);
 
   const handleClone = useCallback(async (id: string) => {
     await cloneProject(id);

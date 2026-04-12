@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useState, useRef } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt, getImageUrl, uploadImage, getComfyUrl } from "../api/comfyApi";
@@ -7,7 +7,7 @@ import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
 import { log } from "../store/logStore";
 
-function KontextNode({ id, data, selected }: NodeProps) {
+function NextFrameNode({ id, data, selected }: NodeProps) {
   const nodeData = data as any;
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
   const setSelectedNode = useWorkflowStore((s) => s.setSelectedNode);
@@ -25,26 +25,27 @@ function KontextNode({ id, data, selected }: NodeProps) {
     setProcessing(true);
     setError(null);
     const startTime = Date.now();
-    log("Kontext started", { nodeId: id, nodeType: "fs:kontext", nodeLabel: "Kontext" });
+    log("Next Frame started", { nodeId: id, nodeType: "fs:nextFrame", nodeLabel: "Next Frame" });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
-    const steps = freshWv.steps || 24;
-    const cfg = freshWv.cfg ?? 3.5;
-    const denoise = freshWv.denoise ?? 0.85;
+    const steps = freshWv.steps || 8;
+    const cfg = freshWv.cfg ?? 1.2;
+    const denoise = freshWv.denoise ?? 0.35;
     const seed = freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647);
+    const negativePrompt = freshWv.negativePrompt || "";
 
     // Get prompt
     let promptText = "";
-    const promptEdge = edgesAll.find((e) => e.target === id && e.targetHandle === "prompt");
+    const promptEdge = edgesAll.find((edge) => edge.target === id && edge.targetHandle === "prompt");
     if (promptEdge) {
       const promptNode = nodesAll.find((n) => n.id === promptEdge.source);
       if (promptNode) promptText = (promptNode.data as any).widgetValues?.text || "";
     }
     if (!promptText) { setError("Connect a Prompt node"); setProcessing(false); return; }
 
-    // Get source image
-    const imgEdge = edgesAll.find((e) => e.target === id && e.targetHandle === "input");
-    if (!imgEdge) { setError("Connect a source image"); setProcessing(false); return; }
+    // Get source image (previous frame)
+    const imgEdge = edgesAll.find((edge) => edge.target === id && edge.targetHandle === "input");
+    if (!imgEdge) { setError("Connect a source frame"); setProcessing(false); return; }
     const srcNode = nodesAll.find((n) => n.id === imgEdge.source);
     if (!srcNode) { setError("Source not found"); setProcessing(false); return; }
     const sd = srcNode.data as any;
@@ -52,45 +53,45 @@ function KontextNode({ id, data, selected }: NodeProps) {
     if (!srcUrl) { setError("No image in source. Generate first."); setProcessing(false); return; }
 
     try {
-      // Upload source image
+      // Upload source frame
+      const fileName = `fs_nf_${imgEdge.source}.png`;
       let imgName: string;
       if (srcUrl.startsWith("data:")) {
-        imgName = await uploadImage(srcUrl, `fs_ktx_${imgEdge.source}.png`);
+        imgName = await uploadImage(srcUrl, fileName);
       } else {
         const resp = await fetch(srcUrl);
         const blob = await resp.blob();
         const dataUrl = await new Promise<string>((r) => { const rd = new FileReader(); rd.onloadend = () => r(rd.result as string); rd.readAsDataURL(blob); });
-        imgName = await uploadImage(dataUrl, `fs_ktx_${imgEdge.source}.png`);
+        imgName = await uploadImage(dataUrl, fileName);
       }
 
-      // Build Kontext workflow: LoadImage → Scale → VAEEncode → ReferenceLatent → KSampler
+      // Build workflow — same node IDs as LocalGen for cache reuse
       const workflow: Record<string, any> = {
-        "1": { class_type: "UNETLoader", inputs: { unet_name: "flux1-kontext-dev.safetensors", weight_dtype: "default" } },
-        "2": { class_type: "DualCLIPLoader", inputs: { clip_name1: "clip_l.safetensors", clip_name2: "t5xxl_fp8_e4m3fn.safetensors", type: "flux" } },
-        "3": { class_type: "VAELoader", inputs: { vae_name: "ae.safetensors" } },
-        "4": { class_type: "CLIPTextEncode", inputs: { text: promptText, clip: ["2", 0] } },
-        "5": { class_type: "LoadImage", inputs: { image: imgName } },
-        "6": { class_type: "FluxKontextImageScale", inputs: { image: ["5", 0] } },
-        "7": { class_type: "VAEEncode", inputs: { pixels: ["6", 0], vae: ["3", 0] } },
-        "8": { class_type: "ReferenceLatent", inputs: { conditioning: ["4", 0], latent: ["7", 0] } },
-        "9": { class_type: "EmptySD3LatentImage", inputs: { width: 1024, height: 1024, batch_size: 1 } },
-        "10": {
+        "1": { class_type: "UNETLoader", inputs: { unet_name: "flux-2-klein-9b.safetensors", weight_dtype: "default" } },
+        "2": { class_type: "CLIPLoader", inputs: { clip_name: "qwen3_8b_klein9b.safetensors", type: "flux2", device: "default" } },
+        "3": { class_type: "VAELoader", inputs: { vae_name: "flux2-vae.safetensors" } },
+        "4": { class_type: "LoadImage", inputs: { image: imgName } },
+        "5": { class_type: "VAEEncode", inputs: { pixels: ["4", 0], vae: ["3", 0] } },
+        "6": { class_type: "CLIPTextEncode", inputs: { text: promptText, clip: ["2", 0] } },
+        "7": { class_type: "CLIPTextEncode", inputs: { text: negativePrompt, clip: ["2", 0] } },
+        "8": {
           class_type: "KSampler",
           inputs: {
-            model: ["1", 0], positive: ["8", 0], negative: ["8", 0],
-            latent_image: ["9", 0], seed, steps, cfg, sampler_name: "euler", scheduler: "simple", denoise,
+            model: ["1", 0], positive: ["6", 0], negative: ["7", 0],
+            latent_image: ["5", 0], seed, steps, cfg,
+            sampler_name: "euler", scheduler: "simple", denoise,
           },
         },
-        "11": { class_type: "VAEDecode", inputs: { samples: ["10", 0], vae: ["3", 0] } },
-        "12": { class_type: "SaveImage", inputs: { images: ["11", 0], filename_prefix: `FS_KTX_${Date.now()}` } },
+        "9": { class_type: "VAEDecode", inputs: { samples: ["8", 0], vae: ["3", 0] } },
+        "10": { class_type: "SaveImage", inputs: { images: ["9", 0], filename_prefix: `FS_NF_${Date.now()}` } },
       };
 
       const result = await queuePrompt(workflow);
       const promptId = result.prompt_id;
 
       // Poll for result
-      for (let attempt = 0; attempt < 120; attempt++) {
-        await new Promise((r) => setTimeout(r, 1500));
+      for (let attempt = 0; attempt < 300; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
         try {
           const histRes = await fetch(`${getComfyUrl()}/api/history/${promptId}`);
           if (!histRes.ok) continue;
@@ -107,14 +108,15 @@ function KontextNode({ id, data, selected }: NodeProps) {
                 const dataUrl = await new Promise<string>((resolve) => { const reader = new FileReader(); reader.onloadend = () => resolve(reader.result as string); reader.readAsDataURL(blob); });
 
                 updateWidgetValue(id, "_genTime", Date.now() - startTime);
+                updateWidgetValue(id, "_lastSeed", seed);
                 updateWidgetValue(id, "_previewUrl", dataUrl);
                 const prevHist: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
                 const { history: newHist, index: newIdx } = await addToHistory(id, prevHist, dataUrl);
                 updateWidgetValue(id, "_history", newHist);
                 updateWidgetValue(id, "_historyIndex", newIdx);
 
-                log("Kontext complete", { nodeId: id, nodeType: "fs:kontext", nodeLabel: "Kontext", status: "success", details: `${steps} steps` });
-                addGenerationToLibrary(dataUrl, { prompt: promptText, model: "FLUX.1 Kontext", seed: String(seed), steps, cfg, nodeType: "fs:kontext", duration: Date.now() - startTime });
+                log("Next Frame complete", { nodeId: id, nodeType: "fs:nextFrame", nodeLabel: "Next Frame", status: "success", details: `denoise ${denoise}` });
+                addGenerationToLibrary(dataUrl, { prompt: promptText, model: "Klein 9B (next frame)", seed: String(seed), steps, cfg, nodeType: "fs:nextFrame", duration: Date.now() - startTime });
                 setProcessing(false);
                 return;
               }
@@ -122,8 +124,7 @@ function KontextNode({ id, data, selected }: NodeProps) {
             const st = history[promptId].status;
             if (st?.completed || st?.status_str === "error") {
               const errMsg = history[promptId].status?.messages?.find((m: any) => m[0] === "execution_error");
-              setError(errMsg ? errMsg[1]?.exception_message?.slice(0, 100) : "Generation failed");
-              log("Kontext failed", { nodeId: id, nodeType: "fs:kontext", nodeLabel: "Kontext", status: "error" });
+              setError(errMsg ? errMsg[1]?.exception_message?.slice(0, 120) : "Generation failed");
               setProcessing(false);
               return;
             }
@@ -133,7 +134,7 @@ function KontextNode({ id, data, selected }: NodeProps) {
       setError("Timeout"); setProcessing(false);
     } catch (err: any) {
       setError(err.message);
-      log("Kontext error", { nodeId: id, nodeType: "fs:kontext", nodeLabel: "Kontext", status: "error", details: err.message });
+      log("Next Frame error", { nodeId: id, nodeType: "fs:nextFrame", nodeLabel: "Next Frame", status: "error", details: err.message });
       setProcessing(false);
     }
   }, [id, edgesAll, nodesAll, updateWidgetValue]);
@@ -145,28 +146,28 @@ function KontextNode({ id, data, selected }: NodeProps) {
   const dimClass = connectingType ? (hasCompatible ? "compatible" : "incompatible") : "";
 
   return (
-    <div className={`kontext-node ${selected ? "selected" : ""} ${dimClass}`} onClick={() => setSelectedNode(id)}>
-      <div className="kontext-node-inner">
-        <div className="kontext-accent" />
-        <div className="kontext-header">
-          <span className="kontext-icon">✏️</span>
-          <div className="kontext-header-text">
-            <span className="kontext-title">Kontext</span>
-            <span className="kontext-status">{processing ? "EDITING..." : "FLUX.1"}</span>
+    <div className={`nextframe-node ${selected ? "selected" : ""} ${dimClass}`} onClick={() => setSelectedNode(id)}>
+      <div className="nextframe-node-inner">
+        <div className="nextframe-accent" />
+        <div className="nextframe-header">
+          <span className="nextframe-icon">🎞️</span>
+          <div className="nextframe-header-text">
+            <span className="nextframe-title">Next Frame</span>
+            <span className="nextframe-status">{processing ? "GENERATING..." : "Klein 9B"}</span>
           </div>
         </div>
       </div>
 
-      <div className="kontext-inputs">
+      <div className="nextframe-inputs">
         <div className="nanob-input-row">
           <Handle type="target" position={Position.Left} id="prompt" className={`slot-handle ${promptHL}`} style={{ color: "#f0c040" }} />
           <TypeBadge color="#f0c040">TXT</TypeBadge>
-          <span className="nanob-input-label">Edit Prompt</span>
+          <span className="nanob-input-label">Frame Prompt</span>
         </div>
         <div className="nanob-input-row">
           <Handle type="target" position={Position.Left} id="input" className={`slot-handle ${imgHL}`} style={{ color: "#64b5f6" }} />
           <TypeBadge color="#64b5f6">IMG</TypeBadge>
-          <span className="nanob-input-label">Source Image</span>
+          <span className="nanob-input-label">Previous Frame</span>
         </div>
       </div>
 
@@ -175,7 +176,7 @@ function KontextNode({ id, data, selected }: NodeProps) {
         history={nodeData.widgetValues?._history || []}
         historyIndex={nodeData.widgetValues?._historyIndex ?? -1}
         fallbackUrl={previewUrl}
-        emptyIcon="✏️"
+        emptyIcon="🎞️"
         genTime={nodeData.widgetValues?._genTime}
       />
 
@@ -183,14 +184,14 @@ function KontextNode({ id, data, selected }: NodeProps) {
 
       <div className="nanob-actions">
         <button className={`localgen-generate-btn ${processing ? "generating" : ""}`} onClick={handleGenerate} disabled={processing}>
-          {processing ? "Editing..." : "✏️ Edit Image"}
+          {processing ? "Generating..." : "🎞️ Generate Frame"}
         </button>
       </div>
 
-      <div className="kontext-outputs">
+      <div className="nextframe-outputs">
         <div className="nanob-input-row" style={{ justifyContent: "flex-end" }}>
           <TypeBadge color="#64b5f6">IMG</TypeBadge>
-          <span className="nanob-output-label">Output</span>
+          <span className="nanob-output-label">Frame</span>
           <Handle type="source" position={Position.Right} id="output_0" className={`slot-handle ${outputHL}`} style={{ color: "#64b5f6" }} />
         </div>
       </div>
@@ -202,4 +203,4 @@ function TypeBadge({ color, children }: { color: string; children: React.ReactNo
   return <span className="type-badge" style={{ color, borderColor: color + "66", backgroundColor: color + "12" }}>{children}</span>;
 }
 
-export default memo(KontextNode);
+export default memo(NextFrameNode);

@@ -1,5 +1,6 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useWorkflowStore } from "../store/workflowStore";
+import { queuePrompt, getComfyUrl } from "../api/comfyApi";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + " B";
@@ -60,6 +61,18 @@ export default function PropertiesPanel() {
 
         {/* TTS properties */}
         {data.type === "fs:tts" && <TtsProperties nodeId={node.id} data={data} />}
+
+        {/* Img2Img properties */}
+        {data.type === "fs:img2img" && <Img2ImgProperties nodeId={node.id} data={data} />}
+
+        {/* Next Frame properties */}
+        {data.type === "fs:nextFrame" && <NextFrameProperties nodeId={node.id} data={data} />}
+
+        {/* Kontext properties */}
+        {data.type === "fs:kontext" && <KontextProperties nodeId={node.id} data={data} />}
+
+        {/* LTX Video properties */}
+        {data.type === "fs:ltxVideo" && <LtxVideoProperties nodeId={node.id} data={data} />}
 
         {/* Multi Reference properties */}
         {data.type === "fs:multiRef" && <MultiRefProperties nodeId={node.id} data={data} />}
@@ -343,6 +356,8 @@ function NanoBananaProperties({ nodeId, data }: { nodeId: string; data: any }) {
 function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
   const nodeDefs = useWorkflowStore((s) => s.nodeDefs);
+  const [warming, setWarming] = useState(false);
+  const [warmTime, setWarmTime] = useState<number | null>(null);
 
   // Get all models from ComfyUI
   const checkpoints: string[] = [];
@@ -415,6 +430,77 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
           <button className="props-dice-btn"
             onClick={() => updateWidgetValue(nodeId, "seed", Math.floor(Math.random() * 2147483647).toString())}>🎲</button>
         </div>
+      </div>
+
+      <div className="props-section">
+        <button className="localgen-generate-btn" disabled={warming} style={{ width: "auto", fontSize: 12, padding: "4px 10px" }} onClick={async () => {
+          if (warming) return;
+          setWarming(true); setWarmTime(null);
+          const t = Date.now();
+          // Get prompt text from connected Prompt node
+          const { nodes: allNodes, edges: allEdges } = useWorkflowStore.getState();
+          const promptEdge = allEdges.find((edge: any) => edge.target === nodeId && edge.targetHandle === "prompt");
+          const promptText = promptEdge ? (allNodes.find((nd: any) => nd.id === promptEdge.source)?.data as any)?.widgetValues?.text || "warmup" : "warmup";
+          const selectedModel = model;
+          const modelLower = selectedModel.toLowerCase();
+          const isKlein = modelLower.includes("klein");
+          const isFlux2 = modelLower.includes("flux-2") || modelLower.includes("flux2") || isKlein;
+          const isGGUF = modelLower.includes("gguf");
+
+          let wf: Record<string, any>;
+          if (isGGUF) {
+            wf = {
+              "1": { class_type: "UnetLoaderGGUF", inputs: { unet_name: selectedModel } },
+              "2": { class_type: "DualCLIPLoader", inputs: { clip_name1: "clip_l.safetensors", clip_name2: "t5xxl_fp8_e4m3fn.safetensors", type: "flux" } },
+              "3": { class_type: "VAELoader", inputs: { vae_name: "ae.safetensors" } },
+              "4": { class_type: "CLIPTextEncode", inputs: { text: promptText, clip: ["2", 0] } },
+              "5": { class_type: "EmptySD3LatentImage", inputs: { width: width || 512, height: height || 512, batch_size: 1 } },
+              "6": { class_type: "KSampler", inputs: { model: ["1", 0], positive: ["4", 0], negative: ["4", 0], latent_image: ["5", 0], seed: Date.now() % 1000000, steps: 1, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1.0 } },
+              "7": { class_type: "VAEDecode", inputs: { samples: ["6", 0], vae: ["3", 0] } },
+              "8": { class_type: "SaveImage", inputs: { images: ["7", 0], filename_prefix: "_warmup" } },
+            };
+          } else if (isFlux2) {
+            const isKlein9B = isKlein && modelLower.includes("9b");
+            const isFlux2Dev = !isKlein && modelLower.includes("dev");
+            const clipName = isKlein9B ? "qwen3_8b_klein9b.safetensors" : isFlux2Dev ? "mistral_3_small_flux2_fp8.safetensors" : "qwen_3_4b_fp4_flux2.safetensors";
+            wf = {
+              "1": { class_type: "UNETLoader", inputs: { unet_name: selectedModel, weight_dtype: "default" } },
+              "2": { class_type: "CLIPLoader", inputs: { clip_name: clipName, type: "flux2", device: "default" } },
+              "3": { class_type: "VAELoader", inputs: { vae_name: "flux2-vae.safetensors" } },
+              "4": { class_type: "CLIPTextEncode", inputs: { text: promptText, clip: ["2", 0] } },
+              "5": { class_type: "EmptySD3LatentImage", inputs: { width: width || 512, height: height || 512, batch_size: 1 } },
+              "6": { class_type: "KSampler", inputs: { model: ["1", 0], positive: ["4", 0], negative: ["4", 0], latent_image: ["5", 0], seed: Date.now() % 1000000, steps: 1, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1.0 } },
+              "7": { class_type: "VAEDecode", inputs: { samples: ["6", 0], vae: ["3", 0] } },
+              "8": { class_type: "SaveImage", inputs: { images: ["7", 0], filename_prefix: "_warmup" } },
+            };
+          } else {
+            wf = {
+              "1": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: selectedModel } },
+              "2": { class_type: "CLIPTextEncode", inputs: { text: promptText, clip: ["1", 1] } },
+              "3": { class_type: "EmptyLatentImage", inputs: { width: width || 512, height: height || 512, batch_size: 1 } },
+              "4": { class_type: "KSampler", inputs: { model: ["1", 0], positive: ["2", 0], negative: ["2", 0], latent_image: ["3", 0], seed: Date.now() % 1000000, steps: 1, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1.0 } },
+              "5": { class_type: "VAEDecode", inputs: { samples: ["4", 0], vae: ["1", 2] } },
+              "6": { class_type: "SaveImage", inputs: { images: ["5", 0], filename_prefix: "_warmup" } },
+            };
+          }
+          try {
+            const res = await queuePrompt(wf);
+            for (let i = 0; i < 120; i++) {
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+              try {
+                const hRes = await fetch(`${getComfyUrl()}/api/history/${res.prompt_id}`);
+                if (!hRes.ok) continue;
+                const h = await hRes.json();
+                if (h[res.prompt_id]) { break; }
+              } catch { /* retry */ }
+            }
+          } catch { /* ignore */ }
+          setWarmTime(Date.now() - t);
+          setWarming(false);
+        }}>
+          {warming ? "🔥..." : "🔥"}
+        </button>
+        {warmTime != null && <span style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4, display: "block" }}>Warmup: {(warmTime / 1000).toFixed(1)}s</span>}
       </div>
     </>
   );
@@ -536,6 +622,328 @@ function UpscaleProperties({ nodeId, data }: { nodeId: string; data: any }) {
           <p className="settings-hint">AI upscale always outputs 4x resolution. 512px → 2048px</p>
         </div>
       )}
+    </>
+  );
+}
+
+// ── Img2Img Properties ───────────────────────────────────────────
+function Img2ImgProperties({ nodeId, data }: { nodeId: string; data: any }) {
+  const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const denoise = data.widgetValues?.denoise ?? 0.75;
+  const steps = data.widgetValues?.steps ?? 28;
+  const cfg = data.widgetValues?.cfg ?? 3.5;
+  const width = data.widgetValues?.width ?? 1024;
+  const height = data.widgetValues?.height ?? 1024;
+  const seed = data.widgetValues?.seed ?? "";
+  const sampler = data.widgetValues?.sampler ?? "euler";
+  const scheduler = data.widgetValues?.scheduler ?? "simple";
+  const negativePrompt = data.widgetValues?.negativePrompt ?? "";
+  const refMethod = data.widgetValues?.refMethod ?? "offset";
+  const kvCache = data.widgetValues?.kvCache ?? false;
+
+  return (
+    <>
+      <div className="props-section">
+        <div className="props-section-title">Denoise Strength</div>
+        <input type="range" className="props-range" min={0.1} max={1.0} step={0.05} value={denoise}
+          onChange={(e) => updateWidgetValue(nodeId, "denoise", parseFloat(e.target.value))} />
+        <span className="props-range-value">{denoise.toFixed(2)}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Steps</div>
+        <input type="range" className="props-range" min={4} max={50} step={1} value={steps}
+          onChange={(e) => updateWidgetValue(nodeId, "steps", parseInt(e.target.value))} />
+        <span className="props-range-value">{steps}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">CFG</div>
+        <input type="range" className="props-range" min={1} max={10} step={0.5} value={cfg}
+          onChange={(e) => updateWidgetValue(nodeId, "cfg", parseFloat(e.target.value))} />
+        <span className="props-range-value">{cfg}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Size</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input className="props-input" type="number" value={width ?? ""} min={64} max={4096}
+            onChange={(e) => updateWidgetValue(nodeId, "width", e.target.value === "" ? "" : Math.min(4096, parseInt(e.target.value)))}
+            onBlur={() => { if (!width || isNaN(width)) updateWidgetValue(nodeId, "width", 1024); }} style={{ width: "50%" }} />
+          <span style={{ color: "var(--text-muted)", alignSelf: "center" }}>x</span>
+          <input className="props-input" type="number" value={height ?? ""} min={64} max={4096}
+            onChange={(e) => updateWidgetValue(nodeId, "height", e.target.value === "" ? "" : Math.min(4096, parseInt(e.target.value)))}
+            onBlur={() => { if (!height || isNaN(height)) updateWidgetValue(nodeId, "height", 1024); }} style={{ width: "50%" }} />
+        </div>
+        <div className="props-aspect-row" style={{ marginTop: 10 }}>
+          {[{w:512,h:512,l:"1:1"},{w:720,h:1280,l:"9:16"},{w:1280,h:720,l:"16:9"}].map((s) => (
+            <button key={s.l} className={`props-aspect-btn ${width === s.w && height === s.h ? "active" : ""}`}
+              onClick={() => { updateWidgetValue(nodeId, "width", s.w); updateWidgetValue(nodeId, "height", s.h); }}>{s.l}</button>
+          ))}
+        </div>
+        <div className="props-aspect-row" style={{ marginTop: 4 }}>
+          <button className="props-aspect-btn" onClick={() => {
+            updateWidgetValue(nodeId, "width", Math.min(4096, width * 2));
+            updateWidgetValue(nodeId, "height", Math.min(4096, height * 2));
+          }}>x2</button>
+          <button className="props-aspect-btn" onClick={() => {
+            updateWidgetValue(nodeId, "width", Math.max(64, Math.round(width / 2)));
+            updateWidgetValue(nodeId, "height", Math.max(64, Math.round(height / 2)));
+          }}>÷2</button>
+        </div>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Seed</div>
+        <input className="props-input" type="text" value={seed} placeholder="Random"
+          onChange={(e) => updateWidgetValue(nodeId, "seed", e.target.value)} />
+      </div>
+      <details className="props-section props-temp-section">
+        <summary className="props-temp-header">Advanced <span className="props-temp-badge">PRO</span></summary>
+        <div className="props-section">
+          <div className="props-section-title">Negative Prompt</div>
+          <textarea className="props-textarea" value={negativePrompt} rows={2}
+            placeholder="What to avoid..."
+            onChange={(e) => updateWidgetValue(nodeId, "negativePrompt", e.target.value)} />
+        </div>
+        <div className="props-section">
+          <div className="props-section-title">Reference Method</div>
+          <select className="props-select" value={refMethod}
+            onChange={(e) => updateWidgetValue(nodeId, "refMethod", e.target.value)}>
+            <option value="offset">offset (default)</option>
+            <option value="index">index</option>
+            <option value="index_timestep_zero">index_timestep_zero (KV cache)</option>
+          </select>
+        </div>
+        <div className="props-section">
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input type="checkbox" checked={kvCache}
+              onChange={(e) => updateWidgetValue(nodeId, "kvCache", e.target.checked)} />
+            <span className="props-section-title" style={{ margin: 0 }}>KV Cache</span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>faster with many refs</span>
+          </label>
+        </div>
+        <div className="props-section">
+          <div className="props-section-title">Sampler</div>
+          <select className="props-select" value={sampler}
+            onChange={(e) => updateWidgetValue(nodeId, "sampler", e.target.value)}>
+            {["euler", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_3m_sde", "uni_pc"].map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+        <div className="props-section">
+          <div className="props-section-title">Scheduler</div>
+          <select className="props-select" value={scheduler}
+            onChange={(e) => updateWidgetValue(nodeId, "scheduler", e.target.value)}>
+            {["simple", "normal", "karras", "sgm_uniform"].map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+      </details>
+    </>
+  );
+}
+
+// ── LTX Video Properties ─────────────────────────────────────────
+function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
+  const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const steps = data.widgetValues?.steps ?? 8;
+  const cfg = data.widgetValues?.cfg ?? 1.0;
+  const width = data.widgetValues?.width ?? 768;
+  const height = data.widgetValues?.height ?? 512;
+  const frames = data.widgetValues?.frames ?? 97;
+  const fps = data.widgetValues?.fps ?? 24;
+  const seed = data.widgetValues?.seed ?? "";
+  const negativePrompt = data.widgetValues?.negativePrompt ?? "";
+  const stg = data.widgetValues?.stg ?? 1.0;
+  const maxShift = data.widgetValues?.maxShift ?? 1.0;
+  const baseShift = data.widgetValues?.baseShift ?? 0.5;
+  const frameStrength = data.widgetValues?.frameStrength ?? 0.95;
+
+  return (
+    <>
+      <div className="props-section">
+        <div className="props-section-title">Frames ({(frames / fps).toFixed(1)}s at {fps}fps)</div>
+        <input type="range" className="props-range" min={25} max={193} step={8} value={frames}
+          onChange={(e) => updateWidgetValue(nodeId, "frames", parseInt(e.target.value))} />
+        <span className="props-range-value">{frames}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Size</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input className="props-input" type="number" value={width ?? ""} min={64} max={2048}
+            onChange={(e) => updateWidgetValue(nodeId, "width", e.target.value === "" ? "" : Math.min(2048, parseInt(e.target.value)))}
+            onBlur={() => { if (!width || isNaN(width)) updateWidgetValue(nodeId, "width", 768); }} style={{ width: "50%" }} />
+          <span style={{ color: "var(--text-muted)", alignSelf: "center" }}>x</span>
+          <input className="props-input" type="number" value={height ?? ""} min={64} max={2048}
+            onChange={(e) => updateWidgetValue(nodeId, "height", e.target.value === "" ? "" : Math.min(2048, parseInt(e.target.value)))}
+            onBlur={() => { if (!height || isNaN(height)) updateWidgetValue(nodeId, "height", 512); }} style={{ width: "50%" }} />
+        </div>
+        <div className="props-aspect-row" style={{ marginTop: 10 }}>
+          {[{w:512,h:512,l:"1:1"},{w:768,h:512,l:"3:2"},{w:512,h:768,l:"2:3"},{w:768,h:432,l:"16:9"}].map((s) => (
+            <button key={s.l} className={`props-aspect-btn ${width === s.w && height === s.h ? "active" : ""}`}
+              onClick={() => { updateWidgetValue(nodeId, "width", s.w); updateWidgetValue(nodeId, "height", s.h); }}>{s.l}</button>
+          ))}
+        </div>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">CFG</div>
+        <input type="range" className="props-range" min={1} max={5} step={0.1} value={cfg}
+          onChange={(e) => updateWidgetValue(nodeId, "cfg", parseFloat(e.target.value))} />
+        <span className="props-range-value">{cfg.toFixed(1)}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Steps</div>
+        <input type="range" className="props-range" min={4} max={20} step={1} value={steps}
+          onChange={(e) => updateWidgetValue(nodeId, "steps", parseInt(e.target.value))} />
+        <span className="props-range-value">{steps}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Negative Prompt</div>
+        <textarea className="props-textarea" value={negativePrompt} rows={2} placeholder="What to avoid..."
+          onChange={(e) => updateWidgetValue(nodeId, "negativePrompt", e.target.value)} />
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Seed</div>
+        <input className="props-input" type="text" value={seed} placeholder="Random"
+          onChange={(e) => updateWidgetValue(nodeId, "seed", e.target.value)} />
+      </div>
+      <details className="props-section props-temp-section">
+        <summary className="props-temp-header">Advanced <span className="props-temp-badge">PRO</span></summary>
+        <div className="props-section">
+          <div className="props-section-title">STG (Spatiotemporal Guidance)</div>
+          <input type="range" className="props-range" min={0} max={2} step={0.1} value={stg}
+            onChange={(e) => updateWidgetValue(nodeId, "stg", parseFloat(e.target.value))} />
+          <span className="props-range-value">{stg.toFixed(1)}</span>
+        </div>
+        <div className="props-section">
+          <div className="props-section-title">Max Shift</div>
+          <input type="range" className="props-range" min={0.1} max={3} step={0.1} value={maxShift}
+            onChange={(e) => updateWidgetValue(nodeId, "maxShift", parseFloat(e.target.value))} />
+          <span className="props-range-value">{maxShift.toFixed(1)}</span>
+        </div>
+        <div className="props-section">
+          <div className="props-section-title">Base Shift</div>
+          <input type="range" className="props-range" min={0.1} max={2} step={0.1} value={baseShift}
+            onChange={(e) => updateWidgetValue(nodeId, "baseShift", parseFloat(e.target.value))} />
+          <span className="props-range-value">{baseShift.toFixed(1)}</span>
+        </div>
+        <div className="props-section">
+          <div className="props-section-title">Frame Guide Strength</div>
+          <input type="range" className="props-range" min={0.1} max={1} step={0.05} value={frameStrength}
+            onChange={(e) => updateWidgetValue(nodeId, "frameStrength", parseFloat(e.target.value))} />
+          <span className="props-range-value">{frameStrength.toFixed(2)}</span>
+        </div>
+        <div className="props-section">
+          <div className="props-section-title">FPS</div>
+          <input type="range" className="props-range" min={8} max={30} step={1} value={fps}
+            onChange={(e) => updateWidgetValue(nodeId, "fps", parseInt(e.target.value))} />
+          <span className="props-range-value">{fps}</span>
+        </div>
+      </details>
+    </>
+  );
+}
+
+// ── Next Frame Properties ────────────────────────────────────────
+function NextFrameProperties({ nodeId, data }: { nodeId: string; data: any }) {
+  const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const { nodes: allNodes, edges: allEdges } = useWorkflowStore();
+  const denoise = data.widgetValues?.denoise ?? 0.35;
+  const steps = data.widgetValues?.steps ?? 8;
+  const cfg = data.widgetValues?.cfg ?? 1.2;
+  const seed = data.widgetValues?.seed ?? "";
+  const negativePrompt = data.widgetValues?.negativePrompt ?? "";
+
+  // Get seed from connected source node
+  const inputEdge = allEdges.find((e: any) => e.target === nodeId && e.targetHandle === "input");
+  const sourceNode = inputEdge ? allNodes.find((n: any) => n.id === inputEdge.source) : null;
+  const sourceSeed = (sourceNode?.data as any)?.widgetValues?._lastSeed;
+
+  return (
+    <>
+      <div className="props-section">
+        <div className="props-section-title">Denoise</div>
+        <input type="range" className="props-range" min={0.05} max={1.0} step={0.05} value={denoise}
+          onChange={(e) => updateWidgetValue(nodeId, "denoise", parseFloat(e.target.value))} />
+        <span className="props-range-value">{denoise.toFixed(2)}</span>
+        <p className="settings-hint" style={{ marginTop: 4 }}>0.25-0.35 subtle change · 0.35-0.50 noticeable · 0.55+ risky</p>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Steps</div>
+        <input type="range" className="props-range" min={4} max={20} step={1} value={steps}
+          onChange={(e) => updateWidgetValue(nodeId, "steps", parseInt(e.target.value))} />
+        <span className="props-range-value">{steps}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">CFG</div>
+        <input type="range" className="props-range" min={1} max={20} step={0.1} value={cfg}
+          onChange={(e) => updateWidgetValue(nodeId, "cfg", parseFloat(e.target.value))} />
+        <span className="props-range-value">{cfg.toFixed(1)}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Seed</div>
+        <div className="props-input-row">
+          <input type="number" className="props-input" value={seed}
+            placeholder={sourceSeed ? `${sourceSeed} (⇥ Tab)` : "Random"}
+            onChange={(e) => updateWidgetValue(nodeId, "seed", e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Tab" && !seed && sourceSeed) {
+                e.preventDefault();
+                updateWidgetValue(nodeId, "seed", String(sourceSeed));
+              }
+            }} />
+          <button className="props-dice-btn"
+            onClick={() => updateWidgetValue(nodeId, "seed", Math.floor(Math.random() * 2147483647).toString())}>🎲</button>
+        </div>
+      </div>
+      <details className="props-section props-temp-section">
+        <summary className="props-temp-header">Advanced <span className="props-temp-badge">PRO</span></summary>
+        <div className="props-section">
+          <div className="props-section-title">Negative Prompt</div>
+          <textarea className="props-textarea" value={negativePrompt} rows={3}
+            onChange={(e) => updateWidgetValue(nodeId, "negativePrompt", e.target.value)} />
+        </div>
+      </details>
+    </>
+  );
+}
+
+// ── Kontext Properties ───────────────────────────────────────────
+function KontextProperties({ nodeId, data }: { nodeId: string; data: any }) {
+  const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const denoise = data.widgetValues?.denoise ?? 0.85;
+  const steps = data.widgetValues?.steps ?? 24;
+  const cfg = data.widgetValues?.cfg ?? 3.5;
+  const seed = data.widgetValues?.seed ?? "";
+
+  return (
+    <>
+      <div className="props-section">
+        <div className="props-section-title">Edit Strength</div>
+        <input type="range" className="props-range" min={0.1} max={1.0} step={0.05} value={denoise}
+          onChange={(e) => updateWidgetValue(nodeId, "denoise", parseFloat(e.target.value))} />
+        <span className="props-range-value">{denoise.toFixed(2)}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Steps</div>
+        <input type="range" className="props-range" min={4} max={30} step={1} value={steps}
+          onChange={(e) => updateWidgetValue(nodeId, "steps", parseInt(e.target.value))} />
+        <span className="props-range-value">{steps}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">CFG</div>
+        <input type="range" className="props-range" min={1} max={7} step={0.5} value={cfg}
+          onChange={(e) => updateWidgetValue(nodeId, "cfg", parseFloat(e.target.value))} />
+        <span className="props-range-value">{cfg}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Seed</div>
+        <div className="props-input-row">
+          <input type="number" className="props-input" value={seed} placeholder="Random"
+            onChange={(e) => updateWidgetValue(nodeId, "seed", e.target.value)} />
+          <button className="props-dice-btn"
+            onClick={() => updateWidgetValue(nodeId, "seed", Math.floor(Math.random() * 2147483647).toString())}>🎲</button>
+        </div>
+      </div>
     </>
   );
 }

@@ -33,7 +33,7 @@ export default function Toolbar() {
 
   const [saveNotice, setSaveNotice] = useState(false);
   const handleSave = useCallback(async () => {
-    await saveProject();
+    await saveProject(true);
     setSaveNotice(true);
     setTimeout(() => setSaveNotice(false), 1500);
   }, [saveProject]);

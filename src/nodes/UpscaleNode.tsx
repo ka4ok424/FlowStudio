@@ -48,14 +48,14 @@ function UpscaleNode({ id, data, selected }: NodeProps) {
       // Upload source image to ComfyUI
       let imgName: string;
       if (srcUrl.startsWith("data:")) {
-        imgName = await uploadImage(srcUrl, `fs_upscale_${Date.now()}.png`);
+        imgName = await uploadImage(srcUrl, `fs_up_${imgEdge.source}.png`);
       } else {
         const resp = await fetch(srcUrl);
         const blob = await resp.blob();
         const dataUrl = await new Promise<string>((r) => {
           const rd = new FileReader(); rd.onloadend = () => r(rd.result as string); rd.readAsDataURL(blob);
         });
-        imgName = await uploadImage(dataUrl, `fs_upscale_${Date.now()}.png`);
+        imgName = await uploadImage(dataUrl, `fs_up_${imgEdge.source}.png`);
       }
 
       // Build workflow: LoadImage → AI Upscale (RealESRGAN) → SaveImage

@@ -97,7 +97,7 @@ interface WorkflowState {
   currentProjectId: string | null;
   currentProjectName: string;
   setCurrentProjectName: (name: string) => void;
-  saveProject: () => Promise<void>;
+  saveProject: (updateThumbnail?: boolean) => Promise<void>;
   loadProject: (id: string) => Promise<void>;
   createProject: (name: string) => Promise<string>;
   deleteProject: (id: string) => Promise<void>;
@@ -291,6 +291,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         CommentNode: "commentNode",
         Img2ImgNode: "img2ImgNode",
         KontextNode: "kontextNode",
+        LtxVideoNode: "ltxVideoNode",
+        NextFrameNode: "nextFrameNode",
       };
       const isGroup = nativeDef.type === "fs:group";
       const newNode: Node<ComfyNodeData> = {
@@ -308,7 +310,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           inputs: {},
           outputs: nativeDef.outputs.map((o) => o.type),
           outputNames: nativeDef.outputs.map((o) => o.name),
-          widgetValues: {},
+          widgetValues: nativeDef.type === "fs:localGenerate" ? { model: "flux-2-klein-9b.safetensors" } : {},
           _native: true,
           _nativeInputs: Object.fromEntries(nativeDef.inputs.map((i) => [i.name, i.type])),
         },
@@ -483,7 +485,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   _saving: false,
-  saveProject: async () => {
+  saveProject: async (updateThumbnail = false) => {
     if ((get() as any)._saving) return; // prevent concurrent saves
     (set as any)({ _saving: true });
     try {
@@ -491,6 +493,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     if (!currentProjectId) {
       currentProjectId = `proj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       set({ currentProjectId });
+    }
+
+    // ── Protection: don't overwrite with empty project ──
+    const prevData = await loadImage(`project_${currentProjectId}`);
+    if (nodes.length === 0 && prevData) {
+      try {
+        const prev = JSON.parse(prevData);
+        if (prev.nodes && prev.nodes.length >= 3) {
+          console.warn(`[SaveProject] BLOCKED: 0 nodes would overwrite ${prev.nodes.length} nodes. Skipping save.`);
+          return;
+        }
+      } catch { /* ignore parse error */ }
     }
 
     // Extract images → IndexedDB, stripped nodes → localStorage
@@ -503,6 +517,27 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const wfSizeMB = (wfData.length / 1024 / 1024).toFixed(2);
     console.log(`[SaveProject] Data size: ${wfSizeMB} MB, images: ${images.size}`);
 
+    // ── Auto-backup rotation (keep last 10) ──
+    const MAX_BACKUPS = 10;
+    const backupKey = `project_${currentProjectId}_bk_${Date.now()}`;
+    await saveImage(backupKey, wfData);
+    // Clean old backups
+    try {
+      const dbReq = indexedDB.open("flowstudio_images");
+      const db: IDBDatabase = await new Promise((r) => { dbReq.onsuccess = () => r(dbReq.result); });
+      const tx = db.transaction("images", "readwrite");
+      const store = tx.objectStore("images");
+      const allKeys: string[] = await new Promise((r) => { const req = store.getAllKeys(); req.onsuccess = () => r(req.result as string[]); });
+      const bkPrefix = `project_${currentProjectId}_bk_`;
+      const backupKeys = allKeys.filter((k) => k.startsWith(bkPrefix)).sort();
+      if (backupKeys.length > MAX_BACKUPS) {
+        for (const old of backupKeys.slice(0, backupKeys.length - MAX_BACKUPS)) {
+          store.delete(old);
+        }
+      }
+      db.close();
+    } catch { /* ignore cleanup errors */ }
+
     // Save workflow to IndexedDB (no localStorage size limit)
     await saveImage(`project_${currentProjectId}`, wfData);
     await saveImage(`project_${currentProjectId}_backup`, wfData);
@@ -511,35 +546,58 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     localStorage.removeItem(`flowstudio_proj_${currentProjectId}`);
     localStorage.removeItem(`flowstudio_proj_${currentProjectId}_backup`);
 
-    // Find a thumbnail from node previews (first data URL image found)
+    // Find a thumbnail — only on manual save (Cmd+S), not autosave
     let thumbnail: string | undefined;
+    if (!updateThumbnail) {
+      // Keep existing thumbnail
+      const index = JSON.parse(localStorage.getItem(PROJECTS_INDEX_KEY) || "[]") as ProjectMeta[];
+      thumbnail = index.find((p) => p.id === currentProjectId)?.thumbnail;
+    }
+    // Pick the node with most recent generation (highest _genTime timestamp)
+    if (updateThumbnail) {
+    let bestUrl: string | undefined;
+    let bestTime = 0;
     for (const n of nodes as any[]) {
       const wv = n.data?.widgetValues;
       if (!wv) continue;
       const url = wv._previewUrl || wv.portraitUrl || wv._preview;
-      if (url && typeof url === "string" && url.startsWith("data:image")) {
-        // Resize to small thumbnail (64px) to keep index lightweight
-        try {
-          const img = new Image();
-          img.src = url;
-          // Use first found as-is if canvas not available (will be resized on next save)
-          thumbnail = url.length < 5000 ? url : undefined;
-          // Try canvas resize
-          if (!thumbnail) {
-            const canvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
-            if (canvas) {
-              canvas.width = 120; canvas.height = 80;
-              const ctx = canvas.getContext("2d");
-              if (ctx) {
-                // Draw will happen async, skip for now — use raw for first save
-                thumbnail = url.slice(0, 4000); // truncated fallback
-              }
-            }
-          }
-        } catch { /* ignore */ }
-        break;
+      const t = wv._genTime || 0;
+      if (url && typeof url === "string" && url.startsWith("data:image") && t >= bestTime) {
+        bestUrl = url;
+        bestTime = t;
       }
     }
+    if (bestUrl) {
+      const url = bestUrl;
+      if (url) {
+        try {
+          // Resize to small thumbnail via canvas
+          thumbnail = await new Promise<string | undefined>((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement("canvas");
+              const tw = 280, th = 180;
+              canvas.width = tw; canvas.height = th;
+              const ctx = canvas.getContext("2d");
+              if (ctx) {
+                // object-fit: cover — crop to fill, preserve aspect ratio
+                const scale = Math.max(tw / img.width, th / img.height);
+                const sw = tw / scale, sh = th / scale;
+                const sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
+                ctx.drawImage(img, sx, sy, sw, sh, 0, 0, tw, th);
+                resolve(canvas.toDataURL("image/jpeg", 0.8));
+              } else {
+                resolve(undefined);
+              }
+            };
+            img.onerror = () => resolve(undefined);
+            img.src = url;
+            setTimeout(() => resolve(undefined), 1000);
+          });
+        } catch { /* ignore */ }
+      }
+    }
+    } // end updateThumbnail
 
     // Update index
     const index = JSON.parse(localStorage.getItem(PROJECTS_INDEX_KEY) || "[]") as ProjectMeta[];
@@ -656,7 +714,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     localStorage.removeItem(`flowstudio_proj_${id}`);
     localStorage.removeItem(`flowstudio_proj_${id}_backup`);
     await deleteImagesByPrefix(`${id}/`);
-    await deleteImagesByPrefix(`project_${id}`);
+    // Delete main project data but KEEP backups (project_xxx_bk_*)
+    await saveImage(`project_${id}`, ""); // clear main
+    await saveImage(`project_${id}_backup`, ""); // clear backup
+    // Backups (project_xxx_bk_*) are intentionally preserved
 
     const index = JSON.parse(localStorage.getItem(PROJECTS_INDEX_KEY) || "[]") as ProjectMeta[];
     localStorage.setItem(PROJECTS_INDEX_KEY, JSON.stringify(index.filter((p) => p.id !== id)));

@@ -116,6 +116,11 @@ export function connectWebSocket(onMessage: (data: any) => void): WebSocket {
   return ws;
 }
 
+// ── Interrupt current generation ───────────────────────────────────
+export async function interruptGeneration(): Promise<void> {
+  await fetch(`${getComfyUrl()}/api/interrupt`, { method: "POST" });
+}
+
 // ── Get queue status ───────────────────────────────────────────────
 export async function getQueueStatus(): Promise<{ queue_running: any[]; queue_pending: any[] }> {
   const res = await fetch(`${getComfyUrl()}/api/queue`);

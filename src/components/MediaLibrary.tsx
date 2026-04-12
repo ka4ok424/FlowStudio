@@ -361,6 +361,12 @@ function MediaDetail({ item, onClose }: { item: MediaItem; onClose: () => void }
                   <span className="media-detail-value">{item.genMeta.width}×{item.genMeta.height}</span>
                 </div>
               )}
+              {item.genMeta.duration != null && item.genMeta.duration > 0 && (
+                <div className="media-detail-row">
+                  <span className="media-detail-label">Gen Time</span>
+                  <span className="media-detail-value">{item.genMeta.duration < 1000 ? `${item.genMeta.duration}ms` : `${(item.genMeta.duration / 1000).toFixed(1)}s`}</span>
+                </div>
+              )}
             </>
           )}
         </div>

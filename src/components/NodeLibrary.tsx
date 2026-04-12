@@ -78,12 +78,15 @@ export default function NodeLibrary() {
 
       <div className="library-list">
         {/* ── Native FlowStudio nodes ─────────────────────────── */}
-        <div className="library-category">
-          <div className="native-section-header">FlowStudio</div>
-          <div className="native-nodes-grid">
-            {getAllNativeNodes()
-              .filter((n) => !search || n.label.toLowerCase().includes(search.toLowerCase()))
-              .map((def) => (
+        {(() => {
+          const allNative = getAllNativeNodes().filter((n) => !search || n.label.toLowerCase().includes(search.toLowerCase()));
+          const localTypes = new Set(["fs:localGenerate", "fs:img2img", "fs:kontext", "fs:ltxVideo", "fs:nextFrame", "fs:multiRef", "fs:upscale", "fs:prompt", "fs:preview", "fs:import", "fs:characterCard", "fs:scene", "fs:storyboard", "fs:group", "fs:comment"]);
+          const localNodes = allNative.filter((n) => localTypes.has(n.type));
+          const cloudNodes = allNative.filter((n) => !localTypes.has(n.type));
+
+          const renderGrid = (nodes: typeof allNative) => (
+            <div className="native-nodes-grid">
+              {nodes.map((def) => (
                 <div
                   key={def.type}
                   className="native-node-card"
@@ -104,8 +107,23 @@ export default function NodeLibrary() {
                   <span className="native-label">{def.label}</span>
                 </div>
               ))}
-          </div>
-        </div>
+            </div>
+          );
+
+          return (
+            <div className="library-category">
+              <div className="native-section-header">Local</div>
+              {renderGrid(localNodes)}
+              {cloudNodes.length > 0 && (
+                <>
+                  <div className="native-section-divider" />
+                  <div className="native-section-header">Cloud / API</div>
+                  {renderGrid(cloudNodes)}
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── ComfyUI nodes ───────────────────────────────────── */}
         {Object.entries(categories)

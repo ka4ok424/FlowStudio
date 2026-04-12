@@ -326,6 +326,7 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
                     });
                     // Update preview + history with persistent data URL
                     updateWidgetValue(id, "_genTime", Date.now() - startTime);
+                    updateWidgetValue(id, "_lastSeed", actualSeed);
                     updateWidgetValue(id, "_previewUrl", dataUrl);
                     const prevHist: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
                     const { history: newHist, index: newIdx } = await addToHistory(id, prevHist, dataUrl);

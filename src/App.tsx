@@ -36,6 +36,8 @@ import GroupNode from "./nodes/GroupNode";
 import CommentNode from "./nodes/CommentNode";
 import Img2ImgNode from "./nodes/Img2ImgNode";
 import KontextNode from "./nodes/KontextNode";
+import LtxVideoNode from "./nodes/LtxVideoNode";
+import NextFrameNode from "./nodes/NextFrameNode";
 import AiChat from "./components/AiChat";
 import MediaLibrary from "./components/MediaLibrary";
 import { useMediaStore } from "./store/mediaStore";
@@ -67,6 +69,8 @@ const nodeTypes = {
   commentNode: CommentNode,
   img2ImgNode: Img2ImgNode,
   kontextNode: KontextNode,
+  ltxVideoNode: LtxVideoNode,
+  nextFrameNode: NextFrameNode,
 };
 
 function App() {
@@ -95,7 +99,16 @@ function App() {
         setConnected(true);
         console.log(`Loaded ${Object.keys(defs).length} node definitions`);
 
-        // Load last project or create first one
+        console.log("[App] ComfyUI connected, node defs loaded");
+      })
+      .catch((err) => {
+        console.error("Failed to connect to ComfyUI:", err);
+        setConnected(false);
+      });
+
+    // Load project INDEPENDENTLY of ComfyUI connection
+    (async () => {
+      try {
         const lastId = localStorage.getItem("flowstudio_current_project");
         const projects = listProjects();
         if (lastId && projects.some((p) => p.id === lastId)) {
@@ -106,18 +119,12 @@ function App() {
           await createProject("My First Project");
         }
         useMediaStore.getState().loadFromStorage();
-
-        // Migrate: re-save to move any data URLs from localStorage to IndexedDB
-        await saveProject();
-        console.log("[App] Project loaded and migrated");
-
-        // Resume pending cloud generation jobs
+        console.log("[App] Project loaded");
         resumePendingJobs();
-      })
-      .catch((err) => {
-        console.error("Failed to connect to ComfyUI:", err);
-        setConnected(false);
-      });
+      } catch (err) {
+        console.error("[App] Project load failed:", err);
+      }
+    })();
   }, [setNodeDefs, setConnected]);
 
   // Autosave (debounced, every 5 sec when changes happen)
@@ -205,15 +212,43 @@ function App() {
 
   // WebSocket
   useEffect(() => {
+    const nodeLabels: Record<string, string> = {
+      CheckpointLoaderSimple: "Loading model",
+      UNETLoader: "Loading model",
+      UnetLoaderGGUF: "Loading GGUF model",
+      CLIPLoader: "Loading text encoder",
+      DualCLIPLoader: "Loading text encoders",
+      LTXVGemmaCLIPModelLoader: "Loading Gemma encoder",
+      CLIPTextEncode: "Encoding text",
+      VAELoader: "Loading VAE",
+      VAEDecode: "Decoding image",
+      VAEEncode: "Encoding image",
+      KSampler: "Sampling",
+      LTXVBaseSampler: "Sampling video",
+      LTXVTiledVAEDecode: "Decoding video",
+      LTXVApplySTG: "Applying STG",
+      CFGGuider: "Preparing guider",
+      SaveImage: "Saving image",
+      SaveVideo: "Saving video",
+      SaveAnimatedWEBP: "Saving preview",
+      CreateVideo: "Creating video",
+      ImageUpscaleWithModel: "AI Upscaling",
+      UpscaleModelLoader: "Loading upscaler",
+      FluxKontextImageScale: "Scaling for Kontext",
+      ReferenceLatent: "Setting reference",
+      LoadImage: "Loading image",
+    };
     const ws = connectWebSocket((data) => {
       if (data.type === "progress") {
         setProgress({ value: data.data.value, max: data.data.max });
-        addLog(`Progress: ${data.data.value}/${data.data.max}`);
+        addLog(`Sampling: ${data.data.value}/${data.data.max}`);
       } else if (data.type === "executing" && data.data.node === null) {
         setProgress(null);
-        addLog("Execution complete");
+        addLog("Generation complete");
       } else if (data.type === "executing") {
-        addLog(`Executing node: ${data.data.node}`);
+        const classType = data.data.class_type || "";
+        const label = nodeLabels[classType] || classType || `Node ${data.data.node}`;
+        addLog(label);
       }
     });
     return () => ws.close();

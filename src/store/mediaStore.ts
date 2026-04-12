@@ -138,13 +138,15 @@ export const useMediaStore = create<MediaState>((set, get) => ({
 // Helper to add a generation result
 export function addGenerationToLibrary(
   url: string,
-  meta: MediaItem["genMeta"]
+  meta: MediaItem["genMeta"],
+  mediaType: "image" | "video" | "audio" = "image"
 ) {
+  const ext = mediaType === "video" ? "mp4" : mediaType === "audio" ? "wav" : "png";
   const item: MediaItem = {
     id: `gen_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    type: "image",
+    type: mediaType,
     url,
-    fileName: `generation_${Date.now()}.png`,
+    fileName: `generation_${Date.now()}.${ext}`,
     source: "generated",
     favorite: false,
     createdAt: Date.now(),

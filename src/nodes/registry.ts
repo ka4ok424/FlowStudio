@@ -696,3 +696,85 @@ registerNativeNode({
     comfyMapping: "UNETLoader(kontext) + DualCLIPLoader(clip_l+t5xxl) + FluxKontextImageScale + ReferenceLatent + KSampler",
   },
 });
+
+registerNativeNode({
+  type: "fs:ltxVideo",
+  label: "LTX Video",
+  icon: "🎬",
+  accentColor: "#e85d75",
+  component: "LtxVideoNode",
+  description: "Generate video locally using LTX-2.3 model. 22B parameters with first/mid/last frame control and audio.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "first_frame", type: "IMAGE" },
+    { name: "mid_frame", type: "IMAGE" },
+    { name: "last_frame", type: "IMAGE" },
+    { name: "ref_audio", type: "AUDIO" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "Local video generation using LTX-2.3 via ComfyUI. Generates short video clips from text prompts.",
+    skills: [
+      "Text-to-video generation",
+      "Up to 97 frames at 24fps (~4 seconds)",
+      "FP8 quantized for 32GB VRAM",
+      "Distilled model: 8 steps for fast generation",
+    ],
+    params: {
+      steps: "Sampling steps, 4-20, default 8 (distilled)",
+      cfg: "CFG scale, 1-5, default 1.0",
+      width: "Video width, default 768",
+      height: "Video height, default 512",
+      frames: "Number of frames, 25-193, default 97 (~4s at 24fps)",
+      seed: "Integer for reproducibility",
+    },
+    connectsFrom: ["fs:prompt"],
+    connectsTo: ["fs:preview", "fs:tiktokPublish"],
+    examples: [
+      "Prompt('a cat walking in a garden') → LTX Video → Preview",
+      "Prompt('cinematic drone shot over mountains') → LTX Video (97 frames) → TikTok Publish",
+    ],
+    comfyMapping: "LTXVModelLoader + LTXVTextEncoderLoader + LTXVTextEncoder + EmptyLTXVLatentVideo + LTXVSampler + LTXVDecode + SaveAnimatedWEBP",
+  },
+});
+
+registerNativeNode({
+  type: "fs:nextFrame",
+  label: "Next Frame",
+  icon: "🎞️",
+  accentColor: "#66bb6a",
+  component: "NextFrameNode",
+  description: "Generate next frame as img2img variation from previous frame. For creating keyframes for video generation.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "input", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "frame", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Generate a visually consistent next frame from a source frame using img2img with low denoise. Designed for creating first/mid/last keyframes for LTX Video.",
+    skills: [
+      "Generate next keyframe maintaining character/scene identity",
+      "Low denoise (0.2-0.5) for consistency",
+      "Same model as LocalGen (Klein 9B) — no VRAM switch",
+      "Built-in negative prompt for quality",
+    ],
+    params: {
+      denoise: "Edit strength, 0.2-0.55, default 0.35. Lower = more similar to source",
+      steps: "Sampling steps, 4-20, default 8",
+      cfg: "CFG scale, 1-5, default 1.2",
+      seed: "Integer for reproducibility",
+      negativePrompt: "What to avoid (default: blurry, distorted anatomy, etc.)",
+    },
+    connectsFrom: ["fs:prompt", "fs:localGenerate", "fs:nextFrame", "fs:import"],
+    connectsTo: ["fs:ltxVideo", "fs:preview", "fs:nextFrame", "fs:upscale"],
+    examples: [
+      "LocalGen(skeleton jumping) → Next Frame('skeleton mid-air dunk', denoise 0.35) → LTX Video(first+last frame)",
+      "Chain: LocalGen → Next Frame(mid) → Next Frame(last) → LTX Video",
+    ],
+    comfyMapping: "UNETLoader + CLIPLoader + VAELoader + LoadImage + VAEEncode + CLIPTextEncode + KSampler(denoise<1) + VAEDecode + SaveImage",
+  },
+});
