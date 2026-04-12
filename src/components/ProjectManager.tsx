@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useWorkflowStore, type ProjectMeta } from "../store/workflowStore";
+import { saveImage, loadImage } from "../store/imageDb";
 
 interface Props {
   open: boolean;
@@ -61,6 +62,47 @@ export default function ProjectManager({ open, onClose }: Props) {
     }
   }, [renamingId, renameValue, renameProject]);
 
+  const importRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = useCallback(async (id: string) => {
+    setMenuOpen(null);
+    const project = projects.find((p) => p.id === id);
+    const raw = await loadImage(`project_${id}`);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    const exportData = {
+      version: 1,
+      name: project?.name || "Untitled",
+      exportedAt: Date.now(),
+      nodes: data.nodes,
+      edges: data.edges,
+      chatMessages: JSON.parse(localStorage.getItem(`flowstudio_chat_${id}`) || "[]"),
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(project?.name || "project").replace(/[^a-zA-Z0-9а-яА-Я ]/g, "_")}.flowstudio.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, [projects]);
+
+  const handleImport = useCallback(async (file: File) => {
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.nodes || !data.edges) { alert("Invalid project file"); return; }
+      const name = data.name || file.name.replace(".flowstudio.json", "").replace(".json", "");
+      const newId = await createProject(name);
+      const wfData = JSON.stringify({ nodes: data.nodes, edges: data.edges });
+      await saveImage(`project_${newId}`, wfData);
+      if (data.chatMessages?.length) {
+        localStorage.setItem(`flowstudio_chat_${newId}`, JSON.stringify(data.chatMessages));
+      }
+      await loadProject(newId);
+      onClose();
+    } catch { alert("Failed to import project"); }
+  }, [createProject, loadProject, onClose]);
+
   const formatDate = (ts: number) => {
     const d = new Date(ts);
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
@@ -71,7 +113,7 @@ export default function ProjectManager({ open, onClose }: Props) {
 
   return (
     <div className="pm-overlay" onClick={onClose}>
-      <div className="pm-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="pm-modal" onClick={(e) => { e.stopPropagation(); setMenuOpen(null); }}>
         <div className="pm-header">
           <h2 className="pm-title">My Projects</h2>
           <button className="pm-close" onClick={onClose}>
@@ -83,13 +125,35 @@ export default function ProjectManager({ open, onClose }: Props) {
 
         <div className="pm-grid">
           {/* Create new */}
-          <div className="pm-card pm-card-new" onClick={handleCreate}>
+          <div className="pm-card pm-card-new" onClick={() => { if (menuOpen !== "_create") handleCreate(); }}>
             <div className="pm-card-new-icon">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
               </svg>
             </div>
             <span className="pm-card-new-label">Create New Project</span>
+            <button className="pm-card-menu-btn" onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen(menuOpen === "_create" ? null : "_create");
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
+              </svg>
+            </button>
+            {menuOpen === "_create" && (
+              <div className="pm-card-menu" onClick={(e) => e.stopPropagation()}>
+                <button className="pm-menu-item" onClick={() => { setMenuOpen(null); importRef.current?.click(); }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  Import Project
+                </button>
+              </div>
+            )}
+            <input ref={importRef} type="file" accept=".json,.flowstudio" style={{ display: "none" }}
+              onChange={(e) => { if (e.target.files?.[0]) handleImport(e.target.files[0]); e.target.value = ""; }} />
           </div>
 
           {/* Project cards */}
@@ -141,6 +205,14 @@ export default function ProjectManager({ open, onClose }: Props) {
                       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                     </svg>
                     Duplicate
+                  </button>
+                  <button className="pm-menu-item" onClick={() => handleExport(p.id)}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Export
                   </button>
                   <button className="pm-menu-item pm-menu-danger" onClick={() => handleDelete(p.id)}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

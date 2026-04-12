@@ -46,12 +46,13 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
     const height = freshWv.height || 512;
     const frames = freshWv.frames || 41;
     const fps = freshWv.fps || 24;
+    const maxLength = freshWv.maxLength || 512;
     const seed = freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647);
     const negativePrompt = freshWv.negativePrompt || "";
-    const stg = freshWv.stg ?? 1.0;
-    const maxShift = freshWv.maxShift ?? 1.0;
-    const baseShift = freshWv.baseShift ?? 0.5;
-    const frameStrength = freshWv.frameStrength ?? 0.95;
+    const stg = freshWv.stg ?? 0.6;
+    const maxShift = freshWv.maxShift ?? 0.6;
+    const baseShift = freshWv.baseShift ?? 0.6;
+    const frameStrength = freshWv.frameStrength ?? 0.85;
 
     // Get prompt
     let promptText = "";
@@ -109,7 +110,7 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
         inputs: {
           gemma_path: "gemma-3-12b-it-qat-q4_0-unquantized\\model-00001-of-00005.safetensors",
           ltxv_path: "LTX-Video\\ltx-2.3-22b-distilled-fp8.safetensors",
-          max_length: 512,
+          max_length: maxLength,
         },
       };
 
@@ -346,7 +347,7 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
               try {
                 const wf: Record<string, any> = {
                   "1": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "LTX-Video\\ltx-2.3-22b-distilled-fp8.safetensors" } },
-                  "2": { class_type: "LTXVGemmaCLIPModelLoader", inputs: { gemma_path: "gemma-3-12b-it-qat-q4_0-unquantized\\model-00001-of-00005.safetensors", ltxv_path: "LTX-Video\\ltx-2.3-22b-distilled-fp8.safetensors", max_length: 512 } },
+                  "2": { class_type: "LTXVGemmaCLIPModelLoader", inputs: { gemma_path: "gemma-3-12b-it-qat-q4_0-unquantized\\model-00001-of-00005.safetensors", ltxv_path: "LTX-Video\\ltx-2.3-22b-distilled-fp8.safetensors", max_length: maxLength } },
                   "3": { class_type: "CLIPTextEncode", inputs: { text: pt, clip: ["2", 0] } },
                   "4": { class_type: "CLIPTextEncode", inputs: { text: warmWv.negativePrompt || "", clip: ["2", 0] } },
                   "5": { class_type: "LTXVConditioning", inputs: { positive: ["3", 0], negative: ["4", 0], frame_rate: warmWv.fps || 24 } },

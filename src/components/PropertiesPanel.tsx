@@ -753,10 +753,11 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const fps = data.widgetValues?.fps ?? 24;
   const seed = data.widgetValues?.seed ?? "";
   const negativePrompt = data.widgetValues?.negativePrompt ?? "";
-  const stg = data.widgetValues?.stg ?? 1.0;
-  const maxShift = data.widgetValues?.maxShift ?? 1.0;
-  const baseShift = data.widgetValues?.baseShift ?? 0.5;
-  const frameStrength = data.widgetValues?.frameStrength ?? 0.95;
+  const stg = data.widgetValues?.stg ?? 0.6;
+  const maxShift = data.widgetValues?.maxShift ?? 0.6;
+  const baseShift = data.widgetValues?.baseShift ?? 0.6;
+  const frameStrength = data.widgetValues?.frameStrength ?? 0.85;
+  const maxLength = data.widgetValues?.maxLength ?? 512;
 
   return (
     <>
@@ -765,6 +766,12 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
         <input type="range" className="props-range" min={25} max={193} step={8} value={frames}
           onChange={(e) => updateWidgetValue(nodeId, "frames", parseInt(e.target.value))} />
         <span className="props-range-value">{frames}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">FPS</div>
+        <input type="range" className="props-range" min={8} max={30} step={1} value={fps}
+          onChange={(e) => updateWidgetValue(nodeId, "fps", parseInt(e.target.value))} />
+        <span className="props-range-value">{fps}</span>
       </div>
       <div className="props-section">
         <div className="props-section-title">Size</div>
@@ -797,17 +804,27 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
         <span className="props-range-value">{steps}</span>
       </div>
       <div className="props-section">
-        <div className="props-section-title">Negative Prompt</div>
-        <textarea className="props-textarea" value={negativePrompt} rows={2} placeholder="What to avoid..."
-          onChange={(e) => updateWidgetValue(nodeId, "negativePrompt", e.target.value)} />
-      </div>
-      <div className="props-section">
         <div className="props-section-title">Seed</div>
-        <input className="props-input" type="text" value={seed} placeholder="Random"
-          onChange={(e) => updateWidgetValue(nodeId, "seed", e.target.value)} />
+        <div className="props-input-row">
+          <input type="number" className="props-input" value={seed} placeholder="Random"
+            onChange={(e) => updateWidgetValue(nodeId, "seed", e.target.value)} />
+          <button className="props-dice-btn"
+            onClick={() => updateWidgetValue(nodeId, "seed", Math.floor(Math.random() * 2147483647).toString())}>🎲</button>
+        </div>
       </div>
       <details className="props-section props-temp-section">
         <summary className="props-temp-header">Advanced <span className="props-temp-badge">PRO</span></summary>
+        <div className="props-section">
+          <div className="props-section-title">Negative Prompt</div>
+          <textarea className="props-textarea" value={negativePrompt} rows={2} placeholder="What to avoid..."
+            onChange={(e) => updateWidgetValue(nodeId, "negativePrompt", e.target.value)} />
+        </div>
+        <div className="props-section">
+          <div className="props-section-title">Max Prompt Length</div>
+          <input type="range" className="props-range" min={128} max={2048} step={128} value={maxLength}
+            onChange={(e) => updateWidgetValue(nodeId, "maxLength", parseInt(e.target.value))} />
+          <span className="props-range-value">{maxLength}</span>
+        </div>
         <div className="props-section">
           <div className="props-section-title">STG (Spatiotemporal Guidance)</div>
           <input type="range" className="props-range" min={0} max={2} step={0.1} value={stg}
@@ -831,12 +848,6 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
           <input type="range" className="props-range" min={0.1} max={1} step={0.05} value={frameStrength}
             onChange={(e) => updateWidgetValue(nodeId, "frameStrength", parseFloat(e.target.value))} />
           <span className="props-range-value">{frameStrength.toFixed(2)}</span>
-        </div>
-        <div className="props-section">
-          <div className="props-section-title">FPS</div>
-          <input type="range" className="props-range" min={8} max={30} step={1} value={fps}
-            onChange={(e) => updateWidgetValue(nodeId, "fps", parseInt(e.target.value))} />
-          <span className="props-range-value">{fps}</span>
         </div>
       </details>
     </>
