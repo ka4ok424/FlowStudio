@@ -1,6 +1,5 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { useWorkflowStore } from "../store/workflowStore";
-import { queuePrompt, getComfyUrl } from "../api/comfyApi";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + " B";
@@ -365,10 +364,9 @@ function NanoBananaProperties({ nodeId, data }: { nodeId: string; data: any }) {
 function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
   const nodeDefs = useWorkflowStore((s) => s.nodeDefs);
-  const [warming, setWarming] = useState(false);
-  const [warmTime, setWarmTime] = useState<number | null>(null);
 
-  // Get all models from ComfyUI
+  // Get image generation models from ComfyUI (filtered)
+  const ALLOWED_MODELS = ["flux-2-klein-4b", "flux-2-klein-9b", "flux2_dev_fp8mixed", "flux2-dev.safetensors"];
   const checkpoints: string[] = [];
   for (const loaderName of ["UNETLoader", "UnetLoaderGGUF", "CheckpointLoaderSimple"]) {
     if (nodeDefs[loaderName]) {
@@ -376,7 +374,7 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
       const config = nodeDefs[loaderName].input?.required?.[key];
       if (config && Array.isArray(config) && Array.isArray(config[0])) {
         for (const m of config[0]) {
-          if (!checkpoints.includes(m)) checkpoints.push(m);
+          if (!checkpoints.includes(m) && ALLOWED_MODELS.some(a => m.toLowerCase().includes(a.toLowerCase()))) checkpoints.push(m);
         }
       }
     }
@@ -439,77 +437,6 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
           <button className="props-dice-btn"
             onClick={() => updateWidgetValue(nodeId, "seed", Math.floor(Math.random() * 2147483647).toString())}>🎲</button>
         </div>
-      </div>
-
-      <div className="props-section">
-        <button className="localgen-generate-btn" disabled={warming} style={{ width: "auto", fontSize: 12, padding: "4px 10px" }} onClick={async () => {
-          if (warming) return;
-          setWarming(true); setWarmTime(null);
-          const t = Date.now();
-          // Get prompt text from connected Prompt node
-          const { nodes: allNodes, edges: allEdges } = useWorkflowStore.getState();
-          const promptEdge = allEdges.find((edge: any) => edge.target === nodeId && edge.targetHandle === "prompt");
-          const promptText = promptEdge ? (allNodes.find((nd: any) => nd.id === promptEdge.source)?.data as any)?.widgetValues?.text || "warmup" : "warmup";
-          const selectedModel = model;
-          const modelLower = selectedModel.toLowerCase();
-          const isKlein = modelLower.includes("klein");
-          const isFlux2 = modelLower.includes("flux-2") || modelLower.includes("flux2") || isKlein;
-          const isGGUF = modelLower.includes("gguf");
-
-          let wf: Record<string, any>;
-          if (isGGUF) {
-            wf = {
-              "1": { class_type: "UnetLoaderGGUF", inputs: { unet_name: selectedModel } },
-              "2": { class_type: "DualCLIPLoader", inputs: { clip_name1: "clip_l.safetensors", clip_name2: "t5xxl_fp8_e4m3fn.safetensors", type: "flux" } },
-              "3": { class_type: "VAELoader", inputs: { vae_name: "ae.safetensors" } },
-              "4": { class_type: "CLIPTextEncode", inputs: { text: promptText, clip: ["2", 0] } },
-              "5": { class_type: "EmptySD3LatentImage", inputs: { width: width || 512, height: height || 512, batch_size: 1 } },
-              "6": { class_type: "KSampler", inputs: { model: ["1", 0], positive: ["4", 0], negative: ["4", 0], latent_image: ["5", 0], seed: Date.now() % 1000000, steps: 1, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1.0 } },
-              "7": { class_type: "VAEDecode", inputs: { samples: ["6", 0], vae: ["3", 0] } },
-              "8": { class_type: "SaveImage", inputs: { images: ["7", 0], filename_prefix: "_warmup" } },
-            };
-          } else if (isFlux2) {
-            const isKlein9B = isKlein && modelLower.includes("9b");
-            const isFlux2Dev = !isKlein && modelLower.includes("dev");
-            const clipName = isKlein9B ? "qwen3_8b_klein9b.safetensors" : isFlux2Dev ? "mistral_3_small_flux2_fp8.safetensors" : "qwen_3_4b_fp4_flux2.safetensors";
-            wf = {
-              "1": { class_type: "UNETLoader", inputs: { unet_name: selectedModel, weight_dtype: "default" } },
-              "2": { class_type: "CLIPLoader", inputs: { clip_name: clipName, type: "flux2", device: "default" } },
-              "3": { class_type: "VAELoader", inputs: { vae_name: "flux2-vae.safetensors" } },
-              "4": { class_type: "CLIPTextEncode", inputs: { text: promptText, clip: ["2", 0] } },
-              "5": { class_type: "EmptySD3LatentImage", inputs: { width: width || 512, height: height || 512, batch_size: 1 } },
-              "6": { class_type: "KSampler", inputs: { model: ["1", 0], positive: ["4", 0], negative: ["4", 0], latent_image: ["5", 0], seed: Date.now() % 1000000, steps: 1, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1.0 } },
-              "7": { class_type: "VAEDecode", inputs: { samples: ["6", 0], vae: ["3", 0] } },
-              "8": { class_type: "SaveImage", inputs: { images: ["7", 0], filename_prefix: "_warmup" } },
-            };
-          } else {
-            wf = {
-              "1": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: selectedModel } },
-              "2": { class_type: "CLIPTextEncode", inputs: { text: promptText, clip: ["1", 1] } },
-              "3": { class_type: "EmptyLatentImage", inputs: { width: width || 512, height: height || 512, batch_size: 1 } },
-              "4": { class_type: "KSampler", inputs: { model: ["1", 0], positive: ["2", 0], negative: ["2", 0], latent_image: ["3", 0], seed: Date.now() % 1000000, steps: 1, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1.0 } },
-              "5": { class_type: "VAEDecode", inputs: { samples: ["4", 0], vae: ["1", 2] } },
-              "6": { class_type: "SaveImage", inputs: { images: ["5", 0], filename_prefix: "_warmup" } },
-            };
-          }
-          try {
-            const res = await queuePrompt(wf);
-            for (let i = 0; i < 120; i++) {
-              await new Promise((resolve) => setTimeout(resolve, 2000));
-              try {
-                const hRes = await fetch(`${getComfyUrl()}/api/history/${res.prompt_id}`);
-                if (!hRes.ok) continue;
-                const h = await hRes.json();
-                if (h[res.prompt_id]) { break; }
-              } catch { /* retry */ }
-            }
-          } catch { /* ignore */ }
-          setWarmTime(Date.now() - t);
-          setWarming(false);
-        }}>
-          {warming ? "🔥..." : "🔥"}
-        </button>
-        {warmTime != null && <span style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4, display: "block" }}>Warmup: {(warmTime / 1000).toFixed(1)}s</span>}
       </div>
     </>
   );
