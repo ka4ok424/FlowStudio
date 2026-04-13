@@ -2,6 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
+  test: {
+    include: ['src/**/*.test.ts'],
+    exclude: ['tests/**', 'node_modules/**'],
+  },
   plugins: [
     react(),
     // Debug API plugin — injects a script that exposes state via /debug endpoints
