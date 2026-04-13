@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   test: {
-    include: ['src/**/*.test.ts'],
-    exclude: ['tests/**', 'node_modules/**'],
+    root: '.',
+    include: ['src/__tests__/**/*.test.ts'],
+    exclude: ['tests/**', 'node_modules/**', 'Library/**'],
   },
   plugins: [
     react(),
