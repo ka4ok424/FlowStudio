@@ -1138,7 +1138,9 @@ body {
   justify-content: center;
   overflow: hidden;
   position: relative;
-  position: relative;
+}
+.nanob-preview:hover {
+  background: repeating-conic-gradient(#cccccc 0% 25%, #ffffff 0% 50%) 0 0 / 16px 16px;
 }
 .nanob-preview-empty {
   display: flex;
