@@ -864,7 +864,26 @@
 .inpaint-status { font-size: 10px; color: #ab47bc; font-weight: 700; }
 .inpaint-inputs { padding: 6px 0; }
 .inpaint-outputs { padding: 6px 0; border-top: 1px solid var(--border); }
-.inpaint-mask-preview { position: relative; margin: 4px 12px; border-radius: 4px; overflow: hidden; }
+.inpaint-preview-wrap { position: relative; }
+.inpaint-mask-overlay {
+  position: absolute; top: 8px; left: 12px; right: 12px; bottom: 0;
+  width: calc(100% - 24px); height: calc(100% - 8px);
+  object-fit: cover; border-radius: var(--radius-sm);
+  opacity: 0; pointer-events: none;
+}
+.inpaint-preview-wrap:hover .inpaint-mask-overlay { opacity: 0.6; filter: invert(1); }
+.inpaint-generate-btn {
+  flex: 1; padding: 10px; border: none; border-radius: var(--radius-sm);
+  background: #5b9bd5; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.inpaint-generate-btn:hover { background: #6bb3f0; }
+.inpaint-generate-btn.generating { background: #3a6a9a; }
+.inpaint-mask-btn {
+  width: 40px; background: var(--bg-widget); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.inpaint-mask-btn:hover { border-color: var(--border-hover); background: var(--bg-secondary); }
 
 /* ══════════════════════════════════════════════════════════════════
    Compare Node
@@ -954,6 +973,7 @@
   background: var(--bg-secondary); border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.5); max-width: 90vw; max-height: 90vh;
   display: flex; flex-direction: column;
+  overflow: hidden;
 }
 .mask-header {
   display: flex; align-items: center; gap: 12px;
@@ -962,13 +982,19 @@
 .mask-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
 .mask-hint { font-size: 11px; color: var(--text-muted); flex: 1; }
 .mask-canvas-wrap {
-  position: relative; margin: 12px; border-radius: 8px; overflow: hidden;
+  position: relative; margin: 12px auto; border-radius: 8px; overflow: hidden;
   background: repeating-conic-gradient(#222 0% 25%, #333 0% 50%) 50% / 16px 16px;
+  contain: layout size;
 }
-.mask-canvas-bg { position: absolute; top: 0; left: 0; }
-.mask-canvas-draw { position: absolute; top: 0; left: 0; }
+.mask-canvas-bg { position: absolute; top: 0; left: 0; will-change: transform; }
+.mask-canvas-draw { position: absolute; top: 0; left: 0; will-change: transform; }
+.mask-brush-cursor {
+  position: absolute; border-radius: 50%; pointer-events: none; z-index: 10;
+  border: 2px solid rgba(255,255,255,0.8);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
+}
 .mask-toolbar {
-  display: flex; align-items: center; gap: 16px;
+  display: flex; align-items: center; gap: 16px; min-height: 48px;
   padding: 12px 18px; border-top: 1px solid var(--border); flex-wrap: wrap;
 }
 .mask-tool-group { display: flex; align-items: center; gap: 6px; }
@@ -979,7 +1005,7 @@
 }
 .mask-tool-btn:hover { border-color: var(--border-hover); color: var(--text-primary); }
 .mask-tool-btn.active { background: #ab47bc33; border-color: #ab47bc; color: #ce93d8; }
-.mask-size-label { font-size: 11px; color: var(--text-muted); min-width: 50px; }
+.mask-size-label { font-size: 11px; color: var(--text-muted); min-width: 85px; text-align: right; }
 .mask-size-slider { width: 120px; }
 .mask-save-btn {
   padding: 8px 20px; border-radius: 6px; font-size: 13px; font-weight: 600;

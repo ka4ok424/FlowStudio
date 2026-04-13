@@ -21,38 +21,29 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
   // Only show current preview URL (from _previewUrl), don't render all history
   const currentUrl = fallbackUrl;
 
+  const loadHistoryItem = useCallback((idx: number) => {
+    const marker = history[idx];
+    updateWidgetValue(nodeId, "_historyIndex", idx);
+    if (marker && marker.startsWith("__idb__:")) {
+      // Extract IDB key from marker
+      const idbKey = marker.replace("__idb__:", "");
+      loadImage(idbKey).then((data) => {
+        if (data) updateWidgetValue(nodeId, "_previewUrl", data);
+      });
+    } else if (marker) {
+      updateWidgetValue(nodeId, "_previewUrl", marker);
+    }
+  }, [nodeId, history, updateWidgetValue]);
+
   const goPrev = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    if (currentIndex > 0) {
-      const newIdx = currentIndex - 1;
-      const url = history[newIdx];
-      updateWidgetValue(nodeId, "_historyIndex", newIdx);
-      if (url && !url.startsWith("__idb")) {
-        updateWidgetValue(nodeId, "_previewUrl", url);
-      } else {
-        // Load from IndexedDB
-        loadImage(`${nodeId}/_history_${newIdx}`).then((data) => {
-          if (data) updateWidgetValue(nodeId, "_previewUrl", data);
-        });
-      }
-    }
-  }, [nodeId, currentIndex, history, updateWidgetValue]);
+    if (currentIndex > 0) loadHistoryItem(currentIndex - 1);
+  }, [currentIndex, loadHistoryItem]);
 
   const goNext = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    if (currentIndex < total - 1) {
-      const newIdx = currentIndex + 1;
-      const url = history[newIdx];
-      updateWidgetValue(nodeId, "_historyIndex", newIdx);
-      if (url && !url.startsWith("__idb")) {
-        updateWidgetValue(nodeId, "_previewUrl", url);
-      } else {
-        loadImage(`${nodeId}/_history_${newIdx}`).then((data) => {
-          if (data) updateWidgetValue(nodeId, "_previewUrl", data);
-        });
-      }
-    }
-  }, [nodeId, currentIndex, total, history, updateWidgetValue]);
+    if (currentIndex < total - 1) loadHistoryItem(currentIndex + 1);
+  }, [currentIndex, total, loadHistoryItem]);
 
   return (
     <div className="nanob-preview">

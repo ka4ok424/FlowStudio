@@ -2,19 +2,71 @@ import { useRef, useState, useEffect, useCallback } from "react";
 
 interface MaskCanvasProps {
   imageUrl: string;
+  existingMask?: string | null;
   onSave: (maskDataUrl: string) => void;
   onClose: () => void;
 }
 
-export default function MaskCanvas({ imageUrl, onSave, onClose }: MaskCanvasProps) {
+export default function MaskCanvas({ imageUrl, existingMask, onSave, onClose }: MaskCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const maskRef = useRef<HTMLCanvasElement>(null);
+  const cursorRef = useRef<HTMLDivElement>(null);
+  const brushSizeRef = useRef(30);
+  const brushOpacityRef = useRef(100);
   const [brushSize, setBrushSize] = useState(30);
   const [brushOpacity, setBrushOpacity] = useState(100);
   const [isErasing, setIsErasing] = useState(false);
   const [drawing, setDrawing] = useState(false);
   const [imgSize, setImgSize] = useState({ w: 512, h: 512 });
 
+  // Undo/Redo history
+  const historyRef = useRef<ImageData[]>([]);
+  const historyIdxRef = useRef(-1);
+  const MAX_UNDO = 30;
+
+  const saveToHistory = useCallback(() => {
+    const mask = maskRef.current;
+    if (!mask) return;
+    const ctx = mask.getContext("2d")!;
+    const data = ctx.getImageData(0, 0, mask.width, mask.height);
+    // Trim future states
+    historyRef.current = historyRef.current.slice(0, historyIdxRef.current + 1);
+    historyRef.current.push(data);
+    if (historyRef.current.length > MAX_UNDO) historyRef.current.shift();
+    historyIdxRef.current = historyRef.current.length - 1;
+  }, []);
+
+  const undo = useCallback(() => {
+    if (historyIdxRef.current <= 0) return;
+    historyIdxRef.current--;
+    const mask = maskRef.current;
+    if (!mask) return;
+    const ctx = mask.getContext("2d")!;
+    ctx.putImageData(historyRef.current[historyIdxRef.current], 0, 0);
+  }, []);
+
+  const redo = useCallback(() => {
+    if (historyIdxRef.current >= historyRef.current.length - 1) return;
+    historyIdxRef.current++;
+    const mask = maskRef.current;
+    if (!mask) return;
+    const ctx = mask.getContext("2d")!;
+    ctx.putImageData(historyRef.current[historyIdxRef.current], 0, 0);
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+
+  // Load image + existing mask
   useEffect(() => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -35,11 +87,56 @@ export default function MaskCanvas({ imageUrl, onSave, onClose }: MaskCanvasProp
 
       const mctx = mask.getContext("2d")!;
       mctx.clearRect(0, 0, w, h);
+
+      // Load existing mask if available
+      if (existingMask) {
+        const maskImg = new Image();
+        maskImg.crossOrigin = "anonymous";
+        maskImg.onload = () => {
+          // Convert B&W mask back to red overlay
+          const tempCanvas = document.createElement("canvas");
+          tempCanvas.width = w; tempCanvas.height = h;
+          const tctx = tempCanvas.getContext("2d")!;
+          tctx.drawImage(maskImg, 0, 0, w, h);
+          const maskData = tctx.getImageData(0, 0, w, h);
+
+          const overlayData = mctx.createImageData(w, h);
+          for (let i = 0; i < maskData.data.length; i += 4) {
+            const brightness = maskData.data[i]; // white = painted area
+            if (brightness > 10) {
+              overlayData.data[i] = 255;     // R
+              overlayData.data[i + 1] = 0;   // G
+              overlayData.data[i + 2] = 0;   // B
+              overlayData.data[i + 3] = Math.round((brightness / 255) * 153); // alpha
+            }
+          }
+          mctx.putImageData(overlayData, 0, 0);
+          saveToHistory();
+        };
+        maskImg.src = existingMask;
+      } else {
+        saveToHistory();
+      }
     };
     img.src = imageUrl;
-  }, [imageUrl]);
+  }, [imageUrl, existingMask, saveToHistory]);
+
+  // Update cursor position
+  const updateCursor = useCallback((e: React.MouseEvent) => {
+    const cursor = cursorRef.current;
+    const mask = maskRef.current;
+    if (!cursor || !mask) return;
+    const rect = mask.getBoundingClientRect();
+    const size = brushSizeRef.current;
+    cursor.style.left = `${e.clientX - rect.left - size / 2}px`;
+    cursor.style.top = `${e.clientY - rect.top - size / 2}px`;
+    cursor.style.width = `${size}px`;
+    cursor.style.height = `${size}px`;
+    cursor.style.display = "block";
+  }, []);
 
   const draw = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    updateCursor(e);
     if (!drawing) return;
     const mask = maskRef.current;
     if (!mask) return;
@@ -53,13 +150,43 @@ export default function MaskCanvas({ imageUrl, onSave, onClose }: MaskCanvasProp
       ctx.fillStyle = "rgba(0, 0, 0, 1)";
     } else {
       ctx.globalCompositeOperation = "source-over";
-      const alpha = brushOpacity / 100;
+      const alpha = brushOpacityRef.current / 100;
       ctx.fillStyle = `rgba(255, 0, 0, ${alpha * 0.6})`;
     }
     ctx.beginPath();
-    ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+    ctx.arc(x, y, brushSizeRef.current / 2, 0, Math.PI * 2);
     ctx.fill();
-  }, [drawing, brushSize, brushOpacity, isErasing]);
+  }, [drawing, isErasing, updateCursor]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    setDrawing(true);
+    // Draw single dot on click
+    const mask = maskRef.current;
+    if (!mask) return;
+    const rect = mask.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const ctx = mask.getContext("2d")!;
+    if (isErasing) {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = "rgba(0, 0, 0, 1)";
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      const alpha = brushOpacityRef.current / 100;
+      ctx.fillStyle = `rgba(255, 0, 0, ${alpha * 0.6})`;
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, brushSizeRef.current / 2, 0, Math.PI * 2);
+    ctx.fill();
+    updateCursor(e);
+  }, [isErasing, updateCursor]);
+
+  const handleMouseUp = useCallback(() => {
+    if (drawing) {
+      setDrawing(false);
+      saveToHistory();
+    }
+  }, [drawing, saveToHistory]);
 
   const handleSave = () => {
     const mask = maskRef.current;
@@ -70,20 +197,17 @@ export default function MaskCanvas({ imageUrl, onSave, onClose }: MaskCanvasProp
     exportCanvas.height = mask.height;
     const ctx = exportCanvas.getContext("2d")!;
 
-    // Black background (keep areas)
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, mask.width, mask.height);
 
-    // Convert red overlay alpha → white intensity (grayscale mask)
     const maskCtx = mask.getContext("2d")!;
     const maskData = maskCtx.getImageData(0, 0, mask.width, mask.height);
     const exportData = ctx.getImageData(0, 0, mask.width, mask.height);
 
     for (let i = 0; i < maskData.data.length; i += 4) {
-      const alpha = maskData.data[i + 3]; // alpha channel = paint intensity
+      const alpha = maskData.data[i + 3];
       if (alpha > 2) {
-        // Map alpha to white intensity: higher alpha = whiter = more change
-        const intensity = Math.min(255, Math.round((alpha / 153) * 255)); // 153 = max alpha at 100% opacity (0.6*255)
+        const intensity = Math.min(255, Math.round((alpha / 153) * 255));
         exportData.data[i] = intensity;
         exportData.data[i + 1] = intensity;
         exportData.data[i + 2] = intensity;
@@ -100,6 +224,7 @@ export default function MaskCanvas({ imageUrl, onSave, onClose }: MaskCanvasProp
     if (!mask) return;
     const ctx = mask.getContext("2d")!;
     ctx.clearRect(0, 0, mask.width, mask.height);
+    saveToHistory();
   };
 
   return (
@@ -116,12 +241,14 @@ export default function MaskCanvas({ imageUrl, onSave, onClose }: MaskCanvasProp
           <canvas
             ref={maskRef}
             className="mask-canvas-draw"
-            onMouseDown={(e) => { setDrawing(true); draw(e); }}
+            onMouseDown={handleMouseDown}
             onMouseMove={draw}
-            onMouseUp={() => setDrawing(false)}
-            onMouseLeave={() => setDrawing(false)}
-            style={{ cursor: "crosshair" }}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={() => { setDrawing(false); if (cursorRef.current) cursorRef.current.style.display = "none"; }}
+            onMouseEnter={updateCursor}
+            style={{ cursor: "none" }}
           />
+          <div ref={cursorRef} className="mask-brush-cursor" style={{ display: "none" }} />
         </div>
 
         <div className="mask-toolbar">
@@ -129,14 +256,16 @@ export default function MaskCanvas({ imageUrl, onSave, onClose }: MaskCanvasProp
             <button className={`mask-tool-btn ${!isErasing ? "active" : ""}`} onClick={() => setIsErasing(false)}>🖌️ Brush</button>
             <button className={`mask-tool-btn ${isErasing ? "active" : ""}`} onClick={() => setIsErasing(true)}>🧹 Eraser</button>
             <button className="mask-tool-btn" onClick={handleClear}>🗑️ Clear</button>
+            <button className="mask-tool-btn" onClick={undo} title="Undo (Cmd+Z)">↩</button>
+            <button className="mask-tool-btn" onClick={redo} title="Redo (Cmd+Shift+Z)">↪</button>
           </div>
           <div className="mask-tool-group">
             <label className="mask-size-label">Size: {brushSize}</label>
-            <input type="range" min={5} max={100} value={brushSize} onChange={(e) => setBrushSize(parseInt(e.target.value))} className="mask-size-slider" />
+            <input type="range" min={5} max={100} value={brushSize} onChange={(e) => { const v = parseInt(e.target.value); brushSizeRef.current = v; setBrushSize(v); }} className="mask-size-slider" />
           </div>
           <div className="mask-tool-group">
             <label className="mask-size-label">Strength: {brushOpacity}%</label>
-            <input type="range" min={10} max={100} step={10} value={brushOpacity} onChange={(e) => setBrushOpacity(parseInt(e.target.value))} className="mask-size-slider" />
+            <input type="range" min={10} max={100} step={10} value={brushOpacity} onChange={(e) => { const v = parseInt(e.target.value); brushOpacityRef.current = v; setBrushOpacity(v); }} className="mask-size-slider" />
           </div>
           <div className="mask-tool-group">
             <button className="mask-save-btn" onClick={handleSave}>Apply Mask</button>
