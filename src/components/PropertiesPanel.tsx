@@ -62,6 +62,15 @@ export default function PropertiesPanel() {
         {/* TTS properties */}
         {data.type === "fs:tts" && <TtsProperties nodeId={node.id} data={data} />}
 
+        {/* Remove BG properties */}
+        {data.type === "fs:removeBg" && <RemoveBgProperties nodeId={node.id} data={data} />}
+
+        {/* Enhance properties */}
+        {data.type === "fs:enhance" && <EnhanceProperties nodeId={node.id} data={data} />}
+
+        {/* Inpaint properties */}
+        {data.type === "fs:inpaint" && <InpaintProperties nodeId={node.id} data={data} />}
+
         {/* Img2Img properties */}
         {data.type === "fs:img2img" && <Img2ImgProperties nodeId={node.id} data={data} />}
 
@@ -626,6 +635,188 @@ function UpscaleProperties({ nodeId, data }: { nodeId: string; data: any }) {
   );
 }
 
+// ── Remove BG Properties ─────────────────────────────────────────
+function RemoveBgProperties({ nodeId, data }: { nodeId: string; data: any }) {
+  const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const model = data.widgetValues?.model ?? "BiRefNet-general";
+
+  const models = [
+    { value: "BiRefNet-general", label: "General (balanced)", desc: "Best overall quality, 1024px" },
+    { value: "BiRefNet-portrait", label: "Portrait", desc: "People, hair, skin — cleanest edges" },
+    { value: "BiRefNet-HR", label: "High-Res", desc: "Up to 2560px, maximum detail" },
+    { value: "BiRefNet_toonout", label: "Cartoon / 3D", desc: "For stylized, CG, Pixar-style" },
+    { value: "BiRefNet-matting", label: "Matting", desc: "Semi-transparent edges, glass, fur" },
+    { value: "BiRefNet-HR-matting", label: "HR Matting", desc: "High-res + transparent edges" },
+    { value: "BiRefNet_dynamic", label: "Dynamic", desc: "Any resolution, most robust" },
+    { value: "BiRefNet_lite", label: "Lite (fast)", desc: "Quick preview, lower quality" },
+  ];
+
+  const current = models.find(m => m.value === model);
+
+  return (
+    <>
+      <div className="props-section">
+        <div className="props-section-title">Model</div>
+        <select className="props-select" value={model}
+          onChange={(e) => updateWidgetValue(nodeId, "model", e.target.value)}>
+          {models.map((m) => (
+            <option key={m.value} value={m.value}>{m.label}</option>
+          ))}
+        </select>
+        {current && <p className="settings-hint" style={{ marginTop: 4 }}>{current.desc}</p>}
+      </div>
+    </>
+  );
+}
+
+// ── Enhance Properties ───────────────────────────────────────────
+function EnhanceProperties({ nodeId, data }: { nodeId: string; data: any }) {
+  const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const scale = data.widgetValues?.scale ?? 2;
+  const steps = data.widgetValues?.steps ?? 20;
+  const restoration = data.widgetValues?.restoration ?? 0.5;
+  const cfg = data.widgetValues?.cfg ?? 4.0;
+  const colorFix = data.widgetValues?.colorFix ?? "AdaIn";
+  const seed = data.widgetValues?.seed ?? "";
+  const prompt = data.widgetValues?.prompt ?? "high quality, detailed, sharp";
+  const negPrompt = data.widgetValues?.negPrompt ?? "blurry, noise, artifacts, low quality";
+
+  return (
+    <>
+      <div className="props-section">
+        <div className="props-section-title">Scale</div>
+        <div className="props-aspect-row">
+          {[1, 2, 3, 4].map((s) => (
+            <button key={s} className={`props-aspect-btn ${scale === s ? "active" : ""}`}
+              onClick={() => updateWidgetValue(nodeId, "scale", s)}>{s}x</button>
+          ))}
+        </div>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Restoration Strength</div>
+        <input type="range" className="props-range" min={0} max={1} step={0.05} value={restoration}
+          onChange={(e) => updateWidgetValue(nodeId, "restoration", parseFloat(e.target.value))} />
+        <span className="props-range-value">{restoration.toFixed(2)}</span>
+        <p className="settings-hint" style={{ marginTop: 4 }}>0 = no change · 0.5 = balanced · 1.0 = max detail</p>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Steps</div>
+        <input type="range" className="props-range" min={5} max={50} step={1} value={steps}
+          onChange={(e) => updateWidgetValue(nodeId, "steps", parseInt(e.target.value))} />
+        <span className="props-range-value">{steps}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Color Fix</div>
+        <select className="props-select" value={colorFix}
+          onChange={(e) => updateWidgetValue(nodeId, "colorFix", e.target.value)}>
+          <option value="None">None</option>
+          <option value="AdaIn">AdaIn (recommended)</option>
+          <option value="Wavelet">Wavelet</option>
+        </select>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Seed</div>
+        <div className="props-input-row">
+          <input type="number" className="props-input" value={seed} placeholder="Random"
+            onChange={(e) => updateWidgetValue(nodeId, "seed", e.target.value)} />
+          <button className="props-dice-btn"
+            onClick={() => updateWidgetValue(nodeId, "seed", Math.floor(Math.random() * 2147483647).toString())}>🎲</button>
+        </div>
+      </div>
+      <details className="props-section props-temp-section">
+        <summary className="props-temp-header">Advanced <span className="props-temp-badge">PRO</span></summary>
+        <div className="props-section">
+          <div className="props-section-title">CFG</div>
+          <input type="range" className="props-range" min={1} max={15} step={0.5} value={cfg}
+            onChange={(e) => updateWidgetValue(nodeId, "cfg", parseFloat(e.target.value))} />
+          <span className="props-range-value">{cfg.toFixed(1)}</span>
+        </div>
+        <div className="props-section">
+          <div className="props-section-title">Positive Prompt</div>
+          <textarea className="props-textarea" value={prompt} rows={2}
+            onChange={(e) => updateWidgetValue(nodeId, "prompt", e.target.value)} />
+        </div>
+        <div className="props-section">
+          <div className="props-section-title">Negative Prompt</div>
+          <textarea className="props-textarea" value={negPrompt} rows={2}
+            onChange={(e) => updateWidgetValue(nodeId, "negPrompt", e.target.value)} />
+        </div>
+      </details>
+    </>
+  );
+}
+
+// ── Inpaint Properties ───────────────────────────────────────────
+function InpaintProperties({ nodeId, data }: { nodeId: string; data: any }) {
+  const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const modelType = data.widgetValues?.modelType ?? "flux1-fill";
+  const denoise = data.widgetValues?.denoise ?? 0.85;
+  const steps = data.widgetValues?.steps ?? 8;
+  const cfg = data.widgetValues?.cfg ?? 1.0;
+  const seed = data.widgetValues?.seed ?? "";
+  const samPrompt = data.widgetValues?.samPrompt ?? "";
+
+  const models = [
+    { value: "flux1-fill", label: "FLUX.1 Fill", desc: "Best quality, specialized inpaint model" },
+    { value: "klein-9b", label: "Klein 9B", desc: "Fast, good quality" },
+    { value: "klein-4b", label: "Klein 4B", desc: "Fastest FLUX, lightweight" },
+    { value: "sdxl-inpaint", label: "SDXL Inpainting", desc: "Good quality, dedicated checkpoint" },
+    { value: "sd15-inpaint", label: "SD 1.5 Inpainting", desc: "Fastest, lower quality" },
+  ];
+  const current = models.find(m => m.value === modelType);
+
+  return (
+    <>
+      <div className="props-section">
+        <div className="props-section-title">Model</div>
+        <select className="props-select" value={modelType}
+          onChange={(e) => updateWidgetValue(nodeId, "modelType", e.target.value)}>
+          {models.map((m) => (
+            <option key={m.value} value={m.value}>{m.label}</option>
+          ))}
+        </select>
+        {current && <p className="settings-hint" style={{ marginTop: 4 }}>{current.desc}</p>}
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Denoise</div>
+        <input type="range" className="props-range" min={0.05} max={1.0} step={0.05} value={denoise}
+          onChange={(e) => updateWidgetValue(nodeId, "denoise", parseFloat(e.target.value))} />
+        <span className="props-range-value">{denoise.toFixed(2)}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Steps</div>
+        <input type="range" className="props-range" min={1} max={30} step={1} value={steps}
+          onChange={(e) => updateWidgetValue(nodeId, "steps", parseInt(e.target.value))} />
+        <span className="props-range-value">{steps}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">CFG</div>
+        <input type="range" className="props-range" min={1} max={20} step={0.5} value={cfg}
+          onChange={(e) => updateWidgetValue(nodeId, "cfg", parseFloat(e.target.value))} />
+        <span className="props-range-value">{cfg.toFixed(1)}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Seed</div>
+        <div className="props-input-row">
+          <input type="number" className="props-input" value={seed} placeholder="Random"
+            onChange={(e) => updateWidgetValue(nodeId, "seed", e.target.value)} />
+          <button className="props-dice-btn"
+            onClick={() => updateWidgetValue(nodeId, "seed", Math.floor(Math.random() * 2147483647).toString())}>🎲</button>
+        </div>
+      </div>
+      <details className="props-section props-temp-section">
+        <summary className="props-temp-header">Auto Mask (SAM) <span className="props-temp-badge">AI</span></summary>
+        <div className="props-section">
+          <div className="props-section-title">Object to mask</div>
+          <input className="props-input" type="text" value={samPrompt} placeholder='e.g. "shirt", "background", "hat"'
+            onChange={(e) => updateWidgetValue(nodeId, "samPrompt", e.target.value)} />
+          <p className="settings-hint" style={{ marginTop: 4 }}>Type what to select — SAM creates mask automatically. Works without drawing.</p>
+        </div>
+      </details>
+    </>
+  );
+}
+
 // ── Img2Img Properties ───────────────────────────────────────────
 function Img2ImgProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
@@ -886,7 +1077,7 @@ function NextFrameProperties({ nodeId, data }: { nodeId: string; data: any }) {
       </div>
       <div className="props-section">
         <div className="props-section-title">CFG</div>
-        <input type="range" className="props-range" min={1} max={20} step={0.1} value={cfg}
+        <input type="range" className="props-range" min={1} max={20} step={0.5} value={cfg}
           onChange={(e) => updateWidgetValue(nodeId, "cfg", parseFloat(e.target.value))} />
         <span className="props-range-value">{cfg.toFixed(1)}</span>
       </div>
@@ -921,28 +1112,23 @@ function NextFrameProperties({ nodeId, data }: { nodeId: string; data: any }) {
 // ── Kontext Properties ───────────────────────────────────────────
 function KontextProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
-  const denoise = data.widgetValues?.denoise ?? 0.85;
   const steps = data.widgetValues?.steps ?? 24;
   const cfg = data.widgetValues?.cfg ?? 3.5;
   const seed = data.widgetValues?.seed ?? "";
+  const sampler = data.widgetValues?.sampler ?? "euler";
+  const scheduler = data.widgetValues?.scheduler ?? "simple";
 
   return (
     <>
       <div className="props-section">
-        <div className="props-section-title">Edit Strength</div>
-        <input type="range" className="props-range" min={0.1} max={1.0} step={0.05} value={denoise}
-          onChange={(e) => updateWidgetValue(nodeId, "denoise", parseFloat(e.target.value))} />
-        <span className="props-range-value">{denoise.toFixed(2)}</span>
-      </div>
-      <div className="props-section">
         <div className="props-section-title">Steps</div>
-        <input type="range" className="props-range" min={4} max={30} step={1} value={steps}
+        <input type="range" className="props-range" min={1} max={30} step={1} value={steps}
           onChange={(e) => updateWidgetValue(nodeId, "steps", parseInt(e.target.value))} />
         <span className="props-range-value">{steps}</span>
       </div>
       <div className="props-section">
         <div className="props-section-title">CFG</div>
-        <input type="range" className="props-range" min={1} max={7} step={0.5} value={cfg}
+        <input type="range" className="props-range" min={1} max={20} step={0.5} value={cfg}
           onChange={(e) => updateWidgetValue(nodeId, "cfg", parseFloat(e.target.value))} />
         <span className="props-range-value">{cfg}</span>
       </div>
@@ -955,6 +1141,27 @@ function KontextProperties({ nodeId, data }: { nodeId: string; data: any }) {
             onClick={() => updateWidgetValue(nodeId, "seed", Math.floor(Math.random() * 2147483647).toString())}>🎲</button>
         </div>
       </div>
+      <details className="props-section props-temp-section">
+        <summary className="props-temp-header">Advanced <span className="props-temp-badge">PRO</span></summary>
+        <div className="props-section">
+          <div className="props-section-title">Sampler</div>
+          <select className="props-select" value={sampler}
+            onChange={(e) => updateWidgetValue(nodeId, "sampler", e.target.value)}>
+            {["euler", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_3m_sde", "uni_pc"].map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+        <div className="props-section">
+          <div className="props-section-title">Scheduler</div>
+          <select className="props-select" value={scheduler}
+            onChange={(e) => updateWidgetValue(nodeId, "scheduler", e.target.value)}>
+            {["simple", "normal", "karras", "sgm_uniform"].map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+      </details>
     </>
   );
 }

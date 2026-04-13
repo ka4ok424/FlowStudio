@@ -778,3 +778,117 @@ registerNativeNode({
     comfyMapping: "UNETLoader + CLIPLoader + VAELoader + LoadImage + VAEEncode + CLIPTextEncode + KSampler(denoise<1) + VAEDecode + SaveImage",
   },
 });
+
+registerNativeNode({
+  type: "fs:removeBg",
+  label: "Remove BG",
+  icon: "✂️",
+  accentColor: "#4ecdc4",
+  component: "RemoveBgNode",
+  description: "Remove image background using BRIA RMBG AI model. Outputs transparent PNG.",
+  inputs: [
+    { name: "input", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "image", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Remove background from any image using BRIA RMBG model via ComfyUI.",
+    skills: ["Remove background from photos", "Create transparent PNGs", "Isolate subjects"],
+    params: {},
+    connectsFrom: ["fs:localGenerate", "fs:nanoBanana", "fs:import", "fs:nextFrame"],
+    connectsTo: ["fs:preview", "fs:inpaint", "fs:img2img", "fs:ltxVideo"],
+    examples: ["LocalGen(portrait) → Remove BG → Preview (transparent)"],
+    comfyMapping: "LoadImage + BriaRemoveImageBackground + SaveImage",
+  },
+});
+
+registerNativeNode({
+  type: "fs:inpaint",
+  label: "Inpaint",
+  icon: "🎭",
+  accentColor: "#ab47bc",
+  component: "InpaintNode",
+  description: "Edit specific areas of an image using a mask. Draw mask directly or connect from Remove BG.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "input", type: "IMAGE" },
+    { name: "mask", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "image", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Inpaint (edit) masked areas of an image. Draw mask with built-in brush tool or connect auto-generated mask.",
+    skills: [
+      "Replace clothing, objects, backgrounds",
+      "Built-in mask drawing canvas with brush/eraser",
+      "Accept mask from Remove BG or SAM",
+      "Adjustable denoise for subtle to full changes",
+    ],
+    params: {
+      denoise: "Edit strength, 0.5-1.0, default 0.85",
+      steps: "Sampling steps, 4-20, default 8",
+      cfg: "CFG scale, 1-5, default 1.0",
+      seed: "Integer for reproducibility",
+    },
+    connectsFrom: ["fs:prompt", "fs:localGenerate", "fs:import", "fs:removeBg"],
+    connectsTo: ["fs:preview", "fs:upscale", "fs:nextFrame", "fs:ltxVideo"],
+    examples: [
+      "LocalGen(person) + 🖌️ mask on shirt → Inpaint('red hoodie') → Preview",
+      "Import(photo) + Remove BG(mask) → Inpaint('beach sunset background') → Preview",
+    ],
+    comfyMapping: "UNETLoader + CLIPLoader + VAELoader + LoadImage + LoadImageMask + VAEEncode + SetLatentNoiseMask + CLIPTextEncode + KSampler + VAEDecode + SaveImage",
+  },
+});
+
+registerNativeNode({
+  type: "fs:compare",
+  label: "Compare",
+  icon: "⚖️",
+  accentColor: "#78909c",
+  component: "CompareNode",
+  description: "Compare two images side-by-side with a draggable slider. Connect any two image outputs to see differences.",
+  inputs: [
+    { name: "image_a", type: "IMAGE" },
+    { name: "image_b", type: "IMAGE" },
+  ],
+  outputs: [],
+  aiDoc: {
+    purpose: "Visual A/B comparison of two images with interactive slider.",
+    skills: ["Compare before/after", "Compare different models", "Compare settings"],
+    params: {},
+    connectsFrom: ["fs:localGenerate", "fs:nanoBanana", "fs:upscale", "fs:inpaint", "fs:kontext", "fs:img2img", "fs:nextFrame", "fs:removeBg", "fs:import"],
+    examples: ["LocalGen → Compare ← Upscale", "Before → Compare ← After Inpaint"],
+  },
+});
+
+registerNativeNode({
+  type: "fs:enhance",
+  label: "Quality",
+  icon: "✨",
+  accentColor: "#ffd54f",
+  component: "EnhanceNode",
+  description: "AI image quality improvement using SUPIR. Adds detail, sharpness, removes artifacts and noise.",
+  inputs: [
+    { name: "input", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "image", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Enhance image quality using SUPIR AI model. Upscales and adds realistic detail.",
+    skills: ["Remove blur and noise", "Add fine detail", "Upscale with AI restoration", "Color correction"],
+    params: {
+      scale: "Upscale factor, 1-4, default 2",
+      steps: "Enhancement steps, 10-50, default 20",
+      restoration: "Restoration strength, 0-1, default 0.5",
+      cfg: "CFG scale, 1-10, default 4",
+      colorFix: "None / AdaIn / Wavelet",
+    },
+    connectsFrom: ["fs:localGenerate", "fs:nanoBanana", "fs:import", "fs:kontext", "fs:inpaint", "fs:nextFrame"],
+    connectsTo: ["fs:preview", "fs:compare", "fs:ltxVideo"],
+    examples: ["LocalGen(blurry) → Enhance(SUPIR 2x) → Compare ← original"],
+    comfyMapping: "SUPIR_Upscale + SaveImage",
+  },
+});

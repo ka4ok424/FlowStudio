@@ -32,6 +32,8 @@ function KontextNode({ id, data, selected }: NodeProps) {
     const cfg = freshWv.cfg ?? 3.5;
     const denoise = freshWv.denoise ?? 0.85;
     const seed = freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647);
+    const sampler = freshWv.sampler || "euler";
+    const scheduler = freshWv.scheduler || "simple";
 
     // Get prompt
     let promptText = "";
@@ -63,6 +65,14 @@ function KontextNode({ id, data, selected }: NodeProps) {
         imgName = await uploadImage(dataUrl, `fs_ktx_${imgEdge.source}.png`);
       }
 
+      // Get source image dimensions
+      const imgDims = await new Promise<{w:number,h:number}>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve({ w: Math.max(768, Math.round(img.width / 64) * 64) || 1024, h: Math.max(768, Math.round(img.height / 64) * 64) || 1024 });
+        img.onerror = () => resolve({ w: 1024, h: 1024 });
+        img.src = srcUrl;
+      });
+
       // Build Kontext workflow: LoadImage → Scale → VAEEncode → ReferenceLatent → KSampler
       const workflow: Record<string, any> = {
         "1": { class_type: "UNETLoader", inputs: { unet_name: "flux1-kontext-dev.safetensors", weight_dtype: "default" } },
@@ -73,12 +83,12 @@ function KontextNode({ id, data, selected }: NodeProps) {
         "6": { class_type: "FluxKontextImageScale", inputs: { image: ["5", 0] } },
         "7": { class_type: "VAEEncode", inputs: { pixels: ["6", 0], vae: ["3", 0] } },
         "8": { class_type: "ReferenceLatent", inputs: { conditioning: ["4", 0], latent: ["7", 0] } },
-        "9": { class_type: "EmptySD3LatentImage", inputs: { width: 1024, height: 1024, batch_size: 1 } },
+        "9": { class_type: "EmptySD3LatentImage", inputs: { width: imgDims.w, height: imgDims.h, batch_size: 1 } },
         "10": {
           class_type: "KSampler",
           inputs: {
             model: ["1", 0], positive: ["8", 0], negative: ["8", 0],
-            latent_image: ["9", 0], seed, steps, cfg, sampler_name: "euler", scheduler: "simple", denoise,
+            latent_image: ["9", 0], seed, steps, cfg, sampler_name: sampler, scheduler, denoise: 1.0,
           },
         },
         "11": { class_type: "VAEDecode", inputs: { samples: ["10", 0], vae: ["3", 0] } },

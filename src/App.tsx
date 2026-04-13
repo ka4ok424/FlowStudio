@@ -38,6 +38,10 @@ import Img2ImgNode from "./nodes/Img2ImgNode";
 import KontextNode from "./nodes/KontextNode";
 import LtxVideoNode from "./nodes/LtxVideoNode";
 import NextFrameNode from "./nodes/NextFrameNode";
+import RemoveBgNode from "./nodes/RemoveBgNode";
+import InpaintNode from "./nodes/InpaintNode";
+import CompareNode from "./nodes/CompareNode";
+import EnhanceNode from "./nodes/EnhanceNode";
 import AiChat from "./components/AiChat";
 import MediaLibrary from "./components/MediaLibrary";
 import { useMediaStore } from "./store/mediaStore";
@@ -71,6 +75,10 @@ const nodeTypes = {
   kontextNode: KontextNode,
   ltxVideoNode: LtxVideoNode,
   nextFrameNode: NextFrameNode,
+  removeBgNode: RemoveBgNode,
+  inpaintNode: InpaintNode,
+  compareNode: CompareNode,
+  enhanceNode: EnhanceNode,
 };
 
 function App() {

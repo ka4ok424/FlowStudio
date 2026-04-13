@@ -293,6 +293,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         KontextNode: "kontextNode",
         LtxVideoNode: "ltxVideoNode",
         NextFrameNode: "nextFrameNode",
+        RemoveBgNode: "removeBgNode",
+        InpaintNode: "inpaintNode",
+        CompareNode: "compareNode",
+        EnhanceNode: "enhanceNode",
       };
       const isGroup = nativeDef.type === "fs:group";
       const newNode: Node<ComfyNodeData> = {

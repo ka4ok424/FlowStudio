@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useMediaStore, type MediaItem } from "../store/mediaStore";
 import { loadImage } from "../store/imageDb";
 
@@ -157,6 +157,25 @@ function GalleryView({
   onFav: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const PAGE_SIZE = 30;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Reset when items change (filter/search)
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [items.length]);
+
+  // Infinite scroll
+  useEffect(() => {
+    const el = scrollRef.current?.parentElement;
+    if (!el) return;
+    const onScroll = () => {
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
+        setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, items.length));
+      }
+    };
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [items.length]);
   const handleDragStart = (e: React.DragEvent, item: MediaItem) => {
     e.dataTransfer.setData("application/flowstudio-media", JSON.stringify({
       url: item.url,
@@ -166,11 +185,18 @@ function GalleryView({
     e.dataTransfer.effectAllowed = "copy";
   };
 
+  const visibleItems = items.slice(0, visibleCount);
+
   return (
-    <div className="media-gallery">
-      {items.map((item) => (
+    <div className="media-gallery" ref={scrollRef}>
+      {visibleItems.map((item) => (
         <GalleryItem key={item.id} item={item} onSelect={onSelect} onFav={onFav} onDelete={onDelete} onDragStart={handleDragStart} />
       ))}
+      {visibleCount < items.length && (
+        <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 8 }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{visibleCount} / {items.length}</span>
+        </div>
+      )}
     </div>
   );
 }
