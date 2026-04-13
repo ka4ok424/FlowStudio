@@ -49,7 +49,8 @@ import NodeLibrary from "./components/NodeLibrary";
 import Toolbar from "./components/Toolbar";
 import PropertiesPanel from "./components/PropertiesPanel";
 import AlignmentGuidesOverlay, { useSnappingNodes } from "./components/AlignmentGuides";
-import "./styles/theme.css";
+import "./styles/base.css";
+import "./styles/nodes.css";
 
 const nodeTypes = {
   comfyNode: ComfyNode,

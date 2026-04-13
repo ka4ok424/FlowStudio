@@ -1,11 +1,11 @@
 import { memo, useCallback, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
-import { queuePrompt, getImageUrl, uploadImage, getComfyUrl } from "../api/comfyApi";
-import { addGenerationToLibrary } from "../store/mediaStore";
-import MediaHistory from "./MediaHistory";
-import { addToHistory } from "../utils/historyLimit";
+import { queuePrompt } from "../api/comfyApi";
 import { log } from "../store/logStore";
+import { uploadSourceImage, pollForResult, fetchAsDataUrl, saveGenerationResult, getConnectedImageUrl, getConnectedPrompt } from "../hooks/useNodeHelpers";
+import { buildImg2ImgWorkflow } from "../workflows/img2img";
+import MediaHistory from "./MediaHistory";
 
 const DEFAULT_REFS = 6;
 const MAX_REFS = 10;
@@ -28,44 +28,9 @@ function Img2ImgNode({ id, data, selected }: NodeProps) {
     setProcessing(true);
     setError(null);
     const startTime = Date.now();
+    log("Img2Img started", { nodeId: id, nodeType: "fs:img2img", nodeLabel: "Img2Img" });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
-
-    // Check for pending result from previous timeout
-    const pendingId = freshWv._pendingPromptId;
-    if (pendingId) {
-      try {
-        const histRes = await fetch(`${getComfyUrl()}/api/history/${pendingId}`);
-        if (histRes.ok) {
-          const history = await histRes.json();
-          if (history[pendingId]) {
-            const outputs = history[pendingId].outputs;
-            for (const nId of Object.keys(outputs || {})) {
-              const images = outputs[nId]?.images;
-              if (images && images.length > 0) {
-                const img = images[0];
-                const apiUrl = getImageUrl(img.filename, img.subfolder, img.type);
-                const resp = await fetch(apiUrl);
-                const blob = await resp.blob();
-                const dataUrl = await new Promise<string>((r) => { const rd = new FileReader(); rd.onloadend = () => r(rd.result as string); rd.readAsDataURL(blob); });
-                updateWidgetValue(id, "_previewUrl", dataUrl);
-                updateWidgetValue(id, "_pendingPromptId", null);
-                const prevHist: string[] = freshWv._history || [];
-                const { history: newHist, index: newIdx } = await addToHistory(id, prevHist, dataUrl);
-                updateWidgetValue(id, "_history", newHist);
-                updateWidgetValue(id, "_historyIndex", newIdx);
-                log("Img2Img recovered", { nodeId: id, nodeType: "fs:img2img", nodeLabel: "Img2Img", status: "success", details: "from pending" });
-                setProcessing(false);
-                return;
-              }
-            }
-          }
-        }
-      } catch { /* ignore, proceed with new generation */ }
-      updateWidgetValue(id, "_pendingPromptId", null);
-    }
-
-    log("Img2Img started", { nodeId: id, nodeType: "fs:img2img", nodeLabel: "Img2Img" });
     const steps = freshWv.steps || 28;
     const cfg = freshWv.cfg ?? 3.5;
     const denoise = freshWv.denoise ?? 0.75;
@@ -77,180 +42,72 @@ function Img2ImgNode({ id, data, selected }: NodeProps) {
     const scheduler = freshWv.scheduler || "simple";
     const kvCache = freshWv.kvCache || false;
 
-    // Get prompt from connected Prompt node
-    let promptText = "";
-    const promptEdge = edgesAll.find((e) => e.target === id && e.targetHandle === "prompt");
-    if (promptEdge) {
-      const promptNode = nodesAll.find((n) => n.id === promptEdge.source);
-      if (promptNode) promptText = (promptNode.data as any).widgetValues?.text || "";
-    }
+    const promptText = getConnectedPrompt(id, nodesAll as any[], edgesAll as any[]);
     if (!promptText) { setError("Connect a Prompt node"); setProcessing(false); return; }
 
-    // Collect reference images from ref_0..ref_N inputs
+    // Collect reference images
     const curRefCount = freshWv._refCount || DEFAULT_REFS;
     const refUrls: { url: string; sourceId: string }[] = [];
     for (let i = 0; i < curRefCount; i++) {
-      const edge = edgesAll.find((e) => e.target === id && e.targetHandle === `ref_${i}`);
-      if (!edge) continue;
-      const srcNode = nodesAll.find((n) => n.id === edge.source);
-      if (!srcNode) continue;
-      const sd = srcNode.data as any;
-      const url = sd.widgetValues?._previewUrl || sd.widgetValues?._preview || sd.widgetValues?.portraitUrl;
-      if (url) refUrls.push({ url, sourceId: edge.source });
+      const url = getConnectedImageUrl(id, `ref_${i}`, nodesAll as any[], edgesAll as any[]);
+      if (url) {
+        const edge = edgesAll.find((e) => e.target === id && e.targetHandle === `ref_${i}`);
+        if (edge) refUrls.push({ url, sourceId: edge.source });
+      }
     }
     if (refUrls.length === 0) { setError("Connect at least 1 reference image"); setProcessing(false); return; }
 
     try {
-      // Upload all reference images to ComfyUI
+      // Upload all reference images
       const imgNames: string[] = [];
-      for (let i = 0; i < refUrls.length; i++) {
-        const { url, sourceId } = refUrls[i];
-        const fileName = `fs_ref_${sourceId}.png`;
-        let imgName: string;
-        if (url.startsWith("data:")) {
-          imgName = await uploadImage(url, fileName);
-        } else {
-          const resp = await fetch(url);
-          const blob = await resp.blob();
-          const dataUrl = await new Promise<string>((r) => { const rd = new FileReader(); rd.onloadend = () => r(rd.result as string); rd.readAsDataURL(blob); });
-          imgName = await uploadImage(dataUrl, fileName);
+      for (const { url, sourceId } of refUrls) {
+        imgNames.push(await uploadSourceImage(url, `fs_ref_${sourceId}.png`));
+      }
+
+      const workflow = buildImg2ImgWorkflow({
+        imageNames: imgNames, prompt: promptText, negativePrompt,
+        seed, steps, cfg, denoise, width, height, sampler, scheduler, kvCache,
+      });
+
+      // Check for pending result from previous timeout
+      const pendingId = freshWv._pendingPromptId;
+      if (pendingId) {
+        const pollResult = await pollForResult(pendingId, { maxAttempts: 1, interval: 100 });
+        if (pollResult && !("error" in pollResult)) {
+          const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
+          updateWidgetValue(id, "_pendingPromptId", null);
+          await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
+            prompt: promptText, model: "FLUX.2 Dev", seed: String(seed), steps, cfg, width, height, nodeType: "fs:img2img",
+          });
+          log("Img2Img recovered", { nodeId: id, nodeType: "fs:img2img", nodeLabel: "Img2Img", status: "success" });
+          setProcessing(false);
+          return;
         }
-        imgNames.push(imgName);
+        updateWidgetValue(id, "_pendingPromptId", null);
       }
-
-      // Build workflow: FLUX.2 Dev with ReferenceLatent chain
-      const workflow: Record<string, any> = {};
-      let nodeIdx = 1;
-
-      // 1. UNETLoader — flux2-dev
-      const unetId = String(nodeIdx++);
-      workflow[unetId] = { class_type: "UNETLoader", inputs: { unet_name: "flux2_dev_fp8mixed.safetensors", weight_dtype: "default" } };
-
-      // 2. CLIPLoader — Mistral
-      const clipId = String(nodeIdx++);
-      workflow[clipId] = { class_type: "CLIPLoader", inputs: { clip_name: "mistral_3_small_flux2_fp8.safetensors", type: "flux2", device: "default" } };
-
-      // 3. VAELoader
-      const vaeId = String(nodeIdx++);
-      workflow[vaeId] = { class_type: "VAELoader", inputs: { vae_name: "flux2-vae.safetensors" } };
-
-      // 4. CLIPTextEncode (positive)
-      const encodeId = String(nodeIdx++);
-      workflow[encodeId] = { class_type: "CLIPTextEncode", inputs: { text: promptText, clip: [clipId, 0] } };
-
-      // 4b. CLIPTextEncode (negative) — if provided
-      let negEncodeId = encodeId;
-      if (negativePrompt) {
-        negEncodeId = String(nodeIdx++);
-        workflow[negEncodeId] = { class_type: "CLIPTextEncode", inputs: { text: negativePrompt, clip: [clipId, 0] } };
-      }
-
-      // 5-N. Load + VAEEncode + ReferenceLatent chain for each ref image
-      let lastCondId = encodeId;
-      let lastCondSlot = 0;
-      for (let i = 0; i < imgNames.length; i++) {
-        const loadId = String(nodeIdx++);
-        workflow[loadId] = { class_type: "LoadImage", inputs: { image: imgNames[i] } };
-
-        const scaleId = String(nodeIdx++);
-        workflow[scaleId] = { class_type: "FluxKontextImageScale", inputs: { image: [loadId, 0] } };
-
-        const vaeEncId = String(nodeIdx++);
-        workflow[vaeEncId] = { class_type: "VAEEncode", inputs: { pixels: [scaleId, 0], vae: [vaeId, 0] } };
-
-        const refLatentId = String(nodeIdx++);
-        workflow[refLatentId] = { class_type: "ReferenceLatent", inputs: { conditioning: [lastCondId, lastCondSlot], latent: [vaeEncId, 0] } };
-
-        lastCondId = refLatentId;
-        lastCondSlot = 0;
-      }
-
-      // EmptyLatentImage for output
-      const emptyLatentId = String(nodeIdx++);
-      workflow[emptyLatentId] = { class_type: "EmptySD3LatentImage", inputs: { width, height, batch_size: 1 } };
-
-      // Optional: KV Cache for reference images
-      let modelId = unetId;
-      if (kvCache && imgNames.length > 1) {
-        const kvId = String(nodeIdx++);
-        workflow[kvId] = { class_type: "FluxKVCache", inputs: { model: [unetId, 0] } };
-        modelId = kvId;
-      }
-
-      // KSampler
-      const samplerId = String(nodeIdx++);
-      workflow[samplerId] = {
-        class_type: "KSampler",
-        inputs: {
-          model: [modelId, 0], positive: [lastCondId, lastCondSlot], negative: [negEncodeId, 0],
-          latent_image: [emptyLatentId, 0], seed, steps, cfg, sampler_name: sampler, scheduler, denoise,
-        },
-      };
-
-      // VAEDecode
-      const decodeId = String(nodeIdx++);
-      workflow[decodeId] = { class_type: "VAEDecode", inputs: { samples: [samplerId, 0], vae: [vaeId, 0] } };
-
-      // SaveImage
-      const saveId = String(nodeIdx++);
-      workflow[saveId] = { class_type: "SaveImage", inputs: { images: [decodeId, 0], filename_prefix: `FS_I2I_${Date.now()}` } };
 
       const result = await queuePrompt(workflow);
-      const promptId = result.prompt_id;
-      updateWidgetValue(id, "_pendingPromptId", promptId);
+      updateWidgetValue(id, "_pendingPromptId", result.prompt_id);
 
-      // Poll for result
-      for (let attempt = 0; attempt < 300; attempt++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        try {
-          const histRes = await fetch(`${getComfyUrl()}/api/history/${promptId}`);
-          if (!histRes.ok) continue;
-          const history = await histRes.json();
-          if (history[promptId]) {
-            const outputs = history[promptId].outputs;
-            for (const nId of Object.keys(outputs || {})) {
-              const images = outputs[nId]?.images;
-              if (images && images.length > 0) {
-                const img = images[0];
-                const apiUrl = getImageUrl(img.filename, img.subfolder, img.type);
-                const resp = await fetch(apiUrl);
-                const blob = await resp.blob();
-                const dataUrl = await new Promise<string>((resolve) => { const reader = new FileReader(); reader.onloadend = () => resolve(reader.result as string); reader.readAsDataURL(blob); });
-
-                updateWidgetValue(id, "_genTime", Date.now() - startTime);
-                updateWidgetValue(id, "_previewUrl", dataUrl);
-                const prevHist: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
-                const { history: newHist, index: newIdx } = await addToHistory(id, prevHist, dataUrl);
-                updateWidgetValue(id, "_history", newHist);
-                updateWidgetValue(id, "_historyIndex", newIdx);
-
-                log("Img2Img complete", { nodeId: id, nodeType: "fs:img2img", nodeLabel: "Img2Img", status: "success", details: `${refUrls.length} refs, ${steps} steps` });
-                addGenerationToLibrary(dataUrl, { prompt: promptText, model: "FLUX.2 Dev", seed: String(seed), steps, cfg, width, height, nodeType: "fs:img2img", duration: Date.now() - startTime });
-                updateWidgetValue(id, "_pendingPromptId", null);
-                setProcessing(false);
-                return;
-              }
-            }
-            const st = history[promptId].status;
-            if (st?.completed || st?.status_str === "error") {
-              const errMsg = history[promptId].status?.messages?.find((m: any) => m[0] === "execution_error");
-              setError(errMsg ? errMsg[1]?.exception_message?.slice(0, 100) : "Generation failed");
-              log("Img2Img failed", { nodeId: id, nodeType: "fs:img2img", nodeLabel: "Img2Img", status: "error" });
-              setProcessing(false);
-              return;
-            }
-          }
-        } catch { /* keep polling */ }
+      const pollResult = await pollForResult(result.prompt_id);
+      if (!pollResult || "error" in pollResult) {
+        setError(pollResult ? pollResult.error : "No result");
+        setProcessing(false);
+        return;
       }
-      setError("Timeout — result may still be in ComfyUI. Click Generate to retry fetch."); setProcessing(false);
+
+      const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
+      updateWidgetValue(id, "_pendingPromptId", null);
+      await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
+        prompt: promptText, model: "FLUX.2 Dev", seed: String(seed), steps, cfg, width, height, nodeType: "fs:img2img",
+      });
+      log("Img2Img complete", { nodeId: id, nodeType: "fs:img2img", nodeLabel: "Img2Img", status: "success" });
     } catch (err: any) {
       setError(err.message);
-      log("Img2Img error", { nodeId: id, nodeType: "fs:img2img", nodeLabel: "Img2Img", status: "error", details: err.message });
-      setProcessing(false);
     }
+    setProcessing(false);
   }, [id, edgesAll, nodesAll, updateWidgetValue]);
 
-  // Highlighting
   const imgHL = connectingDir === "source" && (connectingType === "IMAGE" || connectingType === "MEDIA" || connectingType === "*") ? "highlight" : "";
   const promptHL = connectingDir === "source" && (connectingType === "TEXT" || connectingType === "*") ? "highlight" : "";
   const outputHL = connectingDir === "target" && (connectingType === "IMAGE" || connectingType === "*") ? "highlight" : "";
@@ -287,22 +144,14 @@ function Img2ImgNode({ id, data, selected }: NodeProps) {
         ))}
         {refCount < MAX_REFS && (
           <div className="nanob-input-row nodrag" style={{ justifyContent: "center" }}>
-            <button
-              className="img2img-add-ref-btn"
-              onClick={(e) => { e.stopPropagation(); updateWidgetValue(id, "_refCount", refCount + 1); }}
-            >+ Add Ref</button>
+            <button className="img2img-add-ref-btn"
+              onClick={(e) => { e.stopPropagation(); updateWidgetValue(id, "_refCount", refCount + 1); }}>+ Add Ref</button>
           </div>
         )}
       </div>
 
-      <MediaHistory
-        nodeId={id}
-        history={nodeData.widgetValues?._history || []}
-        historyIndex={nodeData.widgetValues?._historyIndex ?? -1}
-        fallbackUrl={previewUrl}
-        emptyIcon="🎨"
-        genTime={nodeData.widgetValues?._genTime}
-      />
+      <MediaHistory nodeId={id} history={nodeData.widgetValues?._history || []} historyIndex={nodeData.widgetValues?._historyIndex ?? -1}
+        fallbackUrl={previewUrl} emptyIcon="🎨" genTime={nodeData.widgetValues?._genTime} />
 
       {error && <div className="nanob-error nodrag">{error}</div>}
 
