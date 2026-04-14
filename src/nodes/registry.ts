@@ -923,6 +923,39 @@ registerNativeNode({
     connectsFrom: ["fs:prompt", "fs:import", "fs:localGenerate", "fs:removeBg", "fs:upscale"],
     connectsTo: ["fs:preview", "fs:compare", "fs:upscale", "fs:enhance"],
     examples: ["Prompt + Reference → ControlNet(canny) → Preview", "Photo → ControlNet(depth) → new scene with same composition"],
-    comfyMapping: "UNETLoader + CLIPLoader + VAELoader + Canny + ControlNetLoader + SetUnionControlNetType + ControlNetApplyAdvanced + KSampler + VAEDecode + SaveImage",
+    comfyMapping: "UNETLoader + DualCLIPLoader + VAELoader + Canny + ControlNetLoader + FluxGuidance + ControlNetApplyAdvanced + KSampler + VAEDecode + SaveImage",
+  },
+});
+
+registerNativeNode({
+  type: "fs:inpaintCN",
+  label: "Inpaint+CN",
+  icon: "🎯",
+  accentColor: "#26a69a",
+  component: "InpaintCNNode",
+  description: "Inpaint with ControlNet structure guidance. Paints inside mask while preserving structure from the original image.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "input", type: "IMAGE" },
+    { name: "mask", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "image", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Combined Inpaint + ControlNet in a single pass. FLUX.1 Fill inpaints the masked area while ControlNet Union Pro 2.0 ensures the result matches the original structure (edges, depth, pose).",
+    skills: ["Inpaint while preserving object structure", "Add textures without changing shape", "Modify appearance in masked area with structural guidance"],
+    params: {
+      controlType: "canny | soft_edge | depth | pose | gray",
+      cnStrength: "ControlNet influence, 0.05-1.5, default 0.7",
+      cnEndPercent: "When CN stops, 0-1, default 0.8",
+      guidance: "FLUX guidance, 1-50, default 30",
+      denoise: "Denoise strength, 0.05-1.0, default 0.85",
+      steps: "Sampling steps, default 20",
+    },
+    connectsFrom: ["fs:prompt", "fs:import", "fs:localGenerate", "fs:kontext"],
+    connectsTo: ["fs:preview", "fs:compare", "fs:upscale", "fs:enhance"],
+    examples: ["Photo of ball → mask mud areas → Inpaint+CN(canny) → ball with mud, seams preserved"],
+    comfyMapping: "FLUX.1 Fill + ControlNet Union Pro 2.0 + FluxGuidance + DifferentialDiffusion + InpaintModelConditioning + ControlNetApplyAdvanced",
   },
 });

@@ -21,7 +21,7 @@ export function buildControlNetWorkflow(p: ControlNetParams): Record<string, any
 
   // FLUX.1-dev base model (Union Pro 2.0 requires FLUX.1 architecture)
   const unetId = String(n++);
-  wf[unetId] = { class_type: "UNETLoader", inputs: { unet_name: "flux1-kontext-dev.safetensors", weight_dtype: "default" } };
+  wf[unetId] = { class_type: "UNETLoader", inputs: { unet_name: "flux1-dev.safetensors", weight_dtype: "default" } };
   const clipId = String(n++);
   wf[clipId] = { class_type: "DualCLIPLoader", inputs: { clip_name1: "t5xxl_fp8_e4m3fn.safetensors", clip_name2: "clip_l.safetensors", type: "flux" } };
   const vaeId = String(n++);

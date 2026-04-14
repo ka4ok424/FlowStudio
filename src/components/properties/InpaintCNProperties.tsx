@@ -8,19 +8,19 @@ const CONTROL_TYPES = [
   { value: "gray", label: "Gray (style)" },
 ];
 
-function ControlNetProperties({ nodeId, data }: { nodeId: string; data: any }) {
+function InpaintCNProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
   const controlType = data.widgetValues?.controlType ?? "canny";
-  const strength = data.widgetValues?.strength ?? 0.7;
-  const startPercent = data.widgetValues?.startPercent ?? 0.0;
-  const endPercent = data.widgetValues?.endPercent ?? 1.0;
+  const cnStrength = data.widgetValues?.cnStrength ?? 0.5;
+  const cnStartPercent = data.widgetValues?.cnStartPercent ?? 0.0;
+  const cnEndPercent = data.widgetValues?.cnEndPercent ?? 0.8;
   const steps = data.widgetValues?.steps ?? 20;
-  const cfg = data.widgetValues?.cfg ?? 3.5;
-  const width = data.widgetValues?.width ?? 1024;
-  const height = data.widgetValues?.height ?? 1024;
+  const guidance = data.widgetValues?.guidance ?? 30;
+  const denoise = data.widgetValues?.denoise ?? 0.85;
   const seed = data.widgetValues?.seed ?? "";
   const cannyLow = data.widgetValues?.cannyLow ?? 0.4;
   const cannyHigh = data.widgetValues?.cannyHigh ?? 0.8;
+  const samPrompt = data.widgetValues?.samPrompt ?? "";
 
   return (
     <>
@@ -34,22 +34,28 @@ function ControlNetProperties({ nodeId, data }: { nodeId: string; data: any }) {
         </select>
       </div>
       <div className="props-section">
-        <div className="props-section-title">Strength</div>
-        <input type="range" className="props-range" min={0.05} max={1.5} step={0.05} value={strength}
-          onChange={(e) => updateWidgetValue(nodeId, "strength", parseFloat(e.target.value))} />
-        <span className="props-range-value">{strength.toFixed(2)}</span>
+        <div className="props-section-title">CN Strength</div>
+        <input type="range" className="props-range" min={0.05} max={1.5} step={0.05} value={cnStrength}
+          onChange={(e) => updateWidgetValue(nodeId, "cnStrength", parseFloat(e.target.value))} />
+        <span className="props-range-value">{cnStrength.toFixed(2)}</span>
       </div>
       <div className="props-section">
-        <div className="props-section-title">Start %</div>
-        <input type="range" className="props-range" min={0} max={1} step={0.05} value={startPercent}
-          onChange={(e) => updateWidgetValue(nodeId, "startPercent", parseFloat(e.target.value))} />
-        <span className="props-range-value">{startPercent.toFixed(2)}</span>
+        <div className="props-section-title">CN Start %</div>
+        <input type="range" className="props-range" min={0} max={1} step={0.05} value={cnStartPercent}
+          onChange={(e) => updateWidgetValue(nodeId, "cnStartPercent", parseFloat(e.target.value))} />
+        <span className="props-range-value">{cnStartPercent.toFixed(2)}</span>
       </div>
       <div className="props-section">
-        <div className="props-section-title">End %</div>
-        <input type="range" className="props-range" min={0} max={1} step={0.05} value={endPercent}
-          onChange={(e) => updateWidgetValue(nodeId, "endPercent", parseFloat(e.target.value))} />
-        <span className="props-range-value">{endPercent.toFixed(2)}</span>
+        <div className="props-section-title">CN End %</div>
+        <input type="range" className="props-range" min={0} max={1} step={0.05} value={cnEndPercent}
+          onChange={(e) => updateWidgetValue(nodeId, "cnEndPercent", parseFloat(e.target.value))} />
+        <span className="props-range-value">{cnEndPercent.toFixed(2)}</span>
+      </div>
+      <div className="props-section">
+        <div className="props-section-title">Denoise</div>
+        <input type="range" className="props-range" min={0.05} max={1.0} step={0.05} value={denoise}
+          onChange={(e) => updateWidgetValue(nodeId, "denoise", parseFloat(e.target.value))} />
+        <span className="props-range-value">{denoise.toFixed(2)}</span>
       </div>
       <div className="props-section">
         <div className="props-section-title">Steps</div>
@@ -59,21 +65,9 @@ function ControlNetProperties({ nodeId, data }: { nodeId: string; data: any }) {
       </div>
       <div className="props-section">
         <div className="props-section-title">CFG</div>
-        <input type="range" className="props-range" min={1} max={10} step={0.5} value={cfg}
-          onChange={(e) => updateWidgetValue(nodeId, "cfg", parseFloat(e.target.value))} />
-        <span className="props-range-value">{cfg.toFixed(1)}</span>
-      </div>
-      <div className="props-section">
-        <div className="props-section-title">Size</div>
-        <div className="props-input-row">
-          <input type="number" className="props-input" value={width} style={{ width: 70 }}
-            onChange={(e) => updateWidgetValue(nodeId, "width", e.target.value === "" ? "" : parseInt(e.target.value))}
-            onBlur={(e) => { if (!e.target.value) updateWidgetValue(nodeId, "width", 1024); }} />
-          <span style={{ color: "var(--text-muted)" }}>x</span>
-          <input type="number" className="props-input" value={height} style={{ width: 70 }}
-            onChange={(e) => updateWidgetValue(nodeId, "height", e.target.value === "" ? "" : parseInt(e.target.value))}
-            onBlur={(e) => { if (!e.target.value) updateWidgetValue(nodeId, "height", 1024); }} />
-        </div>
+        <input type="range" className="props-range" min={1} max={10} step={0.5} value={guidance}
+          onChange={(e) => updateWidgetValue(nodeId, "guidance", parseFloat(e.target.value))} />
+        <span className="props-range-value">{guidance.toFixed(1)}</span>
       </div>
       <div className="props-section">
         <div className="props-section-title">Seed</div>
@@ -101,8 +95,17 @@ function ControlNetProperties({ nodeId, data }: { nodeId: string; data: any }) {
           </div>
         </details>
       )}
+      <details className="props-section props-temp-section">
+        <summary className="props-temp-header">Auto Mask (SAM) <span className="props-temp-badge">AI</span></summary>
+        <div className="props-section">
+          <div className="props-section-title">Object to mask</div>
+          <input className="props-input" type="text" value={samPrompt} placeholder='e.g. "ball", "background"'
+            onChange={(e) => updateWidgetValue(nodeId, "samPrompt", e.target.value)} />
+          <p className="settings-hint" style={{ marginTop: 4 }}>SAM auto-masks the object. No drawing needed.</p>
+        </div>
+      </details>
     </>
   );
 }
 
-export default ControlNetProperties;
+export default InpaintCNProperties;

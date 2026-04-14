@@ -99,7 +99,7 @@ function ControlNetNode({ id, data, selected }: NodeProps) {
           <span className="controlnet-icon">🎯</span>
           <div className="controlnet-header-text">
             <span className="controlnet-title">ControlNet</span>
-            <span className="controlnet-status">{processing ? "GENERATING..." : "FLUX.1 Kontext Dev"}</span>
+            <span className="controlnet-status">{processing ? "GENERATING..." : "FLUX.1 Dev"}</span>
           </div>
         </div>
       </div>

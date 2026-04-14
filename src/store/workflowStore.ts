@@ -314,6 +314,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         CompareNode: "compareNode",
         EnhanceNode: "enhanceNode",
         ControlNetNode: "controlNetNode",
+        InpaintCNNode: "inpaintCNNode",
       };
       const isGroup = nativeDef.type === "fs:group";
       const newNode: Node<ComfyNodeData> = {

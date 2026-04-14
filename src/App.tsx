@@ -43,6 +43,7 @@ import InpaintNode from "./nodes/InpaintNode";
 import CompareNode from "./nodes/CompareNode";
 import EnhanceNode from "./nodes/EnhanceNode";
 import ControlNetNode from "./nodes/ControlNetNode";
+import InpaintCNNode from "./nodes/InpaintCNNode";
 import AiChat from "./components/AiChat";
 import MediaLibrary from "./components/MediaLibrary";
 import { useMediaStore } from "./store/mediaStore";
@@ -82,6 +83,7 @@ const nodeTypes = {
   compareNode: CompareNode,
   enhanceNode: EnhanceNode,
   controlNetNode: ControlNetNode,
+  inpaintCNNode: InpaintCNNode,
 };
 
 function App() {

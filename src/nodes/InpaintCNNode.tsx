@@ -5,19 +5,11 @@ import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt } from "../api/comfyApi";
 import { log } from "../store/logStore";
 import { uploadSourceImage, pollForResult, fetchAsDataUrl, saveGenerationResult, getConnectedImageUrl, getConnectedPrompt } from "../hooks/useNodeHelpers";
-import { buildInpaintWorkflow } from "../workflows/inpaint";
+import { buildInpaintControlNetWorkflow } from "../workflows/inpaintControlNet";
 import MediaHistory from "./MediaHistory";
 import MaskCanvas from "../components/MaskCanvas";
 
-const INPAINT_MODELS = [
-  { value: "flux1-fill", label: "FLUX.1 Fill", desc: "Best quality, specialized inpaint" },
-  { value: "klein-9b", label: "Klein 9B", desc: "Fast, good quality" },
-  { value: "klein-4b", label: "Klein 4B", desc: "Fastest FLUX, lightweight" },
-  { value: "sdxl-inpaint", label: "SDXL Inpainting", desc: "Good quality, dedicated checkpoint" },
-  { value: "sd15-inpaint", label: "SD 1.5 Inpainting", desc: "Fastest, lower quality" },
-];
-
-function InpaintNode({ id, data, selected }: NodeProps) {
+function InpaintCNNode({ id, data, selected }: NodeProps) {
   const nodeData = data as any;
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
   const setSelectedNode = useWorkflowStore((s) => s.setSelectedNode);
@@ -39,14 +31,19 @@ function InpaintNode({ id, data, selected }: NodeProps) {
     setProcessing(true);
     setError(null);
     const startTime = Date.now();
-    log("Inpaint started", { nodeId: id, nodeType: "fs:inpaint", nodeLabel: "Inpaint" });
+    log("Inpaint+CN started", { nodeId: id, nodeType: "fs:inpaintCN", nodeLabel: "Inpaint+CN" });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
-    const modelType = freshWv.modelType || "flux1-fill";
     const steps = freshWv.steps || 20;
-    const cfg = freshWv.cfg ?? 1.0;
+    const guidance = freshWv.guidance ?? 30;
     const denoise = freshWv.denoise ?? 0.85;
     const seed = freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647);
+    const controlType = freshWv.controlType || "canny";
+    const cnStrength = freshWv.cnStrength ?? 0.5;
+    const cnStartPercent = freshWv.cnStartPercent ?? 0.0;
+    const cnEndPercent = freshWv.cnEndPercent ?? 0.8;
+    const cannyLow = freshWv.cannyLow ?? 0.4;
+    const cannyHigh = freshWv.cannyHigh ?? 0.8;
     const samPrompt = freshWv.samPrompt || "";
     const currentMask = freshWv._maskUrl;
 
@@ -62,42 +59,38 @@ function InpaintNode({ id, data, selected }: NodeProps) {
     let maskData = currentMask;
     if (!maskData) {
       const maskEdge = edgesAll.find((edge) => edge.target === id && edge.targetHandle === "mask");
-      if (maskEdge) {
-        maskData = getConnectedImageUrl(id, "mask", nodesAll as any[], edgesAll as any[]);
-      }
+      if (maskEdge) maskData = getConnectedImageUrl(id, "mask", nodesAll as any[], edgesAll as any[]);
     }
     const useSAM = !maskData && samPrompt;
     if (!maskData && !useSAM) { setError("Draw a mask, connect one, or set SAM prompt"); setProcessing(false); return; }
 
     try {
-      const imgName = await uploadSourceImage(srcUrl, `fs_inp_${imgEdge.source}.png`);
+      const imgName = await uploadSourceImage(srcUrl, `fs_ipcn_${imgEdge.source}.png`);
       let maskName: string | null = null;
-      if (maskData) {
-        maskName = await uploadSourceImage(maskData, `fs_inp_mask_${id}.png`);
-      }
+      if (maskData) maskName = await uploadSourceImage(maskData, `fs_ipcn_mask_${id}.png`);
 
       let workflow: Record<string, any>;
-
       if (useSAM) {
-        // SAM auto-mask workflow
         workflow = {
           "1": { class_type: "LoadImage", inputs: { image: imgName } },
           "2": { class_type: "SAM2Segment", inputs: { image: ["1", 0], prompt: samPrompt, sam2_model: "sam2_hiera_small", dino_model: "GroundingDINO_SwinB", device: "cuda" } },
         };
-        const samWf = buildInpaintWorkflow({
-          modelType, imgName, maskName: null, samMaskRef: ["2", 1],
-          prompt: promptText, seed, steps, cfg, denoise,
+        const mainWf = buildInpaintControlNetWorkflow({
+          imgName, maskName: null, samMaskRef: ["2", 1],
+          prompt: promptText, seed, steps, guidance, denoise,
+          controlType, cnStrength, cnStartPercent, cnEndPercent, cannyLow, cannyHigh,
         });
-        workflow = { ...workflow, ...samWf };
+        workflow = { ...workflow, ...mainWf };
       } else {
-        workflow = buildInpaintWorkflow({
-          modelType, imgName, maskName, samMaskRef: null,
-          prompt: promptText, seed, steps, cfg, denoise,
+        workflow = buildInpaintControlNetWorkflow({
+          imgName, maskName, samMaskRef: null,
+          prompt: promptText, seed, steps, guidance, denoise,
+          controlType, cnStrength, cnStartPercent, cnEndPercent, cannyLow, cannyHigh,
         });
       }
 
+      console.log("[InpaintCN] Workflow:", JSON.stringify(workflow, null, 2));
       const result = await queuePrompt(workflow);
-
       const pollResult = await pollForResult(result.prompt_id, { interval: 1500 });
       if (!pollResult || "error" in pollResult) {
         setError(pollResult ? pollResult.error : "No result");
@@ -107,14 +100,15 @@ function InpaintNode({ id, data, selected }: NodeProps) {
 
       const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
       await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
-        prompt: promptText, model: modelType, seed: String(seed), steps, cfg, nodeType: "fs:inpaint",
+        prompt: promptText, model: "FLUX.1 Fill + CN", seed: String(seed),
+        steps, cfg: guidance, nodeType: "fs:inpaintCN",
       });
-      log("Inpaint complete", { nodeId: id, nodeType: "fs:inpaint", nodeLabel: "Inpaint", status: "success", details: modelType });
+      log("Inpaint+CN complete", { nodeId: id, nodeType: "fs:inpaintCN", nodeLabel: "Inpaint+CN", status: "success" });
     } catch (err: any) {
       setError(err.message);
     }
     setProcessing(false);
-  }, [id, edgesAll, nodesAll, updateWidgetValue]);
+  }, [id, edgesAll, nodesAll]);
 
   const imgHL = connectingDir === "source" && (connectingType === "IMAGE" || connectingType === "MEDIA" || connectingType === "*") ? "highlight" : "";
   const promptHL = connectingDir === "source" && (connectingType === "TEXT" || connectingType === "*") ? "highlight" : "";
@@ -123,22 +117,22 @@ function InpaintNode({ id, data, selected }: NodeProps) {
   const dimClass = connectingType ? (hasCompatible ? "compatible" : "incompatible") : "";
 
   const sourceImg = getSourceImage();
-  const currentModel = INPAINT_MODELS.find(m => m.value === (nodeData.widgetValues?.modelType || "flux1-fill"));
+  const controlType = nodeData.widgetValues?.controlType || "canny";
 
   return (
-    <div className={`inpaint-node ${selected ? "selected" : ""} ${dimClass}`} onClick={() => setSelectedNode(id)}>
-      <div className="inpaint-node-inner">
-        <div className="inpaint-accent" />
-        <div className="inpaint-header">
-          <span className="inpaint-icon">🎭</span>
-          <div className="inpaint-header-text">
-            <span className="inpaint-title">Inpaint</span>
-            <span className="inpaint-status">{processing ? "INPAINTING..." : currentModel?.label || "FLUX.1 Fill"}</span>
+    <div className={`inpaintcn-node ${selected ? "selected" : ""} ${dimClass}`} onClick={() => setSelectedNode(id)}>
+      <div className="inpaintcn-node-inner">
+        <div className="inpaintcn-accent" />
+        <div className="inpaintcn-header">
+          <span className="inpaintcn-icon">🎯</span>
+          <div className="inpaintcn-header-text">
+            <span className="inpaintcn-title">Inpaint + ControlNet</span>
+            <span className="inpaintcn-status">{processing ? "GENERATING..." : `FLUX.1 Dev + ${controlType}`}</span>
           </div>
         </div>
       </div>
 
-      <div className="inpaint-inputs">
+      <div className="inpaintcn-inputs">
         <div className="nanob-input-row">
           <Handle type="target" position={Position.Left} id="prompt" className={`slot-handle ${promptHL}`} style={{ color: "#f0c040" }} />
           <TypeBadge color="#f0c040">TXT</TypeBadge>
@@ -156,23 +150,23 @@ function InpaintNode({ id, data, selected }: NodeProps) {
         </div>
       </div>
 
-      <div className="inpaint-preview-wrap">
-        <MediaHistory nodeId={id} history={nodeData.widgetValues?._history || []} historyIndex={nodeData.widgetValues?._historyIndex ?? -1} fallbackUrl={previewUrl} emptyIcon="🎭" genTime={nodeData.widgetValues?._genTime} />
+      <div className="inpaintcn-preview-wrap">
+        <MediaHistory nodeId={id} history={nodeData.widgetValues?._history || []} historyIndex={nodeData.widgetValues?._historyIndex ?? -1} fallbackUrl={previewUrl} emptyIcon="🎯" genTime={nodeData.widgetValues?._genTime} />
         {maskUrl && <img src={maskUrl} alt="Mask" className="inpaint-mask-overlay" />}
       </div>
 
       {error && <div className="nanob-error nodrag">{error}</div>}
 
       <div className="nanob-actions">
-        <button className={`inpaint-generate-btn ${processing ? "generating" : ""}`} onClick={handleGenerate} disabled={processing}>
-          {processing ? "Inpainting..." : "🎭 Inpaint"}
+        <button className={`inpaintcn-generate-btn ${processing ? "generating" : ""}`} onClick={handleGenerate} disabled={processing}>
+          {processing ? "Generating..." : "🎯 Inpaint + ControlNet"}
         </button>
         <button className="inpaint-mask-btn" disabled={!sourceImg} onClick={(ev) => { ev.stopPropagation(); if (sourceImg) setShowMaskEditor(true); }} title="Draw mask">
           🖍️
         </button>
       </div>
 
-      <div className="inpaint-outputs">
+      <div className="inpaintcn-outputs">
         <div className="nanob-input-row" style={{ justifyContent: "flex-end" }}>
           <TypeBadge color="#64b5f6">IMG</TypeBadge>
           <span className="nanob-output-label">Output</span>
@@ -200,4 +194,4 @@ function TypeBadge({ color, children }: { color: string; children: React.ReactNo
   return <span className="type-badge" style={{ color, borderColor: color + "66", backgroundColor: color + "12" }}>{children}</span>;
 }
 
-export default memo(InpaintNode);
+export default memo(InpaintCNNode);

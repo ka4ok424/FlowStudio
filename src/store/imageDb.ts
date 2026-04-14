@@ -197,8 +197,9 @@ export async function extractImages(
 
       const key = `${wfId}/${n.id}/${field}`;
 
-      // Already persisted — just emit marker, skip re-save
-      if (_persistedKeys.has(key) && (val.startsWith("blob:") || val.startsWith("data:"))) {
+      // Already persisted AND unchanged — skip re-save
+      // Blob URLs are always NEW content (from fresh generation), must re-save
+      if (_persistedKeys.has(key) && !val.startsWith("blob:")) {
         wv[field] = `__idb__:${key}`;
         changed = true;
         continue;

@@ -39,7 +39,7 @@ function InpaintProperties({ nodeId, data }: { nodeId: string; data: any }) {
       </div>
       <div className="props-section">
         <div className="props-section-title">Steps</div>
-        <input type="range" className="props-range" min={1} max={30} step={1} value={steps}
+        <input type="range" className="props-range" min={1} max={50} step={1} value={steps}
           onChange={(e) => updateWidgetValue(nodeId, "steps", parseInt(e.target.value))} />
         <span className="props-range-value">{steps}</span>
       </div>
