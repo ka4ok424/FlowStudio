@@ -282,6 +282,41 @@ EmptyLatentImage (width, height) → KSampler → VAEDecode → SaveImage
 
 ---
 
+## fs:controlNet — ControlNet
+
+**Purpose:** Structure-guided generation using ControlNet Union Pro 2.0. Preserves edges, depth, pose, or lineart from a reference image.
+
+**Component:** `src/nodes/ControlNetNode.tsx`
+**Workflow:** `src/workflows/controlNet.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Text prompt for generation |
+| Input | IMAGE | input | Reference image for structure extraction |
+| Output | IMAGE | image | Generated image |
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| controlType | string | "canny" | canny, lineart, depth, openpose, tile, segment, scribble |
+| strength | float | 0.7 | ControlNet influence strength (0.05–1.5) |
+| startPercent | float | 0.0 | When ControlNet starts influencing (0–1) |
+| endPercent | float | 1.0 | When ControlNet stops influencing (0–1) |
+| steps | int | 4 | Sampling steps |
+| cfg | float | 1.0 | CFG scale |
+| width | int | 1024 | Output width |
+| height | int | 1024 | Output height |
+| seed | string | "" | Random seed (empty = random) |
+| cannyLow | int | 100 | Canny low threshold (canny type only) |
+| cannyHigh | int | 200 | Canny high threshold (canny type only) |
+
+**ComfyUI mapping:**
+- Base model: Klein 9B (`flux-2-klein-9b.safetensors`)
+- ControlNet: Union Pro 2.0 (`flux-controlnet-union-pro-2.safetensors`)
+- Pipeline: UNETLoader → CLIPLoader → VAELoader → LoadImage → [Canny] → ControlNetLoader → SetUnionControlNetType → ControlNetApplyAdvanced → KSampler → VAEDecode → SaveImage
+
+---
+
 ## Adding New Nodes — Checklist & Template
 
 ### Files to create/modify

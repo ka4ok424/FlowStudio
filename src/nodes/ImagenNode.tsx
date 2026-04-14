@@ -6,6 +6,7 @@ import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
 import { log } from "../store/logStore";
+import { dataUrlToBlobUrl } from "../utils/blobUrl";
 
 const IMAGEN_MODELS = [
   { id: "imagen-4.0-fast-generate-001", label: "Imagen 4 Fast" },
@@ -54,7 +55,7 @@ function ImagenNode({ id, data, selected }: NodeProps) {
       setError(result.error);
     } else if (result.images.length > 0) {
       const dataUrl = `data:image/png;base64,${result.images[0]}`;
-      updateWidgetValue(id, "_previewUrl", dataUrl);
+      updateWidgetValue(id, "_previewUrl", dataUrlToBlobUrl(dataUrl));
       const prev = nodeData.widgetValues?._history || [];
       const { history: newHist, index: newIdx } = await addToHistory(id, prev, dataUrl);
       updateWidgetValue(id, "_history", newHist);

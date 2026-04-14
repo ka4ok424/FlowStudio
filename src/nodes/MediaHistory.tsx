@@ -1,6 +1,7 @@
 import { useCallback, useState, useEffect } from "react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { saveImage, loadImage } from "../store/imageDb";
+import { dataUrlToBlobUrl } from "../utils/blobUrl";
 
 interface MediaHistoryProps {
   nodeId: string;
@@ -25,10 +26,13 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
     const marker = history[idx];
     updateWidgetValue(nodeId, "_historyIndex", idx);
     if (marker && marker.startsWith("__idb__:")) {
-      // Extract IDB key from marker
       const idbKey = marker.replace("__idb__:", "");
       loadImage(idbKey).then((data) => {
-        if (data) updateWidgetValue(nodeId, "_previewUrl", data);
+        if (data) {
+          // Convert to blob URL — keeps image out of JS heap
+          const url = data.startsWith("data:") ? dataUrlToBlobUrl(data) : data;
+          updateWidgetValue(nodeId, "_previewUrl", url);
+        }
       });
     } else if (marker) {
       updateWidgetValue(nodeId, "_previewUrl", marker);

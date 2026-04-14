@@ -90,17 +90,42 @@ export default function ProjectManager({ open, onClose }: Props) {
     try {
       const text = await file.text();
       const data = JSON.parse(text);
-      if (!data.nodes || !data.edges) { alert("Invalid project file"); return; }
+      // Support both formats: {nodes,edges} and {version,name,nodes,edges}
+      const nodes = data.nodes;
+      const edges = data.edges || [];
+      if (!nodes || !Array.isArray(nodes)) { alert("Invalid project file: no nodes found"); return; }
+
+      // Clean __idb__: markers from imported nodes (images won't exist in new context)
+      const cleanedNodes = nodes.map((n: any) => {
+        if (!n.data?.widgetValues) return n;
+        const wv = { ...n.data.widgetValues };
+        for (const key of Object.keys(wv)) {
+          if (typeof wv[key] === "string" && wv[key].startsWith("__idb__:")) {
+            wv[key] = "";
+          }
+        }
+        // Clean history markers
+        if (Array.isArray(wv._history)) {
+          wv._history = wv._history.filter((h: string) => h && !h.startsWith("__idb__:"));
+        }
+        return { ...n, data: { ...n.data, widgetValues: wv } };
+      });
+
       const name = data.name || file.name.replace(".flowstudio.json", "").replace(".json", "");
       const newId = await createProject(name);
-      const wfData = JSON.stringify({ nodes: data.nodes, edges: data.edges });
+      const wfData = JSON.stringify({ nodes: cleanedNodes, edges });
       await saveImage(`project_${newId}`, wfData);
+      // Also save to localStorage fallback
+      try { localStorage.setItem(`flowstudio_ls_${newId}`, wfData); } catch {}
       if (data.chatMessages?.length) {
         localStorage.setItem(`flowstudio_chat_${newId}`, JSON.stringify(data.chatMessages));
       }
       await loadProject(newId);
       onClose();
-    } catch { alert("Failed to import project"); }
+    } catch (err: any) {
+      console.error("[Import]", err);
+      alert("Failed to import project: " + (err.message || "unknown error"));
+    }
   }, [createProject, loadProject, onClose]);
 
   const formatDate = (ts: number) => {

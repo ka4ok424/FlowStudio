@@ -2,6 +2,7 @@ import { uploadImage, getComfyUrl, getImageUrl, queuePrompt } from "../api/comfy
 import { useWorkflowStore } from "../store/workflowStore";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import { addToHistory } from "../utils/historyLimit";
+import { dataUrlToBlobUrl } from "../utils/blobUrl";
 import { log } from "../store/logStore";
 
 /** Upload image from data URL or API URL to ComfyUI. Returns filename. */
@@ -127,7 +128,8 @@ export async function saveGenerationResult(
 ) {
   const store = useWorkflowStore.getState();
   store.updateWidgetValue(nodeId, "_genTime", genTime);
-  store.updateWidgetValue(nodeId, "_previewUrl", dataUrl);
+  // Store as blob URL — keeps image in native memory, not JS heap
+  store.updateWidgetValue(nodeId, "_previewUrl", dataUrlToBlobUrl(dataUrl));
 
   const prevHist: string[] = (store.nodes.find(n => n.id === nodeId)?.data as any)?.widgetValues?._history || [];
   const { history: newHist, index: newIdx } = await addToHistory(nodeId, prevHist, dataUrl);

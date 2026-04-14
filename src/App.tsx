@@ -42,6 +42,7 @@ import RemoveBgNode from "./nodes/RemoveBgNode";
 import InpaintNode from "./nodes/InpaintNode";
 import CompareNode from "./nodes/CompareNode";
 import EnhanceNode from "./nodes/EnhanceNode";
+import ControlNetNode from "./nodes/ControlNetNode";
 import AiChat from "./components/AiChat";
 import MediaLibrary from "./components/MediaLibrary";
 import { useMediaStore } from "./store/mediaStore";
@@ -80,6 +81,7 @@ const nodeTypes = {
   inpaintNode: InpaintNode,
   compareNode: CompareNode,
   enhanceNode: EnhanceNode,
+  controlNetNode: ControlNetNode,
 };
 
 function App() {
@@ -136,12 +138,29 @@ function App() {
     })();
   }, [setNodeDefs, setConnected]);
 
-  // Autosave (debounced, every 5 sec when changes happen)
+  // Autosave — interval-based with dirty flag check.
+  // Only saves when actual changes happened (not on every React render).
+  // Adaptive interval: small projects 5s, medium 10s, large 20s.
   useEffect(() => {
-    if (!currentProjectId || nodes.length === 0) return;
-    const timer = setTimeout(() => { saveProject(); saveLogsNow(); }, 5000);
+    if (!currentProjectId) return;
+    const getInterval = () => {
+      const count = useWorkflowStore.getState().nodes.length;
+      if (count < 50) return 5000;
+      if (count < 200) return 10000;
+      return 20000;
+    };
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      const state = useWorkflowStore.getState();
+      if (state._dirty && state.nodes.length > 0) {
+        state.saveProject();
+        saveLogsNow();
+      }
+      timer = setTimeout(tick, getInterval());
+    };
+    timer = setTimeout(tick, getInterval());
     return () => clearTimeout(timer);
-  }, [nodes, edges, currentProjectId]);
+  }, [currentProjectId]);
 
   // Save on unload + warn if pending jobs
   useEffect(() => {

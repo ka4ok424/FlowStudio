@@ -11,7 +11,7 @@ import {
 } from "@xyflow/react";
 import type { ComfyNodeDef } from "../api/comfyApi";
 import { getNativeNode } from "../nodes/registry";
-import { extractImages, restoreImages, saveImage, loadImage, deleteImagesByPrefix, copyImagesByPrefix } from "./imageDb";
+import { extractImages, restoreImages, saveImage, saveImageBatch, loadImage, deleteImagesByPrefix, copyImagesByPrefix, markKeyPersisted } from "./imageDb";
 
 export interface ProjectMeta {
   id: string;
@@ -110,6 +110,11 @@ interface WorkflowState {
   setChatMessages: (msgs: { role: "user" | "assistant"; content: string }[]) => void;
   addChatMessage: (msg: { role: "user" | "assistant"; content: string }) => void;
   clearChat: () => void;
+
+  // Dirty tracking (prevents pointless autosaves)
+  _dirty: boolean;
+  _dirtyMedia: boolean;
+  _markDirty: (media?: boolean) => void;
 }
 
 let nodeIdCounter = 0;
@@ -127,6 +132,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   connectingHandleId: null,
   _undoStack: [],
   _redoStack: [],
+
+  _dirty: false,
+  _dirtyMedia: false,
+  _markDirty: (media = false) => set({ _dirty: true, ...(media ? { _dirtyMedia: true } : {}) }),
 
   setNodeDefs: (defs) => set({ nodeDefs: defs }),
   setConnecting: (type, direction, nodeId = null, handleId = null) => set({ connectingType: type, connectingDirection: direction, connectingNodeId: nodeId, connectingHandleId: handleId }),
@@ -173,11 +182,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     });
   },
 
-  onNodesChange: (changes) =>
-    set({ nodes: applyNodeChanges(changes, get().nodes) as Node<ComfyNodeData>[] }),
+  onNodesChange: (changes) => {
+    set({ nodes: applyNodeChanges(changes, get().nodes) as Node<ComfyNodeData>[] });
+    // Only mark dirty for meaningful changes (not select/dimensions)
+    if (changes.some(c => c.type === "position" || c.type === "remove" || c.type === "add" || c.type === "replace")) {
+      set({ _dirty: true });
+    }
+  },
 
-  onEdgesChange: (changes) =>
-    set({ edges: applyEdgeChanges(changes, get().edges) }),
+  onEdgesChange: (changes) => {
+    set({ edges: applyEdgeChanges(changes, get().edges) });
+    set({ _dirty: true });
+  },
 
   onConnect: (connection) => {
     const sourceNode = get().nodes.find(n => n.id === connection.source);
@@ -261,7 +277,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       ...connection,
       style: { stroke: darken(color, 0.4), strokeWidth: 1 },
     };
-    set({ edges: addEdge(edge, get().edges) });
+    set({ edges: addEdge(edge, get().edges), _dirty: true });
   },
 
   addNode: (type, position) => {
@@ -297,6 +313,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         InpaintNode: "inpaintNode",
         CompareNode: "compareNode",
         EnhanceNode: "enhanceNode",
+        ControlNetNode: "controlNetNode",
       };
       const isGroup = nativeDef.type === "fs:group";
       const newNode: Node<ComfyNodeData> = {
@@ -319,7 +336,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           _nativeInputs: Object.fromEntries(nativeDef.inputs.map((i) => [i.name, i.type])),
         },
       };
-      set({ nodes: [...get().nodes, newNode] });
+      set({ nodes: [...get().nodes, newNode], _dirty: true });
       return;
     }
 
@@ -361,12 +378,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setProgress: (progress) => set({ progress }),
 
   updateWidgetValue: (nodeId, key, value) => {
+    const MEDIA_KEYS = ["_previewUrl", "portraitUrl", "_preview", "_history", "_historyIndex"];
+    const isMedia = MEDIA_KEYS.includes(key);
     const nodes = get().nodes.map((n) =>
       n.id === nodeId
         ? { ...n, data: { ...n.data, widgetValues: { ...n.data.widgetValues, [key]: value } } }
         : n
     );
-    set({ nodes });
+    set({ nodes, _dirty: true, ...(isMedia ? { _dirtyMedia: true } : {}) });
 
     // When media type changes on Import node, validate edges
     if (key === "_mediaType") {
@@ -511,10 +530,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       } catch { /* ignore parse error */ }
     }
 
-    // Extract images → IndexedDB, stripped nodes → localStorage
+    // Extract images → IndexedDB (incremental — skips already-persisted)
     const { strippedNodes, images } = await extractImages(currentProjectId, nodes as any[]);
-    for (const [key, dataUrl] of images) {
-      await saveImage(key, dataUrl);
+    if (images.size > 0) {
+      await saveImageBatch(images);
     }
 
     const wfData = JSON.stringify({ nodes: strippedNodes, edges });
@@ -542,13 +561,41 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       db.close();
     } catch { /* ignore cleanup errors */ }
 
-    // Save workflow to IndexedDB (no localStorage size limit)
+    // Save workflow to IndexedDB
     await saveImage(`project_${currentProjectId}`, wfData);
     await saveImage(`project_${currentProjectId}_backup`, wfData);
 
-    // Clean up old localStorage data (migration)
-    localStorage.removeItem(`flowstudio_proj_${currentProjectId}`);
-    localStorage.removeItem(`flowstudio_proj_${currentProjectId}_backup`);
+    // ── localStorage fallback (defense-in-depth) ──
+    // Always keep a copy of project structure in localStorage.
+    // IndexedDB can silently stop writing to disk (Chrome best-effort storage).
+    try {
+      localStorage.setItem(`flowstudio_ls_${currentProjectId}`, wfData);
+    } catch {
+      // localStorage full — try to trim: remove oldest ls_ entries
+      const lsKeys = Object.keys(localStorage).filter(k => k.startsWith("flowstudio_ls_") && k !== `flowstudio_ls_${currentProjectId}`);
+      for (const k of lsKeys) { localStorage.removeItem(k); }
+      try { localStorage.setItem(`flowstudio_ls_${currentProjectId}`, wfData); } catch { /* truly full */ }
+    }
+
+    // ── Read-back verification ──
+    // Verify IDB actually persisted (detect cache-only mode)
+    try {
+      const readBack = await loadImage(`project_${currentProjectId}`);
+      if (!readBack) {
+        console.error("[SaveProject] READ-BACK FAILED: IDB write succeeded but read returned null!");
+        // IDB is broken — localStorage fallback is our safety net
+      }
+    } catch (verifyErr: any) {
+      console.error("[SaveProject] READ-BACK ERROR:", verifyErr.message);
+      // Show warning to user if IDB is dead
+      if (!document.querySelector(".idb-warning-banner")) {
+        const banner = document.createElement("div");
+        banner.className = "idb-warning-banner";
+        banner.innerHTML = "Storage warning: project saved to backup only. Export your project as a safety measure.";
+        banner.style.cssText = "position:fixed;top:0;left:0;right:0;padding:8px 16px;background:#b71c1c;color:white;font-size:13px;font-weight:600;z-index:99999;text-align:center;";
+        document.body.prepend(banner);
+      }
+    }
 
     // Find a thumbnail — only on manual save (Cmd+S), not autosave
     let thumbnail: string | undefined;
@@ -628,7 +675,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       localStorage.setItem(`flowstudio_chat_${currentProjectId}`, JSON.stringify(chatMsgs));
     }
     } finally {
-      (set as any)({ _saving: false });
+      (set as any)({ _saving: false, _dirty: false, _dirtyMedia: false });
     }
   },
 
@@ -638,9 +685,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       await get().saveProject();
     }
 
-    // Load from IndexedDB first, fallback to localStorage (migration)
-    let raw = await loadImage(`project_${id}`);
+    // Load from IndexedDB, fallback to localStorage backup
+    let raw: string | null = null;
+    try {
+      raw = await loadImage(`project_${id}`);
+    } catch {
+      console.warn(`[LoadProject] IDB read failed for ${id}, trying localStorage fallback`);
+    }
     if (!raw) {
+      // Fallback 1: localStorage defense-in-depth copy
+      raw = localStorage.getItem(`flowstudio_ls_${id}`);
+      if (raw) console.log(`[LoadProject] Recovered from localStorage fallback!`);
+    }
+    if (!raw) {
+      // Fallback 2: old migration format
       raw = localStorage.getItem(`flowstudio_proj_${id}`);
     }
     if (!raw) return;
@@ -649,8 +707,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       const { nodes: rawNodes, edges } = JSON.parse(raw);
       if (!rawNodes) return;
 
-      // Restore images from IndexedDB
-      const nodes = await restoreImages(rawNodes);
+      // Restore images from IndexedDB (gracefully — images may be lost but structure survives)
+      let nodes: any[];
+      try {
+        nodes = await restoreImages(rawNodes);
+      } catch {
+        console.warn(`[LoadProject] Image restore failed, loading without images`);
+        nodes = rawNodes;
+      }
 
       const maxId = nodes.reduce((max: number, n: any) => {
         const num = parseInt(n.id?.replace("node_", "") || "0");

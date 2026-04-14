@@ -844,7 +844,7 @@ registerNativeNode({
 
 registerNativeNode({
   type: "fs:compare",
-  label: "Compare",
+  label: "A/B Compare",
   icon: "⚖️",
   accentColor: "#78909c",
   component: "CompareNode",
@@ -890,5 +890,39 @@ registerNativeNode({
     connectsTo: ["fs:preview", "fs:compare", "fs:ltxVideo"],
     examples: ["LocalGen(blurry) → Enhance(SUPIR 2x) → Compare ← original"],
     comfyMapping: "SUPIR_Upscale + SaveImage",
+  },
+});
+
+registerNativeNode({
+  type: "fs:controlNet",
+  label: "ControlNet",
+  icon: "🎯",
+  accentColor: "#26a69a",
+  component: "ControlNetNode",
+  description: "Structure-guided generation using ControlNet Union Pro 2.0. Preserve edges, depth, pose, or lineart from a reference image.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "input", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "image", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Generate images guided by a reference structure using ControlNet Union Pro 2.0. Supports canny edges, lineart, depth, openpose, tile, segment, and scribble modes.",
+    skills: ["Preserve object structure in generation", "Edge-guided generation (canny)", "Pose-guided generation (openpose)", "Depth-guided generation", "Lineart-guided generation", "Tile-based upscaling", "Segmentation-guided generation"],
+    params: {
+      controlType: "canny | soft_edge | depth | pose | gray",
+      strength: "ControlNet influence, 0.05-1.5, default 0.7",
+      startPercent: "When ControlNet starts, 0-1, default 0",
+      endPercent: "When ControlNet stops, 0-1, default 1",
+      cannyLow: "Canny low threshold, 10-300, default 100",
+      cannyHigh: "Canny high threshold, 50-500, default 200",
+      steps: "Sampling steps, 1-30, default 4",
+      cfg: "CFG scale, 1-20, default 1.0",
+    },
+    connectsFrom: ["fs:prompt", "fs:import", "fs:localGenerate", "fs:removeBg", "fs:upscale"],
+    connectsTo: ["fs:preview", "fs:compare", "fs:upscale", "fs:enhance"],
+    examples: ["Prompt + Reference → ControlNet(canny) → Preview", "Photo → ControlNet(depth) → new scene with same composition"],
+    comfyMapping: "UNETLoader + CLIPLoader + VAELoader + Canny + ControlNetLoader + SetUnionControlNetType + ControlNetApplyAdvanced + KSampler + VAEDecode + SaveImage",
   },
 });

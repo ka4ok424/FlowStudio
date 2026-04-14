@@ -159,22 +159,22 @@ function GalleryView({
 }) {
   const PAGE_SIZE = 30;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Reset when items change (filter/search)
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [items.length]);
 
-  // Infinite scroll
+  // Infinite scroll via IntersectionObserver (works regardless of which parent scrolls)
   useEffect(() => {
-    const el = scrollRef.current?.parentElement;
+    const el = sentinelRef.current;
     if (!el) return;
-    const onScroll = () => {
-      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
+    const obs = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
         setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, items.length));
       }
-    };
-    el.addEventListener("scroll", onScroll);
-    return () => el.removeEventListener("scroll", onScroll);
+    }, { rootMargin: "200px" });
+    obs.observe(el);
+    return () => obs.disconnect();
   }, [items.length]);
   const handleDragStart = (e: React.DragEvent, item: MediaItem) => {
     e.dataTransfer.setData("application/flowstudio-media", JSON.stringify({
@@ -188,12 +188,12 @@ function GalleryView({
   const visibleItems = items.slice(0, visibleCount);
 
   return (
-    <div className="media-gallery" ref={scrollRef}>
+    <div className="media-gallery">
       {visibleItems.map((item) => (
         <GalleryItem key={item.id} item={item} onSelect={onSelect} onFav={onFav} onDelete={onDelete} onDragStart={handleDragStart} />
       ))}
       {visibleCount < items.length && (
-        <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 8 }}>
+        <div ref={sentinelRef} style={{ gridColumn: "1 / -1", textAlign: "center", padding: 8 }}>
           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{visibleCount} / {items.length}</span>
         </div>
       )}

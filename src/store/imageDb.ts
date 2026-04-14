@@ -1,29 +1,81 @@
 // IndexedDB storage for workflow images (portraits, previews, etc.)
 // Separates large binary data from localStorage to avoid quota limits.
+//
+// Architecture (v2):
+// - Singleton DB connection (no re-open per call)
+// - _persistedKeys tracks what's already in IDB (skip re-saves)
+// - saveImageBatch for single-transaction bulk writes
+// - 5s write timeout to detect hung IDB
+// - checkIdbHealth for proactive failure detection
 
 const DB_NAME = "flowstudio_images";
 const DB_VERSION = 1;
 const STORE_NAME = "images";
 
+// ── Singleton connection ──────────────────────────────────────────
+let _dbInstance: IDBDatabase | null = null;
+
 function openDb(): Promise<IDBDatabase> {
+  if (_dbInstance) return Promise.resolve(_dbInstance);
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       req.result.createObjectStore(STORE_NAME);
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      _dbInstance = req.result;
+      _dbInstance.onclose = () => { _dbInstance = null; };
+      _dbInstance.onerror = () => { _dbInstance = null; };
+      resolve(_dbInstance);
+    };
     req.onerror = () => reject(req.error);
   });
 }
 
-/** Save any string data under a key */
+// ── Persisted keys tracking ───────────────────────────────────────
+// In-memory set of IDB keys known to be saved. Prevents re-saving unchanged images.
+// Reset on page reload — first save after reload will re-persist (safe default).
+const _persistedKeys = new Set<string>();
+
+export function isKeyPersisted(key: string): boolean {
+  return _persistedKeys.has(key);
+}
+
+export function markKeyPersisted(key: string): void {
+  _persistedKeys.add(key);
+}
+
+// ── Core operations ───────────────────────────────────────────────
+
+/** Save any string data under a key (with 5s timeout) */
 export async function saveImage(key: string, dataUrl: string): Promise<void> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readwrite");
+    const timeout = setTimeout(() => reject(new Error("IDB write timeout")), 5000);
+    const tx = db.transaction(STORE_NAME, "readwrite", { durability: "strict" } as any);
     tx.objectStore(STORE_NAME).put(dataUrl, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+    tx.oncomplete = () => { clearTimeout(timeout); _persistedKeys.add(key); resolve(); };
+    tx.onerror = () => { clearTimeout(timeout); reject(tx.error); };
+  });
+}
+
+/** Save multiple entries in a single transaction */
+export async function saveImageBatch(entries: Map<string, string>): Promise<void> {
+  if (entries.size === 0) return;
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("IDB batch write timeout")), 15000);
+    const tx = db.transaction(STORE_NAME, "readwrite", { durability: "strict" } as any);
+    const store = tx.objectStore(STORE_NAME);
+    for (const [key, value] of entries) {
+      store.put(value, key);
+    }
+    tx.oncomplete = () => {
+      clearTimeout(timeout);
+      for (const key of entries.keys()) _persistedKeys.add(key);
+      resolve();
+    };
+    tx.onerror = () => { clearTimeout(timeout); reject(tx.error); };
   });
 }
 
@@ -50,6 +102,7 @@ export async function deleteImagesByPrefix(prefix: string): Promise<void> {
       if (cursor) {
         if (typeof cursor.key === "string" && cursor.key.startsWith(prefix)) {
           cursor.delete();
+          _persistedKeys.delete(cursor.key as string);
         }
         cursor.continue();
       }
@@ -76,9 +129,9 @@ export async function copyImagesByPrefix(srcPrefix: string, dstPrefix: string): 
         }
         cursor.continue();
       } else {
-        // Cursor done — write copies
         for (const c of copies) {
           store.put(c.value, c.key);
+          _persistedKeys.add(c.key);
         }
       }
     };
@@ -86,6 +139,22 @@ export async function copyImagesByPrefix(srcPrefix: string, dstPrefix: string): 
     tx.onerror = () => reject(tx.error);
   });
 }
+
+/** Check if IDB is actually writing to disk (not just caching) */
+export async function checkIdbHealth(): Promise<"ok" | "readonly" | "dead"> {
+  const testKey = "__health_check__";
+  const testVal = String(Date.now());
+  try {
+    await saveImage(testKey, testVal);
+    const readBack = await loadImage(testKey);
+    if (readBack === testVal) return "ok";
+    return "readonly";
+  } catch {
+    return "dead";
+  }
+}
+
+// ── Image extraction / restoration ────────────────────────────────
 
 /** Convert a non-data URL to data URL by fetching it */
 async function fetchAsDataUrl(url: string): Promise<string | null> {
@@ -104,9 +173,8 @@ async function fetchAsDataUrl(url: string): Promise<string | null> {
   }
 }
 
-/** Extract image fields from nodes before saving to localStorage.
- *  Converts API/blob URLs to data URLs, then moves to IndexedDB.
- *  Returns stripped nodes + map of images to save to IndexedDB. */
+/** Extract image fields from nodes before saving.
+ *  INCREMENTAL: skips images already persisted in IDB (_persistedKeys). */
 export async function extractImages(
   wfId: string,
   nodes: any[]
@@ -122,29 +190,39 @@ export async function extractImages(
 
     for (const field of IMAGE_FIELDS) {
       let val = wv[field];
-      if (!val || typeof val !== "string" || val.startsWith("__idb__:")) continue;
+      if (!val || typeof val !== "string") continue;
 
-      // Convert API/blob URLs to data URLs first
+      // Already an IDB marker — keep as-is
+      if (val.startsWith("__idb__:")) continue;
+
+      const key = `${wfId}/${n.id}/${field}`;
+
+      // Already persisted — just emit marker, skip re-save
+      if (_persistedKeys.has(key) && (val.startsWith("blob:") || val.startsWith("data:"))) {
+        wv[field] = `__idb__:${key}`;
+        changed = true;
+        continue;
+      }
+
+      // Convert blob/API URLs to data URLs
       if (!val.startsWith("data:")) {
         const dataUrl = await fetchAsDataUrl(val);
         if (dataUrl) {
           val = dataUrl;
-          wv[field] = val;
         } else {
-          wv[field] = ""; // URL is dead, clear it
+          wv[field] = "";
           changed = true;
           continue;
         }
       }
 
-      // Now extract data URL to IndexedDB
-      const key = `${wfId}/${n.id}/${field}`;
+      // New image — needs IDB write
       images.set(key, val);
       wv[field] = `__idb__:${key}`;
       changed = true;
     }
 
-    // Also handle _history array
+    // Handle _history array — already uses __idb__: markers from addToHistory
     if (Array.isArray(wv._history)) {
       const newHist = [];
       for (let i = 0; i < wv._history.length; i++) {
@@ -171,13 +249,17 @@ export async function extractImages(
   return { strippedNodes, images };
 }
 
-/** Restore image references in nodes from IndexedDB */
+/** Restore image references in nodes from IndexedDB.
+ *  - Only restores current preview fields (not history) → lazy loading.
+ *  - Converts data URLs to blob URLs → keeps images out of JS heap.
+ *  - Populates _persistedKeys for incremental saves. */
 export async function restoreImages(nodes: any[]): Promise<any[]> {
+  const { dataUrlToBlobUrl } = await import("../utils/blobUrl");
   const db = await openDb();
   const keysToFetch: string[] = [];
   const IMAGE_FIELDS = ["portraitUrl", "_previewUrl", "_preview"];
 
-  // Collect all keys to fetch
+  // Collect only preview keys (skip _history — loaded on demand)
   for (const n of nodes) {
     if (!n.data?.widgetValues) continue;
     for (const field of IMAGE_FIELDS) {
@@ -186,10 +268,11 @@ export async function restoreImages(nodes: any[]): Promise<any[]> {
         keysToFetch.push(val.slice(8));
       }
     }
+    // Track all history keys as persisted (they exist in IDB)
     if (Array.isArray(n.data.widgetValues._history)) {
-      for (const url of n.data.widgetValues._history) {
-        if (url && typeof url === "string" && url.startsWith("__idb__:")) {
-          keysToFetch.push(url.slice(8));
+      for (const h of n.data.widgetValues._history) {
+        if (h && typeof h === "string" && h.startsWith("__idb__:")) {
+          _persistedKeys.add(h.slice(8));
         }
       }
     }
@@ -205,14 +288,17 @@ export async function restoreImages(nodes: any[]): Promise<any[]> {
     for (const key of keysToFetch) {
       const req = store.get(key);
       req.onsuccess = () => {
-        if (req.result) cache.set(key, req.result);
+        if (req.result) {
+          cache.set(key, req.result);
+          _persistedKeys.add(key); // Mark as persisted for incremental saves
+        }
       };
     }
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
 
-  // Replace placeholders
+  // Replace preview placeholders with blob URLs (history stays as __idb__: markers)
   return nodes.map((n) => {
     if (!n.data?.widgetValues) return n;
     const wv = { ...n.data.widgetValues };
@@ -221,17 +307,11 @@ export async function restoreImages(nodes: any[]): Promise<any[]> {
       const val = wv[field];
       if (val && typeof val === "string" && val.startsWith("__idb__:")) {
         const restored = cache.get(val.slice(8));
-        if (restored) { wv[field] = restored; changed = true; }
-      }
-    }
-    if (Array.isArray(wv._history)) {
-      wv._history = wv._history.map((url: string) => {
-        if (url && typeof url === "string" && url.startsWith("__idb__:")) {
-          return cache.get(url.slice(8)) || url;
+        if (restored) {
+          wv[field] = restored.startsWith("data:") ? dataUrlToBlobUrl(restored) : restored;
+          changed = true;
         }
-        return url;
-      });
-      changed = true;
+      }
     }
     if (!changed) return n;
     return { ...n, data: { ...n.data, widgetValues: wv } };

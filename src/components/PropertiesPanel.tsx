@@ -23,6 +23,7 @@ import SceneProperties from "./properties/SceneProperties";
 import StoryboardProperties from "./properties/StoryboardProperties";
 import CharacterCardProperties from "./properties/CharacterCardProperties";
 import PromptProperties from "./properties/PromptProperties";
+import ControlNetProperties from "./properties/ControlNetProperties";
 import ComfyProperties from "./properties/ComfyProperties";
 
 const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: any }>> = {
@@ -50,6 +51,7 @@ const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: a
   "fs:storyboard": StoryboardProperties,
   "fs:characterCard": CharacterCardProperties,
   "fs:prompt": PromptProperties as any,
+  "fs:controlNet": ControlNetProperties,
 };
 
 export default function PropertiesPanel() {

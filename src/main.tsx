@@ -4,6 +4,14 @@ import App from "./App.tsx";
 import { useWorkflowStore } from "./store/workflowStore";
 import { useMediaStore } from "./store/mediaStore";
 
+// ── Request persistent storage (prevent Chrome eviction) ──
+navigator.storage?.persist?.().then((granted) => {
+  console.log(`[Storage] Persistent storage: ${granted ? "GRANTED" : "DENIED (best-effort)"}`);
+  if (!granted) {
+    console.warn("[Storage] Data may be evicted by Chrome. Export projects regularly!");
+  }
+}).catch(() => {});
+
 // Debug API — accessible from browser console or external tools
 // Usage: window.__debug.getState(), window.__debug.checkSave(), etc.
 (window as any).__debug = {
@@ -49,15 +57,73 @@ import { useMediaStore } from "./store/mediaStore";
   },
 
   checkSave: async () => {
-    // Test save cycle: save → load → compare
     const wf = useWorkflowStore.getState();
+    const pid = wf.currentProjectId;
     const before = wf.nodes.length;
-    await wf.saveProject();
-    const projData = localStorage.getItem(`flowstudio_proj_${wf.currentProjectId}`);
-    if (!projData) return { error: "NO DATA SAVED" };
-    const parsed = JSON.parse(projData);
-    const saved = parsed.nodes?.length || 0;
-    return { before, saved, match: before === saved, projDataSize: projData.length };
+    const results: Record<string, any> = { project: wf.currentProjectName, nodesInMemory: before };
+
+    // 1. Test IDB write + read-back
+    try {
+      await wf.saveProject();
+      results.saveCall = "OK";
+    } catch (e: any) {
+      results.saveCall = "FAILED: " + e.message;
+    }
+
+    // 2. Check IDB main key
+    try {
+      const { loadImage } = await import("./store/imageDb");
+      const idbData = await loadImage(`project_${pid}`);
+      if (idbData) {
+        const parsed = JSON.parse(idbData);
+        results.idbMain = { status: "OK", nodes: parsed.nodes?.length, sizeKB: Math.round(idbData.length / 1024) };
+      } else {
+        results.idbMain = { status: "EMPTY" };
+      }
+    } catch (e: any) {
+      results.idbMain = { status: "DEAD", error: e.message?.slice(0, 80) };
+    }
+
+    // 3. Check IDB backup key
+    try {
+      const { loadImage } = await import("./store/imageDb");
+      const idbBk = await loadImage(`project_${pid}_backup`);
+      results.idbBackup = idbBk ? "OK" : "EMPTY";
+    } catch (e: any) {
+      results.idbBackup = "DEAD: " + e.message?.slice(0, 60);
+    }
+
+    // 4. Check localStorage fallback
+    const lsData = localStorage.getItem(`flowstudio_ls_${pid}`);
+    if (lsData) {
+      try {
+        const parsed = JSON.parse(lsData);
+        results.localStorageFallback = { status: "OK", nodes: parsed.nodes?.length, sizeKB: Math.round(lsData.length / 1024) };
+      } catch {
+        results.localStorageFallback = { status: "CORRUPT" };
+      }
+    } else {
+      results.localStorageFallback = { status: "MISSING" };
+    }
+
+    // 5. Check persistent storage
+    try {
+      const persisted = await navigator.storage?.persisted?.();
+      const estimate = await navigator.storage?.estimate?.();
+      results.storage = {
+        persistent: persisted ? "YES" : "NO (best-effort!)",
+        usedMB: Math.round((estimate?.usage || 0) / 1024 / 1024),
+        quotaMB: Math.round((estimate?.quota || 0) / 1024 / 1024),
+      };
+    } catch { results.storage = "unavailable"; }
+
+    // 6. Summary
+    const idbOk = results.idbMain?.status === "OK";
+    const lsOk = results.localStorageFallback?.status === "OK";
+    results.VERDICT = idbOk && lsOk ? "ALL GOOD" : idbOk ? "OK (no LS fallback)" : lsOk ? "IDB BROKEN — saved by localStorage!" : "DANGER — nothing works!";
+
+    console.table ? console.table(results) : console.log(results);
+    return results;
   },
 
   forceConvert: async () => {

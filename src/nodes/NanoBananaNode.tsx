@@ -6,6 +6,7 @@ import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
 import { log } from "../store/logStore";
+import { dataUrlToBlobUrl } from "../utils/blobUrl";
 
 const MAX_REFS = 14;
 
@@ -109,7 +110,7 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
       console.error("[NanoBanana]", result.error);
     } else if (result.images.length > 0) {
       const dataUrl = `data:image/png;base64,${result.images[0]}`;
-      updateWidgetValue(id, "_previewUrl", dataUrl);
+      updateWidgetValue(id, "_previewUrl", dataUrlToBlobUrl(dataUrl));
       const prev = nodeData.widgetValues?._history || [];
       const { history: newHistory, index: newIdx } = await addToHistory(id, prev, dataUrl);
       updateWidgetValue(id, "_history", newHistory);

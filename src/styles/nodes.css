@@ -1013,3 +1013,24 @@
   transition: background 0.15s;
 }
 .mask-save-btn:hover { background: #9c27b0; }
+
+/* ══════════════════════════════════════════════════════════════════
+   ControlNet Node
+   ══════════════════════════════════════════════════════════════════ */
+.controlnet-node {
+  background: var(--bg-node); border: 1px solid var(--border);
+  border-radius: var(--radius); width: var(--node-m);
+  overflow: visible; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  transition: box-shadow 0.08s, border-color 0.08s; position: relative;
+}
+.controlnet-node.selected { border-color: #26a69a; box-shadow: 0 0 0 2px rgba(38,166,154,0.25), 0 4px 16px rgba(0,0,0,0.3); }
+.controlnet-node.incompatible { opacity: 0.35; }
+.controlnet-node-inner { overflow: hidden; border-radius: var(--radius) var(--radius) 0 0; }
+.controlnet-accent { height: 3px; background: #26a69a; }
+.controlnet-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px 8px; border-bottom: 1px solid var(--border); }
+.controlnet-icon { font-size: 16px; }
+.controlnet-header-text { display: flex; flex-direction: column; }
+.controlnet-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.controlnet-status { font-size: 10px; color: #26a69a; font-weight: 700; }
+.controlnet-inputs { padding: 6px 0; }
+.controlnet-outputs { padding: 6px 0; border-top: 1px solid var(--border); }

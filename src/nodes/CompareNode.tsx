@@ -63,8 +63,8 @@ function CompareNode({ id, data, selected }: NodeProps) {
         <div className="compare-header">
           <span className="compare-icon">⚖️</span>
           <div className="compare-header-text">
-            <span className="compare-title">Compare</span>
-            <span className="compare-status">A / B</span>
+            <span className="compare-title">A/B Compare</span>
+            <span className="compare-status">COMPARE</span>
           </div>
         </div>
       </div>
@@ -73,12 +73,12 @@ function CompareNode({ id, data, selected }: NodeProps) {
         <div className="nanob-input-row">
           <Handle type="target" position={Position.Left} id="image_a" className={`slot-handle ${imgHL}`} style={{ color: "#64b5f6" }} />
           <TypeBadge color="#64b5f6">IMG</TypeBadge>
-          <span className="nanob-input-label">Image A (left)</span>
+          <span className="nanob-input-label">Image Left (A)</span>
         </div>
         <div className="nanob-input-row">
           <Handle type="target" position={Position.Left} id="image_b" className={`slot-handle ${imgHL}`} style={{ color: "#64b5f6" }} />
           <TypeBadge color="#64b5f6">IMG</TypeBadge>
-          <span className="nanob-input-label">Image B (right)</span>
+          <span className="nanob-input-label">Image Right (B)</span>
         </div>
       </div>
 

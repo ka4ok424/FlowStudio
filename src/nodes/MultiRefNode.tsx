@@ -6,6 +6,7 @@ import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
 import { log } from "../store/logStore";
+import { dataUrlToBlobUrl } from "../utils/blobUrl";
 
 const MAX_REFS = 8;
 
@@ -258,7 +259,7 @@ function MultiRefNode({ id, data, selected }: NodeProps) {
                     reader.onloadend = () => resolve(reader.result as string);
                     reader.readAsDataURL(blob);
                   });
-                  updateWidgetValue(id, "_previewUrl", dataUrl);
+                  updateWidgetValue(id, "_previewUrl", dataUrlToBlobUrl(dataUrl));
                   const prev: string[] = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
                   const { history: _h, index: _i } = await addToHistory(id, prev, dataUrl); updateWidgetValue(id, "_history", _h);
                   updateWidgetValue(id, "_historyIndex", _i);
