@@ -25,6 +25,10 @@ import CharacterCardProperties from "./properties/CharacterCardProperties";
 import PromptProperties from "./properties/PromptProperties";
 import ControlNetProperties from "./properties/ControlNetProperties";
 import InpaintCNProperties from "./properties/InpaintCNProperties";
+import WanVideoProperties from "./properties/WanVideoProperties";
+import WanAnimateProperties from "./properties/WanAnimateProperties";
+import HunyuanVideoProperties from "./properties/HunyuanVideoProperties";
+import HunyuanAvatarProperties from "./properties/HunyuanAvatarProperties";
 import ComfyProperties from "./properties/ComfyProperties";
 
 const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: any }>> = {
@@ -54,6 +58,10 @@ const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: a
   "fs:prompt": PromptProperties as any,
   "fs:controlNet": ControlNetProperties,
   "fs:inpaintCN": InpaintCNProperties,
+  "fs:wanVideo": WanVideoProperties,
+  "fs:wanAnimate": WanAnimateProperties,
+  "fs:hunyuanVideo": HunyuanVideoProperties,
+  "fs:hunyuanAvatar": HunyuanAvatarProperties,
 };
 
 export default function PropertiesPanel() {

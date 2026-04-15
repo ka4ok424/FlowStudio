@@ -959,3 +959,140 @@ registerNativeNode({
     comfyMapping: "FLUX.1 Fill + ControlNet Union Pro 2.0 + FluxGuidance + DifferentialDiffusion + InpaintModelConditioning + ControlNetApplyAdvanced",
   },
 });
+
+registerNativeNode({
+  type: "fs:wanVideo",
+  label: "Wan Video",
+  icon: "🎥",
+  accentColor: "#42a5f5",
+  component: "WanVideoNode",
+  description: "Generate video from image + prompt using Wan 2.2 TI2V-5B. Fast lightweight video generation.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "start_image", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "Generate video from a text prompt with optional start image using Wan 2.2 TI2V-5B model (GGUF Q8). Supports text-to-video and image-to-video in a single lightweight model.",
+    skills: ["Text to video generation", "Image to video animation", "Prompt-guided video creation"],
+    params: {
+      steps: "Sampling steps, 10-50, default 30",
+      cfg: "CFG scale, 1-15, default 6.0",
+      shift: "Flow shift, 0-20, default 5.0",
+      numFrames: "Number of frames, 1-129, default 49 (step 4)",
+      fps: "Frames per second, 8-30, default 16",
+      width: "Video width, default 832",
+      height: "Video height, default 480",
+      noiseAug: "Noise augmentation for more motion, 0-1, default 0",
+    },
+    connectsFrom: ["fs:prompt", "fs:import", "fs:localGenerate", "fs:kontext"],
+    connectsTo: ["fs:preview"],
+    examples: ["Prompt('a cat walking') → Wan Video → Preview", "LocalGen(cat) → Wan Video + Prompt('cat running') → Preview"],
+    comfyMapping: "WanVideoModelLoader(TI2V-5B) + WanVideoVAELoader + LoadWanVideoT5TextEncoder + WanVideoTextEncode + WanVideoImageToVideoEncode + WanVideoSampler + WanVideoDecode + SaveVideo",
+  },
+});
+
+registerNativeNode({
+  type: "fs:wanAnimate",
+  label: "Wan Animate",
+  icon: "🕺",
+  accentColor: "#ff7043",
+  component: "WanAnimateNode",
+  description: "Transfer motion from video to character image, or replace a person in video. Wan 2.2 Animate 14B.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "ref_image", type: "IMAGE" },
+    { name: "pose_video", type: "VIDEO" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "Character animation and replacement using Wan 2.2 Animate 14B. Two modes: Animation (transfer poses from driving video to character image) and Replacement (replace person in video with character).",
+    skills: ["Motion transfer from video to character", "Character animation from pose video", "Person replacement in video", "Dance transfer to custom character"],
+    params: {
+      mode: "animate (motion transfer) | replace (character replacement)",
+      steps: "Sampling steps, 10-50, default 30",
+      cfg: "CFG scale, 1-15, default 6.0",
+      shift: "Flow shift, 0-20, default 5.0",
+      numFrames: "Number of frames, 1-129, default 81 (step 4)",
+      poseStrength: "Pose influence, 0-2, default 1.0",
+      faceStrength: "Face influence, 0-2, default 1.0",
+    },
+    connectsFrom: ["fs:prompt", "fs:import", "fs:localGenerate", "fs:kontext", "fs:ltxVideo"],
+    connectsTo: ["fs:preview"],
+    examples: ["Character image + Dance video → Wan Animate(motion) → character dancing", "Character image + Person video → Wan Animate(replace) → person replaced"],
+    comfyMapping: "WanVideoModelLoader(Animate-14B) + WanVideoBlockSwap + WanVideoVAELoader + LoadWanVideoT5TextEncoder + CLIPVisionLoader + WanVideoClipVisionEncode + WanVideoAnimateEmbeds + WanVideoSampler + WanVideoDecode + SaveVideo",
+  },
+});
+
+registerNativeNode({
+  type: "fs:hunyuanVideo",
+  label: "HunyuanVideo",
+  icon: "🌊",
+  accentColor: "#29b6f6",
+  component: "HunyuanVideoNode",
+  description: "Generate video from image + prompt using HunyuanVideo 1.5. High quality T2V/I2V with low VRAM usage.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "start_image", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "Generate video from text prompt with optional start image using HunyuanVideo 1.5 (GGUF Q8). Supports T2V and I2V. Text encoder auto-downloads on first run.",
+    skills: ["Text to video generation", "Image to video animation", "High quality video at lower VRAM"],
+    params: {
+      steps: "Sampling steps, 10-50, default 30",
+      cfg: "Embedded guidance scale, 1-15, default 6.0",
+      flowShift: "Flow shift, 0-20, default 9.0",
+      numFrames: "Number of frames, 1-129, default 49 (step 4)",
+      fps: "Frames per second, 8-30, default 24",
+      width: "Video width, default 512",
+      height: "Video height, default 320",
+      denoise: "Denoise strength, 0.1-1.0, default 1.0",
+    },
+    connectsFrom: ["fs:prompt", "fs:import", "fs:localGenerate", "fs:kontext"],
+    connectsTo: ["fs:preview"],
+    examples: ["Prompt('ocean waves at sunset') → HunyuanVideo → Preview", "LocalGen(landscape) → HunyuanVideo + Prompt('camera pan') → Preview"],
+    comfyMapping: "HyVideoModelLoader + HyVideoVAELoader + DownloadAndLoadHyVideoTextEncoder + HyVideoI2VEncode/HyVideoTextEncode + HyVideoSampler + HyVideoDecode + SaveVideo",
+  },
+});
+
+registerNativeNode({
+  type: "fs:hunyuanAvatar",
+  label: "HunyuanAvatar",
+  icon: "🗣",
+  accentColor: "#ab47bc",
+  component: "HunyuanAvatarNode",
+  description: "Audio-driven talking head video. Feed a portrait image + audio to generate a speaking/singing character.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "image", type: "IMAGE" },
+    { name: "audio", type: "AUDIO" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "Generate talking head video from a portrait image and audio using HunyuanVideo-Avatar. The character will speak/sing synchronized to the audio input.",
+    skills: ["Audio-driven talking head", "Lip sync video generation", "Character animation from speech", "Singing avatar creation"],
+    params: {
+      steps: "Sampling steps, 10-50, default 25",
+      cfg: "CFG scale, 1-15, default 7.5",
+      duration: "Audio duration to process, 1-30s, default 5",
+      width: "Video width, 128-1216, default 512",
+      height: "Video height, 128-1216, default 512",
+      faceSize: "Face crop size multiplier, 0.5-10, default 3.0",
+      objectName: "Subject description, e.g. 'girl', 'man'",
+      videoLength: "Frame count, 128-512, default 128",
+    },
+    connectsFrom: ["fs:prompt", "fs:import", "fs:localGenerate", "fs:tts", "fs:music"],
+    connectsTo: ["fs:preview"],
+    examples: ["Portrait + TTS audio → HunyuanAvatar → talking head video", "Character image + song → HunyuanAvatar → singing avatar"],
+    comfyMapping: "HY_Avatar_Loader + LoadImage + LoadAudio + HY_Avatar_PreData + HY_Avatar_Sampler + SaveVideo",
+  },
+});

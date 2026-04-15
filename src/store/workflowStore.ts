@@ -315,6 +315,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         EnhanceNode: "enhanceNode",
         ControlNetNode: "controlNetNode",
         InpaintCNNode: "inpaintCNNode",
+        WanVideoNode: "wanVideoNode",
+        WanAnimateNode: "wanAnimateNode",
+        HunyuanVideoNode: "hunyuanVideoNode",
+        HunyuanAvatarNode: "hunyuanAvatarNode",
       };
       const isGroup = nativeDef.type === "fs:group";
       const newNode: Node<ComfyNodeData> = {

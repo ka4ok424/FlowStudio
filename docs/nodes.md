@@ -577,3 +577,114 @@ export default memo(MyNode);
 - **Cloud nodes** (Nano Banana): call external API directly from browser
 - **Local nodes** (Local Gen): build ComfyUI workflow JSON → POST /api/prompt → WebSocket progress → fetch result
 - **Passive nodes** (Prompt, Import): don't execute, only provide data
+
+---
+
+## fs:wanVideo — Wan Video
+
+**Purpose:** Generate video from image + prompt using Wan 2.2 TI2V-5B (GGUF Q8).
+
+**Component:** `src/nodes/WanVideoNode.tsx`
+**Workflow Builder:** `src/workflows/wanVideo.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Text prompt |
+| Input | IMAGE | start_image | Optional start frame |
+| Output | VIDEO | video | Generated video |
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|---|---|---|---|
+| steps | number | 30 | Sampling steps |
+| cfg | number | 6.0 | CFG scale |
+| shift | number | 5.0 | Flow shift |
+| width | number | 832 | Video width |
+| height | number | 480 | Video height |
+| numFrames | number | 49 | Frame count (step 4) |
+| fps | number | 16 | Frames per second |
+| noiseAug | number | 0.0 | Noise augmentation for more motion |
+
+**ComfyUI Mapping:**
+WanVideoModelLoader(TI2V-5B-Q8) → LoadWanVideoT5TextEncoder → WanVideoTextEncode → WanVideoImageToVideoEncode → WanVideoSampler → WanVideoDecode → CreateVideo → SaveVideo
+
+---
+
+## fs:wanAnimate — Wan Animate
+
+**Purpose:** Transfer motion from driving video to character image, or replace person in video. Wan 2.2 Animate 14B (GGUF Q4_K_M).
+
+**Component:** `src/nodes/WanAnimateNode.tsx`
+**Workflow Builder:** `src/workflows/wanAnimate.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Text prompt |
+| Input | IMAGE | ref_image | Character/reference image |
+| Input | VIDEO | pose_video | Driving motion video (animate mode) |
+| Input | VIDEO | face_video | Face video (replace mode) |
+| Output | VIDEO | video | Generated video |
+
+**Modes:**
+- **animate**: Reference image + pose/motion video → character performs the motion
+- **replace**: Reference image + face video → person in video replaced with character
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|---|---|---|---|
+| mode | string | "animate" | "animate" or "replace" |
+| steps | number | 30 | Sampling steps |
+| cfg | number | 6.0 | CFG scale |
+| shift | number | 5.0 | Flow shift |
+| width | number | 832 | Video width |
+| height | number | 480 | Video height |
+| numFrames | number | 81 | Frame count (step 4) |
+| fps | number | 16 | Frames per second |
+| poseStrength | number | 1.0 | Pose influence strength |
+| faceStrength | number | 1.0 | Face influence strength |
+
+**ComfyUI Mapping:**
+WanVideoModelLoader(Animate-14B-Q4) + WanVideoBlockSwap(20) → LoadWanVideoT5TextEncoder → WanVideoTextEncode → CLIPVisionLoader + WanVideoClipVisionEncode → WanVideoAnimateEmbeds(pose/face) → WanVideoSampler → WanVideoDecode → CreateVideo → SaveVideo
+
+---
+
+## fs:hunyuanVideo — HunyuanVideo
+
+**Purpose:** Generate video from image + prompt using HunyuanVideo 1.5 I2V (FP8). High quality with efficient VRAM usage.
+
+**Component:** `src/nodes/HunyuanVideoNode.tsx`
+**Workflow Builder:** `src/workflows/hunyuanVideo.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Text prompt |
+| Input | IMAGE | start_image | Optional start frame |
+| Output | VIDEO | video | Generated video |
+
+**Parameters:** steps (30), cfg (6.0), flowShift (9.0), width (512), height (320), numFrames (49), fps (24), denoise (1.0)
+
+**ComfyUI Mapping:**
+HyVideoModelLoader(I2V_fp8) → HyVideoVAELoader → DownloadAndLoadHyVideoTextEncoder(auto-download) → HyVideoI2VEncode → HyVideoSampler → HyVideoDecode → CreateVideo → SaveVideo
+
+---
+
+## fs:hunyuanAvatar — HunyuanAvatar
+
+**Purpose:** Audio-driven talking head video. Portrait image + audio → speaking/singing character.
+
+**Component:** `src/nodes/HunyuanAvatarNode.tsx`
+**Workflow Builder:** `src/workflows/hunyuanAvatar.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Scene description |
+| Input | IMAGE | image | Portrait / character image |
+| Input | AUDIO | audio | Speech or music audio |
+| Output | VIDEO | video | Talking head video |
+
+**Parameters:** steps (25), cfg (7.5), duration (5s), width (512), height (512), faceSize (3.0), objectName ("person"), videoLength (128)
+
+**Note:** flash_attn replaced with `torch.nn.attention.varlen.varlen_attn` (PyTorch 2.11+) for Windows compatibility. Patched files: `models_audio.py`, `parallel_states.py`.
+
+**ComfyUI Mapping:**
+HY_Avatar_Loader(FP8+cpu_offload) → LoadImage + LoadAudio → HY_Avatar_PreData → HY_Avatar_Sampler → CreateVideo → SaveVideo

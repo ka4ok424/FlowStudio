@@ -23,7 +23,7 @@ export function buildImg2ImgWorkflow(p: Img2ImgParams): Record<string, any> {
 
   // CLIPLoader — Mistral
   const clipId = String(n++);
-  workflow[clipId] = { class_type: "CLIPLoader", inputs: { clip_name: "mistral_3_small_flux2_fp8.safetensors", type: "flux2", device: "default" } };
+  workflow[clipId] = { class_type: "CLIPLoader", inputs: { clip_name: "mistral_3_small_flux2_fp8.safetensors", type: "flux2", device: "cpu" } };
 
   // VAELoader
   const vaeId = String(n++);
