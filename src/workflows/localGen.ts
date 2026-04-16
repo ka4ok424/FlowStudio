@@ -49,9 +49,9 @@ export function buildLocalGenWorkflow(p: LocalGenParams): Record<string, any> {
   if (isFlux2) {
     let clipNode: Record<string, any>;
     if (isKlein9B) {
-      clipNode = { class_type: "CLIPLoader", inputs: { clip_name: "qwen3_8b_klein9b.safetensors", type: "flux2", device: "cpu" } };
+      clipNode = { class_type: "CLIPLoader", inputs: { clip_name: "qwen3_8b_klein9b.safetensors", type: "flux2", device: "default" } };
     } else {
-      clipNode = { class_type: "CLIPLoader", inputs: { clip_name: "qwen_3_4b_fp4_flux2.safetensors", type: "flux2", device: "cpu" } };
+      clipNode = { class_type: "CLIPLoader", inputs: { clip_name: "qwen_3_4b_fp4_flux2.safetensors", type: "flux2", device: "default" } };
     }
 
     return {
