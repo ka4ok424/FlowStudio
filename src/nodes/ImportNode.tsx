@@ -1,9 +1,8 @@
 import { memo, useCallback, useRef, useState, useEffect } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
-import { useMediaStore, type MediaItem } from "../store/mediaStore";
-
-type MediaType = "none" | "image" | "video" | "audio";
+import { processImportFile, type ImportMediaType as MediaType } from "../utils/importFile";
+import { makeDragGhost, findGhostSource } from "../utils/dragGhost";
 
 const TYPE_COLORS: Record<MediaType, string> = {
   none: "#888888", image: "#64b5f6", video: "#e85d75", audio: "#e8a040",
@@ -11,12 +10,6 @@ const TYPE_COLORS: Record<MediaType, string> = {
 const TYPE_LABELS: Record<MediaType, string> = {
   none: "MEDIA", image: "IMAGE", video: "VIDEO", audio: "AUDIO",
 };
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-}
 
 function ImportNode({ id, data, selected }: NodeProps) {
   const nodeData = data as any;
@@ -34,83 +27,12 @@ function ImportNode({ id, data, selected }: NodeProps) {
   const [hoverPreview, setHoverPreview] = useState(false);
 
   const handleFile = useCallback((file: File) => {
-    const mime = file.type;
-    let type: MediaType = "none";
-    if (mime.startsWith("image/")) type = "image";
-    else if (mime.startsWith("video/")) type = "video";
-    else if (mime.startsWith("audio/")) type = "audio";
-
+    const { type, url } = processImportFile(file, {
+      setValue: (key, value) => updateWidgetValue(id, key, value),
+    });
     setMediaType(type);
     setFileName(file.name);
-
-    const url = URL.createObjectURL(file);
     setPreview(url);
-
-    const ext = file.name.split(".").pop()?.toUpperCase() || "";
-    const fileInfo: Record<string, string> = {
-      size: formatSize(file.size),
-      format: ext,
-    };
-
-    // Get dimensions for images
-    if (type === "image") {
-      const img = new Image();
-      img.onload = () => {
-        fileInfo.resolution = `${img.width} × ${img.height}`;
-        updateWidgetValue(id, "_fileInfo", { ...fileInfo });
-      };
-      img.src = url;
-    }
-
-    // Get duration for video
-    if (type === "video") {
-      const video = document.createElement("video");
-      video.onloadedmetadata = () => {
-        const mins = Math.floor(video.duration / 60);
-        const secs = Math.floor(video.duration % 60);
-        fileInfo.duration = `${mins}:${secs.toString().padStart(2, "0")}`;
-        fileInfo.resolution = `${video.videoWidth} × ${video.videoHeight}`;
-        updateWidgetValue(id, "_fileInfo", { ...fileInfo });
-      };
-      video.src = url;
-    }
-
-    // Get duration for audio
-    if (type === "audio") {
-      const audio = new Audio();
-      audio.onloadedmetadata = () => {
-        const mins = Math.floor(audio.duration / 60);
-        const secs = Math.floor(audio.duration % 60);
-        fileInfo.duration = `${mins}:${secs.toString().padStart(2, "0")}`;
-        updateWidgetValue(id, "_fileInfo", { ...fileInfo });
-      };
-      audio.src = url;
-    }
-
-    updateWidgetValue(id, "_mediaType", type);
-    updateWidgetValue(id, "_fileName", file.name);
-    updateWidgetValue(id, "_preview", url);
-    updateWidgetValue(id, "_fileInfo", fileInfo);
-
-    // Save to media library as data URL for persistence (images only — video/audio too large for localStorage)
-    if (type === "image") {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (reader.result && typeof reader.result === "string") {
-          const item: MediaItem = {
-            id: `imp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-            type: type as "image" | "video" | "audio",
-            url: reader.result,
-            fileName: file.name,
-            source: "imported",
-            favorite: false,
-            createdAt: Date.now(),
-          };
-          useMediaStore.getState().addItem(item);
-        }
-      };
-      reader.readAsDataURL(file);
-    }
   }, [id, updateWidgetValue]);
 
   const clearFile = useCallback((e: React.MouseEvent) => {
@@ -223,16 +145,30 @@ function ImportNode({ id, data, selected }: NodeProps) {
       </div>
 
       <div
-        className={`import-dropzone ${dragOver ? "drag-over" : ""} ${preview ? "has-preview" : ""}`}
+        className={`import-dropzone nodrag ${dragOver ? "drag-over" : ""} ${preview ? "has-preview" : ""}`}
         onDrop={onDrop}
         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onClick={() => { if (!preview) fileInputRef.current?.click(); }}
         onMouseEnter={() => setHoverPreview(true)}
         onMouseLeave={() => setHoverPreview(false)}
+        draggable={!!preview}
+        onDragStart={(e) => {
+          if (!preview || mediaType === "none") return;
+          e.stopPropagation();
+          e.dataTransfer.setData("application/flowstudio-media", JSON.stringify({
+            url: preview, fileName: fileName || "import", type: mediaType,
+          }));
+          e.dataTransfer.effectAllowed = "copy";
+          const src = findGhostSource(e.currentTarget as HTMLElement);
+          if (src) {
+            const ghost = makeDragGhost(src, 120);
+            e.dataTransfer.setDragImage(ghost, ghost.width / 2, ghost.height / 2);
+          }
+        }}
       >
         {preview && mediaType === "image" && (
-          <img src={preview} alt={fileName} className="import-preview-img" />
+          <img src={preview} alt={fileName} className="import-preview-img" draggable={false} />
         )}
         {preview && mediaType === "video" && (
           <video src={preview} className="import-preview-video" controls muted />
@@ -256,6 +192,18 @@ function ImportNode({ id, data, selected }: NodeProps) {
             </button>
           </div>
         )}
+
+        {preview && nodeData.widgetValues?._fileInfo && (() => {
+          const fi = nodeData.widgetValues._fileInfo;
+          const parts: string[] = [];
+          if (fi.resolution) parts.push(fi.resolution);
+          if (fi.duration) parts.push(fi.duration);
+          if (fi.fps) parts.push(`${fi.fps}fps`);
+          if (fi.frames) parts.push(`${fi.frames}f`);
+          return parts.length > 0 ? (
+            <div className="import-media-info nodrag">{parts.join(" · ")}</div>
+          ) : null;
+        })()}
 
         <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}

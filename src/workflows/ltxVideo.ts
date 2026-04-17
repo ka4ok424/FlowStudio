@@ -28,7 +28,7 @@ export function buildLtxVideoWorkflow(p: LtxVideoParams): Record<string, any> {
 
   // 1. Model + VAE from checkpoint
   const ckptId = String(n++);
-  workflow[ckptId] = { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "LTX-Video\\ltx-2.3-22b-dev-nvfp4.safetensors" } };
+  workflow[ckptId] = { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "LTX-Video\\ltx-2.3-22b-distilled-fp8.safetensors" } };
 
   // 2. Text encoder (Gemma 3)
   const clipId = String(n++);
@@ -36,7 +36,7 @@ export function buildLtxVideoWorkflow(p: LtxVideoParams): Record<string, any> {
     class_type: "LTXVGemmaCLIPModelLoader",
     inputs: {
       gemma_path: "gemma-3-12b-it-qat-q4_0-unquantized\\model-00001-of-00005.safetensors",
-      ltxv_path: "LTX-Video\\ltx-2.3-22b-dev-nvfp4.safetensors",
+      ltxv_path: "LTX-Video\\ltx-2.3-22b-distilled-fp8.safetensors",
       max_length: p.maxLength,
     },
   };
@@ -137,8 +137,8 @@ export function buildLtxVideoWorkflow(p: LtxVideoParams): Record<string, any> {
 
 export function buildLtxWarmupWorkflow(prompt: string, seed: number, fps: number, maxShift: number, baseShift: number): Record<string, any> {
   return {
-    "1": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "LTX-Video\\ltx-2.3-22b-dev-nvfp4.safetensors" } },
-    "2": { class_type: "LTXVGemmaCLIPModelLoader", inputs: { gemma_path: "gemma-3-12b-it-qat-q4_0-unquantized\\model-00001-of-00005.safetensors", ltxv_path: "LTX-Video\\ltx-2.3-22b-dev-nvfp4.safetensors", max_length: 512 } },
+    "1": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "LTX-Video\\ltx-2.3-22b-distilled-fp8.safetensors" } },
+    "2": { class_type: "LTXVGemmaCLIPModelLoader", inputs: { gemma_path: "gemma-3-12b-it-qat-q4_0-unquantized\\model-00001-of-00005.safetensors", ltxv_path: "LTX-Video\\ltx-2.3-22b-distilled-fp8.safetensors", max_length: 512 } },
     "3": { class_type: "CLIPTextEncode", inputs: { text: prompt, clip: ["2", 0] } },
     "4": { class_type: "CLIPTextEncode", inputs: { text: "", clip: ["2", 0] } },
     "5": { class_type: "LTXVConditioning", inputs: { positive: ["3", 0], negative: ["4", 0], frame_rate: fps } },

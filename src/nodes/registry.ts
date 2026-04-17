@@ -448,44 +448,7 @@ registerNativeNode({
   },
 });
 
-registerNativeNode({
-  type: "fs:multiRef",
-  label: "Multi Reference",
-  icon: "🔗",
-  accentColor: "#26c6da",
-  component: "MultiRefNode",
-  description: "Combine multiple reference images into one using IP-Adapter. Add style reference for visual consistency.",
-  inputs: [
-    { name: "prompt", type: "TEXT" },
-    { name: "ref_0", type: "IMAGE" },
-    { name: "style_ref", type: "IMAGE" },
-  ],
-  outputs: [{ name: "image", type: "IMAGE" }],
-  aiDoc: {
-    purpose: "Multi-reference image generation via chained Flux IP-Adapter. Each reference image influences the output. Style ref controls visual style separately.",
-    skills: [
-      "Combine multiple characters into one scene",
-      "Apply visual style from reference",
-      "IP-Adapter multi-reference generation",
-    ],
-    params: {
-      model: "Checkpoint model",
-      width: "Output width, default 1024",
-      height: "Output height, default 1024",
-      steps: "Sampling steps, default 4",
-      cfg: "CFG scale, default 7",
-      ipWeight: "IP-Adapter weight for content refs, default 0.7",
-      styleWeight: "IP-Adapter weight for style ref, default 0.3",
-      _refCount: "Number of reference inputs (1-8)",
-    },
-    connectsFrom: ["fs:prompt", "fs:localGenerate", "fs:nanoBanana", "fs:import", "fs:characterCard"],
-    connectsTo: ["fs:preview", "fs:scene", "fs:storyboard"],
-    examples: [
-      "Connect 3 character portraits + Prompt('group photo in a park') → combined scene",
-      "Connect style image to Style input → output matches visual style",
-    ],
-  },
-});
+// MultiRef node REMOVED — used SDXL Lightning + IPAdapter (not available on current setup)
 
 registerNativeNode({
   type: "fs:group",
@@ -611,6 +574,43 @@ registerNativeNode({
       "Drop audio → connect to future TTS/audio processing nodes",
     ],
     comfyMapping: "File uploaded to ComfyUI /upload/image endpoint, then referenced via LoadImage node",
+  },
+});
+
+registerNativeNode({
+  type: "fs:describe",
+  label: "Describe",
+  icon: "🔍",
+  accentColor: "#9c7bff",
+  component: "DescribeNode",
+  description: "Image-to-text: local Florence-2 or JoyCaption Alpha Two. Outputs TEXT describing or tagging the image.",
+  inputs: [
+    { name: "input", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "text", type: "TEXT" },
+  ],
+  aiDoc: {
+    purpose: "Generate textual description/tags/caption from an image using a local vision model on ComfyUI.",
+    skills: [
+      "Produce detailed captions of images (Florence-2)",
+      "Produce stylistic/booru/training-prompt captions (JoyCaption)",
+      "Extract OCR text (Florence-2)",
+      "Feed resulting text into Prompt → Kontext / Inpaint loops",
+    ],
+    params: {
+      model: "'florence2' (default, small+fast) or 'joycaption' (larger, richer natural-language)",
+      task: "Florence-2 task: caption / detailed_caption / more_detailed_caption / ocr / ...",
+      captionType: "JoyCaption style: Descriptive, MidJourney, Booru tags, Art Critic, Product Listing, etc.",
+      captionLength: "JoyCaption length preset (very short…very long or explicit word count)",
+    },
+    connectsFrom: ["fs:localGenerate", "fs:nanoBanana", "fs:kontext", "fs:import", "fs:scene"],
+    connectsTo: ["fs:prompt", "fs:kontext", "fs:inpaint", "fs:inpaintCN"],
+    examples: [
+      "Import(photo) → Describe(Florence-2, detailed_caption) → Prompt → Kontext(edit)",
+      "Generate(LocalGen) → Describe(JoyCaption, Booru tag list) → feed into training dataset",
+    ],
+    comfyMapping: "Florence-2: DownloadAndLoadFlorence2Model + Florence2Run + PreviewAny. JoyCaption: Joy_caption_two_load + Joy_extra_options + Joy_caption_two_advanced + PreviewAny.",
   },
 });
 

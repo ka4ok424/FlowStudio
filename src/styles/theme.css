@@ -786,6 +786,9 @@ body {
 .prompt-textarea::placeholder {
   color: var(--text-muted);
 }
+/* Describe node — subtle blue placeholder so empty node doesn't attract the eye. */
+.describe-result::placeholder { color: rgba(120, 160, 220, 0.28); }
+.describe-result:focus { border-color: rgba(59,130,246,0.5) !important; }
 .prompt-textarea:focus {
   border-color: #c77dbb55;
 }

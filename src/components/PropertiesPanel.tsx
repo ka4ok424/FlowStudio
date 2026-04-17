@@ -18,7 +18,7 @@ import Img2ImgProperties from "./properties/Img2ImgProperties";
 import NextFrameProperties from "./properties/NextFrameProperties";
 import KontextProperties from "./properties/KontextProperties";
 import LtxVideoProperties from "./properties/LtxVideoProperties";
-import MultiRefProperties from "./properties/MultiRefProperties";
+// import MultiRefProperties from "./properties/MultiRefProperties"; // REMOVED
 import SceneProperties from "./properties/SceneProperties";
 import StoryboardProperties from "./properties/StoryboardProperties";
 import CharacterCardProperties from "./properties/CharacterCardProperties";
@@ -29,6 +29,7 @@ import WanVideoProperties from "./properties/WanVideoProperties";
 import WanAnimateProperties from "./properties/WanAnimateProperties";
 import HunyuanVideoProperties from "./properties/HunyuanVideoProperties";
 import HunyuanAvatarProperties from "./properties/HunyuanAvatarProperties";
+import DescribeProperties from "./properties/DescribeProperties";
 import ComfyProperties from "./properties/ComfyProperties";
 
 const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: any }>> = {
@@ -51,7 +52,7 @@ const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: a
   "fs:nextFrame": NextFrameProperties,
   "fs:kontext": KontextProperties,
   "fs:ltxVideo": LtxVideoProperties,
-  "fs:multiRef": MultiRefProperties,
+  // "fs:multiRef": MultiRefProperties, // REMOVED
   "fs:scene": SceneProperties,
   "fs:storyboard": StoryboardProperties,
   "fs:characterCard": CharacterCardProperties,
@@ -62,6 +63,7 @@ const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: a
   "fs:wanAnimate": WanAnimateProperties,
   "fs:hunyuanVideo": HunyuanVideoProperties,
   "fs:hunyuanAvatar": HunyuanAvatarProperties,
+  "fs:describe": DescribeProperties,
 };
 
 export default function PropertiesPanel() {

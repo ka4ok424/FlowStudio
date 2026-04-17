@@ -85,7 +85,8 @@ function WanAnimateNode({ id, data, selected }: NodeProps) {
 
     try {
       const refImageName = await uploadMedia(refImageUrl, `fs_anim_ref_${id}.png`);
-      const drivingName = await uploadMedia(drivingUrl, `fs_anim_drive_${id}.png`);
+      const ext = drivingUrl.includes("video/mp4") || drivingUrl.includes(".mp4") ? "mp4" : "png";
+      const drivingName = await uploadMedia(drivingUrl, `fs_anim_drive_${id}.${ext}`);
 
       const workflow = buildWanAnimateWorkflow({
         mode: currentMode,
@@ -170,7 +171,7 @@ function WanAnimateNode({ id, data, selected }: NodeProps) {
           <span className="wananimate-icon">🕺</span>
           <div className="wananimate-header-text">
             <span className="wananimate-title">Wan Animate</span>
-            <span className="wananimate-status">{processing ? "RENDERING..." : `${mode} · ${duration}s`}</span>
+            <span className="wananimate-status">{processing ? "RENDERING..." : `Wan 2.2 Animate · ${mode}`}</span>
           </div>
         </div>
       </div>

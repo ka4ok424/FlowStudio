@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useMediaStore, type MediaItem } from "../store/mediaStore";
 import { loadImage } from "../store/imageDb";
+import { makeDragGhost, findGhostSource } from "../utils/dragGhost";
 
 // Cache for loaded media URLs (lazy loaded from IndexedDB)
 const urlCache = new Map<string, string>();
@@ -160,9 +161,17 @@ function GalleryView({
   const PAGE_SIZE = 30;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const prevLengthRef = useRef(items.length);
 
-  // Reset when items change (filter/search)
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [items.length]);
+  // Reset only on filter/search (big change), NOT on single delete
+  useEffect(() => {
+    const diff = items.length - prevLengthRef.current;
+    prevLengthRef.current = items.length;
+    // Only reset if items changed by more than 1 (filter switch, not delete)
+    if (diff < -1 || diff > 1) {
+      setVisibleCount(PAGE_SIZE);
+    }
+  }, [items.length]);
 
   // Infinite scroll via IntersectionObserver (works regardless of which parent scrolls)
   useEffect(() => {
@@ -183,6 +192,11 @@ function GalleryView({
       type: item.type,
     }));
     e.dataTransfer.effectAllowed = "copy";
+    const src = findGhostSource(e.currentTarget as HTMLElement);
+    if (src) {
+      const ghost = makeDragGhost(src, 120);
+      e.dataTransfer.setDragImage(ghost, ghost.width / 2, ghost.height / 2);
+    }
   };
 
   const visibleItems = items.slice(0, visibleCount);

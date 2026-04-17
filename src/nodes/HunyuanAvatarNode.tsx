@@ -166,7 +166,7 @@ function HunyuanAvatarNode({ id, data, selected }: NodeProps) {
           <span className="hunyuanavatar-icon">🗣</span>
           <div className="hunyuanavatar-header-text">
             <span className="hunyuanavatar-title">HunyuanAvatar</span>
-            <span className="hunyuanavatar-status">{processing ? "RENDERING..." : "Audio → Talking Head"}</span>
+            <span className="hunyuanavatar-status">{processing ? "RENDERING..." : "HunyuanAvatar"}</span>
           </div>
         </div>
       </div>

@@ -63,7 +63,7 @@ export function buildWanAnimateWorkflow(p: WanAnimateParams): Record<string, any
   const vaeId = String(n++);
   workflow[vaeId] = {
     class_type: "WanVideoVAELoader",
-    inputs: { model_name: "Wan2.1_VAE.pth" },
+    inputs: { model_name: "Wan2.1_VAE.pth", precision: "bf16" },
   };
 
   // 4. Load T5 text encoder
@@ -91,8 +91,11 @@ export function buildWanAnimateWorkflow(p: WanAnimateParams): Record<string, any
   // 6. CLIP vision encode (for reference image)
   const clipVisionLoadId = String(n++);
   workflow[clipVisionLoadId] = {
-    class_type: "CLIPVisionLoader",
-    inputs: { clip_name: "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth" },
+    class_type: "LoadWanVideoClipTextEncoder",
+    inputs: {
+      model_name: "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth",
+      precision: "fp16",
+    },
   };
 
   const loadRefImgId = String(n++);
@@ -131,21 +134,31 @@ export function buildWanAnimateWorkflow(p: WanAnimateParams): Record<string, any
   };
 
   if (p.mode === "animate" && p.poseVideoName) {
-    const loadPoseId = String(n++);
-    workflow[loadPoseId] = {
-      class_type: "LoadImage",
-      inputs: { image: p.poseVideoName },
+    const loadPoseVidId = String(n++);
+    workflow[loadPoseVidId] = {
+      class_type: "LoadVideo",
+      inputs: { file: p.poseVideoName },
     };
-    animateInputs.pose_images = [loadPoseId, 0];
+    const poseFramesId = String(n++);
+    workflow[poseFramesId] = {
+      class_type: "GetVideoComponents",
+      inputs: { video: [loadPoseVidId, 0] },
+    };
+    animateInputs.pose_images = [poseFramesId, 0];
   }
 
   if (p.mode === "replace" && p.faceVideoName) {
-    const loadFaceId = String(n++);
-    workflow[loadFaceId] = {
-      class_type: "LoadImage",
-      inputs: { image: p.faceVideoName },
+    const loadFaceVidId = String(n++);
+    workflow[loadFaceVidId] = {
+      class_type: "LoadVideo",
+      inputs: { file: p.faceVideoName },
     };
-    animateInputs.face_images = [loadFaceId, 0];
+    const faceFramesId = String(n++);
+    workflow[faceFramesId] = {
+      class_type: "GetVideoComponents",
+      inputs: { video: [loadFaceVidId, 0] },
+    };
+    animateInputs.face_images = [faceFramesId, 0];
   }
 
   // 8. WanVideoAnimateEmbeds

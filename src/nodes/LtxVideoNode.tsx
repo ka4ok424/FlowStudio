@@ -237,46 +237,36 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
             <button className="localgen-generate-btn" onClick={handleGenerate} disabled={processing} style={{ flex: 1 }}>
               🎬 Generate Video
             </button>
-            <button className="localgen-generate-btn" disabled={processing} onClick={async (ev) => {
+            <button className="localgen-generate-btn" disabled={processing} onClick={(ev) => {
               ev.stopPropagation();
-              if (processing) return;
-              setProcessing(true); setPhase("warmup"); setError(null);
-              abortRef.current = false;
-              let pt = "";
-              const pEdge = edgesAll.find((edge) => edge.target === id && edge.targetHandle === "prompt");
-              if (pEdge) { const pn = nodesAll.find((nd) => nd.id === pEdge.source); if (pn) pt = (pn.data as any).widgetValues?.text || ""; }
-              if (!pt) { setError("Connect prompt"); setProcessing(false); setPhase("idle"); return; }
-              const t = Date.now();
-              const warmWv = (useWorkflowStore.getState().nodes.find(nd => nd.id === id)?.data as any)?.widgetValues || {};
-              try {
-                const { buildLtxWarmupWorkflow } = await import("../workflows/ltxVideo");
-                const wf = buildLtxWarmupWorkflow(pt, Date.now() % 1000000, warmWv.fps || 24, warmWv.maxShift ?? 0.6, warmWv.baseShift ?? 0.6);
-                console.log("[LTX] Manual warmup 128x128...");
-                const warmRes = await queuePrompt(wf);
-                console.log("[LTX] Warmup queued:", warmRes.prompt_id);
-                for (let i = 0; i < 120; i++) {
-                  if (abortRef.current) break;
-                  await new Promise((resolve) => setTimeout(resolve, 2000));
-                  try {
-                    const res = await fetch(`${getComfyUrl()}/api/history/${warmRes.prompt_id}`);
-                    if (!res.ok) continue;
-                    const h = await res.json();
-                    if (h[warmRes.prompt_id]) {
-                      const out = h[warmRes.prompt_id].outputs;
-                      for (const nId of Object.keys(out || {})) {
-                        const media = out[nId]?.images || out[nId]?.animated;
-                        if (media?.length) { updateWidgetValue(id, "_previewUrl", getImageUrl(media[0].filename, media[0].subfolder, media[0].type)); }
-                      }
-                      break;
-                    }
-                  } catch { /* retry */ }
-                }
-                updateWidgetValue(id, "_genTime", Date.now() - t);
-                updateWidgetValue(id, "_lastInputHash", JSON.stringify({ promptText: pt, first: false, mid: false, last: false }));
-              } catch (err: any) { setError(err.message); }
-              setProcessing(false); setPhase("idle");
-            }} style={{ padding: "0 10px" }} title="Warmup model">
-              🔥
+              const wv = (useWorkflowStore.getState().nodes.find(nd => nd.id === id)?.data as any)?.widgetValues || {};
+              const isPrewarm = !!wv._prewarmBackup;
+              if (isPrewarm) {
+                // Restore saved settings
+                const backup = wv._prewarmBackup;
+                updateWidgetValue(id, "frames", backup.frames);
+                updateWidgetValue(id, "fps", backup.fps);
+                updateWidgetValue(id, "width", backup.width);
+                updateWidgetValue(id, "height", backup.height);
+                updateWidgetValue(id, "steps", backup.steps);
+                updateWidgetValue(id, "_prewarmBackup", null);
+              } else {
+                // Save current settings and set minimum
+                updateWidgetValue(id, "_prewarmBackup", {
+                  frames: wv.frames || 41,
+                  fps: wv.fps || 24,
+                  width: wv.width || 768,
+                  height: wv.height || 512,
+                  steps: wv.steps || 8,
+                });
+                updateWidgetValue(id, "frames", 25);
+                updateWidgetValue(id, "fps", 8);
+                updateWidgetValue(id, "width", 128);
+                updateWidgetValue(id, "height", 128);
+                updateWidgetValue(id, "steps", 4);
+              }
+            }} style={{ padding: "0 10px" }} title={nodeData.widgetValues?._prewarmBackup ? "Restore settings" : "Set minimum for prewarm"}>
+              {nodeData.widgetValues?._prewarmBackup ? "↩" : "🔥"}
             </button>
           </div>
         )}

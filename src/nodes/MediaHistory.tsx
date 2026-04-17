@@ -2,6 +2,7 @@ import { useCallback, useState, useEffect } from "react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { saveImage, loadImage } from "../store/imageDb";
 import { dataUrlToBlobUrl } from "../utils/blobUrl";
+import { makeDragGhost, findGhostSource } from "../utils/dragGhost";
 
 interface MediaHistoryProps {
   nodeId: string;
@@ -49,8 +50,30 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
     if (currentIndex < total - 1) loadHistoryItem(currentIndex + 1);
   }, [currentIndex, total, loadHistoryItem]);
 
+  const onDragStart = useCallback((e: React.DragEvent) => {
+    if (!currentUrl) return;
+    e.stopPropagation();
+    const ext = mediaType === "video" ? "mp4" : mediaType === "audio" ? "wav" : "png";
+    e.dataTransfer.setData("application/flowstudio-media", JSON.stringify({
+      url: currentUrl,
+      fileName: `flowstudio_${mediaType}_${Date.now()}.${ext}`,
+      type: mediaType,
+    }));
+    e.dataTransfer.effectAllowed = "copy";
+    // Fixed-size ghost: zoom-independent, not the full-resolution image.
+    const src = findGhostSource(e.currentTarget as HTMLElement);
+    if (src) {
+      const ghost = makeDragGhost(src, 120);
+      e.dataTransfer.setDragImage(ghost, ghost.width / 2, ghost.height / 2);
+    }
+  }, [currentUrl, mediaType]);
+
   return (
-    <div className="nanob-preview">
+    <div
+      className={`nanob-preview ${currentUrl ? "nodrag" : ""}`}
+      draggable={!!currentUrl}
+      onDragStart={onDragStart}
+    >
       {currentUrl ? (
         <>
           {mediaType === "video" ? (
@@ -58,7 +81,7 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
           ) : mediaType === "audio" ? (
             <audio src={currentUrl} controls style={{ width: "100%", padding: "8px" }} />
           ) : (
-            <img src={currentUrl} alt="Generated" className="nanob-preview-img" />
+            <img src={currentUrl} alt="Generated" className="nanob-preview-img" draggable={false} />
           )}
           {total > 1 && (
             <div className="img-history-nav">

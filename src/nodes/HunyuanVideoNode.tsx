@@ -147,7 +147,7 @@ function HunyuanVideoNode({ id, data, selected }: NodeProps) {
           <span className="hunyuanvideo-icon">🌊</span>
           <div className="hunyuanvideo-header-text">
             <span className="hunyuanvideo-title">HunyuanVideo</span>
-            <span className="hunyuanvideo-status">{processing ? "RENDERING..." : `${duration}s · ${numFrames}f`}</span>
+            <span className="hunyuanvideo-status">{processing ? "RENDERING..." : "HunyuanVideo 1.5 I2V"}</span>
           </div>
         </div>
       </div>

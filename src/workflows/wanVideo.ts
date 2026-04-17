@@ -9,142 +9,136 @@ export interface WanVideoParams {
   height: number;
   numFrames: number;
   fps: number;
-  startImageName: string | null;   // uploaded ComfyUI image name
+  startImageName: string | null;
   noiseAugStrength: number;
 }
 
 /**
- * Build ComfyUI workflow for Wan 2.2 TI2V-5B (image + prompt → video).
- * Uses WanVideoWrapper nodes (GGUF model).
+ * Build ComfyUI workflow for Wan 2.2 TI2V-5B (text + image → video).
+ *
+ * Uses standard ComfyUI nodes (official Comfy-Org template).
+ * Model: wan2.2_ti2v_5B_fp16.safetensors loaded via UNETLoader.
+ * TI2V conditions on start image via latent space (Wan22ImageToVideoLatent, 48-ch).
+ * Text encoding via CLIPLoader(type="wan") + CLIPTextEncode.
+ * ModelSamplingSD3 for shift scheduling + standard KSampler + VAEDecode.
+ *
+ * NOTE: GGUF models are NOT compatible — UNETLoader requires safetensors.
+ * WanVideoWrapper nodes (WANVIDEOMODEL/WANVAE types) create 96-ch latents
+ * incompatible with TI2V-5B's 48-ch VAE.
  */
 export function buildWanVideoWorkflow(p: WanVideoParams): Record<string, any> {
   const workflow: Record<string, any> = {};
   let n = 1;
 
-  // 1. Load model (GGUF)
+  // 1. Load diffusion model → MODEL
   const modelId = String(n++);
   workflow[modelId] = {
-    class_type: "WanVideoModelLoader",
+    class_type: "UNETLoader",
     inputs: {
-      model: "Wan2.2-TI2V-5B-Q8_0.gguf",
-      base_precision: "bf16",
-      quantization: "disabled",
-      load_device: "main_device",
+      unet_name: "wan2.2_ti2v_5B_fp16.safetensors",
+      weight_dtype: "default",
     },
   };
 
-  // 2. Load VAE (Wan 2.2)
+  // 2. ModelSamplingSD3 for shift scheduling → MODEL
+  const shiftId = String(n++);
+  workflow[shiftId] = {
+    class_type: "ModelSamplingSD3",
+    inputs: {
+      model: [modelId, 0],
+      shift: p.shift,
+    },
+  };
+
+  // 3. Load CLIP (UMT5-XXL, type "wan") → CLIP
+  const clipId = String(n++);
+  workflow[clipId] = {
+    class_type: "CLIPLoader",
+    inputs: {
+      clip_name: "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      type: "wan",
+    },
+  };
+
+  // 4. Text encode (positive + negative) → CONDITIONING
+  const posId = String(n++);
+  workflow[posId] = {
+    class_type: "CLIPTextEncode",
+    inputs: {
+      clip: [clipId, 0],
+      text: p.prompt,
+    },
+  };
+
+  const negId = String(n++);
+  workflow[negId] = {
+    class_type: "CLIPTextEncode",
+    inputs: {
+      clip: [clipId, 0],
+      text: p.negativePrompt,
+    },
+  };
+
+  // 5. Load VAE → VAE
   const vaeId = String(n++);
   workflow[vaeId] = {
-    class_type: "WanVideoVAELoader",
-    inputs: { model_name: "VAE\\Wan2.2_VAE.safetensors" },
+    class_type: "VAELoader",
+    inputs: { vae_name: "Wan2.2_VAE.pth" },
   };
 
-  // 3. Load T5 text encoder
-  const t5Id = String(n++);
-  workflow[t5Id] = {
-    class_type: "LoadWanVideoT5TextEncoder",
-    inputs: {
-      model_name: "models_t5_umt5-xxl-enc-bf16.pth",
-      precision: "bf16",
-    },
-  };
-
-  // 4. Text encode
-  const textId = String(n++);
-  workflow[textId] = {
-    class_type: "WanVideoTextEncode",
-    inputs: {
-      positive_prompt: p.prompt,
-      negative_prompt: p.negativePrompt,
-      t5: [t5Id, 0],
-      force_offload: true,
-    },
-  };
-
-  // 5. Encode image → video latents
-  const imgEncId = String(n++);
-  const imgEncInputs: Record<string, any> = {
+  // 6. Create video latent (48-ch, start image encoded in first frame)
+  const latentInputs: Record<string, any> = {
+    vae: [vaeId, 0],
     width: p.width,
     height: p.height,
-    num_frames: p.numFrames,
-    noise_aug_strength: p.noiseAugStrength,
-    start_latent_strength: 1.0,
-    end_latent_strength: 1.0,
-    force_offload: true,
-    vae: [vaeId, 0],
+    length: p.numFrames,
+    batch_size: 1,
   };
 
-  // If start image is provided, load and connect it
   if (p.startImageName) {
     const loadImgId = String(n++);
     workflow[loadImgId] = {
       class_type: "LoadImage",
       inputs: { image: p.startImageName },
     };
-    imgEncInputs.start_image = [loadImgId, 0];
-
-    // CLIP vision encode for the start image
-    const clipVisionLoadId = String(n++);
-    workflow[clipVisionLoadId] = {
-      class_type: "CLIPVisionLoader",
-      inputs: { clip_name: "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth" },
-    };
-    const clipVisionEncId = String(n++);
-    workflow[clipVisionEncId] = {
-      class_type: "WanVideoClipVisionEncode",
-      inputs: {
-        clip_vision: [clipVisionLoadId, 0],
-        image_1: [loadImgId, 0],
-        strength_1: 1.0,
-        strength_2: 1.0,
-        crop: "center",
-        combine_embeds: "average",
-        force_offload: true,
-      },
-    };
-    imgEncInputs.clip_embeds = [clipVisionEncId, 0];
+    latentInputs.start_image = [loadImgId, 0];
   }
 
-  workflow[imgEncId] = {
-    class_type: "WanVideoImageToVideoEncode",
-    inputs: imgEncInputs,
+  const latentId = String(n++);
+  workflow[latentId] = {
+    class_type: "Wan22ImageToVideoLatent",
+    inputs: latentInputs,
   };
 
-  // 6. Sample
+  // 7. KSampler
   const samplerId = String(n++);
   workflow[samplerId] = {
-    class_type: "WanVideoSampler",
+    class_type: "KSampler",
     inputs: {
-      model: [modelId, 0],
-      image_embeds: [imgEncId, 0],
+      model: [shiftId, 0],
+      positive: [posId, 0],
+      negative: [negId, 0],
+      latent_image: [latentId, 0],
+      seed: p.seed,
       steps: p.steps,
       cfg: p.cfg,
-      shift: p.shift,
-      seed: p.seed,
-      force_offload: true,
-      scheduler: "unipc",
-      riflex_freq_index: 0,
-      text_embeds: [textId, 0],
+      sampler_name: "uni_pc",
+      scheduler: "simple",
+      denoise: 1,
     },
   };
 
-  // 7. VAE Decode
+  // 8. VAE Decode → IMAGE
   const decodeId = String(n++);
   workflow[decodeId] = {
-    class_type: "WanVideoDecode",
+    class_type: "VAEDecode",
     inputs: {
       vae: [vaeId, 0],
       samples: [samplerId, 0],
-      enable_vae_tiling: false,
-      tile_x: 272,
-      tile_y: 272,
-      tile_stride_x: 144,
-      tile_stride_y: 128,
     },
   };
 
-  // 8. Save as video
+  // 9. Save as video
   const createVidId = String(n++);
   workflow[createVidId] = {
     class_type: "CreateVideo",

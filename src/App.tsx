@@ -29,7 +29,7 @@ import VideoGenProNode from "./nodes/VideoGenProNode";
 import ImagenNode from "./nodes/ImagenNode";
 import MusicNode from "./nodes/MusicNode";
 import TtsNode from "./nodes/TtsNode";
-import MultiRefNode from "./nodes/MultiRefNode";
+// import MultiRefNode from "./nodes/MultiRefNode"; // REMOVED: uses SDXL Lightning (not available)
 import TikTokPublishNode from "./nodes/TikTokPublishNode";
 import UpscaleNode from "./nodes/UpscaleNode";
 import GroupNode from "./nodes/GroupNode";
@@ -48,6 +48,7 @@ import WanVideoNode from "./nodes/WanVideoNode";
 import WanAnimateNode from "./nodes/WanAnimateNode";
 import HunyuanVideoNode from "./nodes/HunyuanVideoNode";
 import HunyuanAvatarNode from "./nodes/HunyuanAvatarNode";
+import DescribeNode from "./nodes/DescribeNode";
 import AiChat from "./components/AiChat";
 import MediaLibrary from "./components/MediaLibrary";
 import { useMediaStore } from "./store/mediaStore";
@@ -55,6 +56,7 @@ import NodeLibrary from "./components/NodeLibrary";
 import Toolbar from "./components/Toolbar";
 import PropertiesPanel from "./components/PropertiesPanel";
 import AlignmentGuidesOverlay, { useSnappingNodes } from "./components/AlignmentGuides";
+import { processImportFile, detectMediaType } from "./utils/importFile";
 import "./styles/base.css";
 import "./styles/nodes.css";
 
@@ -72,7 +74,7 @@ const nodeTypes = {
   imagenNode: ImagenNode,
   musicNode: MusicNode,
   ttsNode: TtsNode,
-  multiRefNode: MultiRefNode,
+  // multiRefNode: MultiRefNode, // REMOVED
   videoGenProNode: VideoGenProNode,
   tikTokPublishNode: TikTokPublishNode,
   upscaleNode: UpscaleNode,
@@ -92,6 +94,7 @@ const nodeTypes = {
   wanAnimateNode: WanAnimateNode,
   hunyuanVideoNode: HunyuanVideoNode,
   hunyuanAvatarNode: HunyuanAvatarNode,
+  describeNode: DescribeNode,
 };
 
 function App() {
@@ -313,8 +316,9 @@ function App() {
     };
   }, [getViewport, screenToFlowPosition]);
 
-  // Keyboard shortcuts: Copy/Paste/Undo/Redo
+  // Keyboard shortcuts: Copy/Paste/Undo/Redo + quick-spawn (P/I/L)
   const clipboard = useRef<{ nodes: any[]; edges: any[]; bounds: { cx: number; cy: number } } | null>(null);
+  const lastMousePos = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -427,31 +431,158 @@ function App() {
       if ((e.key === "Delete" || e.key === "Backspace") && !isTextInput) {
         pushUndo();
       }
+
+      // Select All: Cmd/Ctrl+A
+      if (mod && e.key === "a" && !isTextInput) {
+        e.preventDefault();
+        useWorkflowStore.setState({
+          nodes: useWorkflowStore.getState().nodes.map((n) => ({ ...n, selected: true })),
+        });
+        return;
+      }
+
+      // Group selected: Cmd/Ctrl+G
+      if (mod && e.key === "g" && !e.shiftKey && !isTextInput) {
+        e.preventDefault();
+        const selected = useWorkflowStore.getState().nodes.filter((n) => n.selected && n.data.type !== "fs:group");
+        if (selected.length === 0) return;
+
+        // Compute bounding box of selected nodes
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const n of selected) {
+          const w = (n as any).measured?.width ?? (n as any).style?.width ?? 320;
+          const h = (n as any).measured?.height ?? (n as any).style?.height ?? 200;
+          minX = Math.min(minX, n.position.x);
+          minY = Math.min(minY, n.position.y);
+          maxX = Math.max(maxX, n.position.x + (typeof w === "number" ? w : parseInt(String(w)) || 320));
+          maxY = Math.max(maxY, n.position.y + (typeof h === "number" ? h : parseInt(String(h)) || 200));
+        }
+        const padTop = 56, padSide = 24, padBottom = 24;
+        pushUndo();
+        addNode("fs:group", { x: minX - padSide, y: minY - padTop });
+
+        // Patch style on just-created group node
+        const after = useWorkflowStore.getState();
+        const groupNode = after.nodes[after.nodes.length - 1];
+        if (groupNode) {
+          useWorkflowStore.setState({
+            nodes: after.nodes.map((n) =>
+              n.id === groupNode.id
+                ? { ...n, style: { width: (maxX - minX) + padSide * 2, height: (maxY - minY) + padTop + padBottom } }
+                : n
+            ),
+          });
+        }
+        return;
+      }
+
+      // Quick-spawn by single key: P = Prompt, I = Import, L = Local Gen
+      // Use e.code (physical key) so it works on any keyboard layout (RU/UA/EN/...)
+      if (!mod && !e.shiftKey && !e.altKey && !isTextInput) {
+        const spawnMap: Record<string, string> = {
+          KeyP: "fs:prompt",
+          KeyI: "fs:import",
+          KeyL: "fs:localGenerate",
+        };
+        const nodeType = spawnMap[e.code];
+        if (nodeType) {
+          e.preventDefault();
+          const pos = lastMousePos.current
+            ? screenToFlowPosition({ x: lastMousePos.current.x, y: lastMousePos.current.y })
+            : getViewportCenter();
+          pushUndo();
+          addNode(nodeType, pos);
+          return;
+        }
+      }
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [nodes, addNode, undo, redo, pushUndo, getViewportCenter]);
+  }, [nodes, addNode, undo, redo, pushUndo, getViewportCenter, screenToFlowPosition]);
 
-  // Drop from library
+  // Mouse tracking helpers for quick-spawn hotkeys (P/I/L)
+  const onCanvasMouseMove = useCallback((e: React.MouseEvent) => {
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+  }, []);
+  const onCanvasMouseLeave = useCallback(() => {
+    lastMousePos.current = null;
+  }, []);
+
+  // Drop onto canvas: (1) NodeLibrary node-type, (2) media from gallery, (3) OS files
+  const spawnImportNode = useCallback((
+    position: { x: number; y: number },
+    prefilled: { url: string; fileName: string; type: string; file?: File; source: "gallery" | "os" },
+  ) => {
+    pushUndo();
+    addNode("fs:import", position);
+    const state = useWorkflowStore.getState();
+    const newNode = state.nodes[state.nodes.length - 1];
+    if (!newNode) return;
+    const setValue = (key: string, value: any) => state.updateWidgetValue(newNode.id, key, value);
+
+    if (prefilled.source === "os" && prefilled.file) {
+      processImportFile(prefilled.file, { setValue });
+    } else {
+      const mt = (["image", "video", "audio"].includes(prefilled.type) ? prefilled.type : "none") as
+        "none" | "image" | "video" | "audio";
+      setValue("_mediaType", mt);
+      setValue("_fileName", prefilled.fileName);
+      setValue("_preview", prefilled.url);
+      setValue("_fileInfo", { source: "media-library" });
+    }
+  }, [addNode, pushUndo]);
 
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
+
+      // (1) Drop from NodeLibrary — existing behavior
       const nodeType = event.dataTransfer.getData("application/comfy-node-type");
-      if (!nodeType) return;
-      pushUndo();
-      const position = screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-      addNode(nodeType, position);
+      if (nodeType) {
+        pushUndo();
+        const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        addNode(nodeType, position);
+        return;
+      }
+
+      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+
+      // (2) Drop from MediaLibrary / another node's preview
+      const mediaData = event.dataTransfer.getData("application/flowstudio-media");
+      if (mediaData) {
+        try {
+          const { url, fileName, type } = JSON.parse(mediaData);
+          if (url) {
+            spawnImportNode(position, { url, fileName: fileName || "media", type: type || "image", source: "gallery" });
+            return;
+          }
+        } catch { /* fall through */ }
+      }
+
+      // (3) Drop from Finder / OS (one or many files → one Import node per file, stacked)
+      const files = Array.from(event.dataTransfer.files || []);
+      if (files.length > 0) {
+        files.forEach((file, i) => {
+          if (detectMediaType(file.type) === "none") return;
+          spawnImportNode(
+            { x: position.x + i * 40, y: position.y + i * 40 },
+            { url: "", fileName: file.name, type: "image", file, source: "os" }
+          );
+        });
+      }
     },
-    [addNode, screenToFlowPosition]
+    [addNode, pushUndo, screenToFlowPosition, spawnImportNode]
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
+    // "copy" for media/files, "move" for node-type reordering
+    const types = event.dataTransfer.types;
+    if (types.includes("Files") || types.includes("application/flowstudio-media")) {
+      event.dataTransfer.dropEffect = "copy";
+    } else {
+      event.dataTransfer.dropEffect = "move";
+    }
   }, []);
 
   // Minimap & Logs toggle
@@ -517,7 +648,7 @@ function App() {
           </div>
           {sidebarTab === "nodes" ? <NodeLibrary /> : <MediaLibrary />}
         </div>
-        <div className="canvas-wrapper" onDrop={onDrop} onDragOver={onDragOver}>
+        <div className="canvas-wrapper" onDrop={onDrop} onDragOver={onDragOver} onMouseMove={onCanvasMouseMove} onMouseLeave={onCanvasMouseLeave}>
           <ReactFlow
             nodes={nodes}
             edges={edges}

@@ -152,7 +152,7 @@ function WanVideoNode({ id, data, selected }: NodeProps) {
           <span className="wanvideo-icon">🎥</span>
           <div className="wanvideo-header-text">
             <span className="wanvideo-title">Wan Video</span>
-            <span className="wanvideo-status">{processing ? "RENDERING..." : `${duration}s · ${numFrames}f`}</span>
+            <span className="wanvideo-status">{processing ? "RENDERING..." : "Wan 2.2 TI2V-5B"}</span>
           </div>
         </div>
       </div>

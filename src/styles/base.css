@@ -786,6 +786,9 @@ body {
 .prompt-textarea::placeholder {
   color: var(--text-muted);
 }
+/* Describe node — subtle blue placeholder so empty node doesn't attract the eye. */
+.describe-result::placeholder { color: rgba(120, 160, 220, 0.28); }
+.describe-result:focus { border-color: rgba(59,130,246,0.5) !important; }
 .prompt-textarea:focus {
   border-color: #c77dbb55;
 }
@@ -1017,6 +1020,20 @@ body {
 }
 .import-delete:hover {
   background: rgba(230, 30, 30, 1);
+}
+
+.import-media-info {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #ccc;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-align: center;
+  pointer-events: none;
 }
 
 .import-footer {
