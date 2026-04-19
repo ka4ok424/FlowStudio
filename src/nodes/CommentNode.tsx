@@ -11,7 +11,7 @@ const COMMENT_COLORS = [
   { id: "cyan",    bg: "rgba(38,198,218,0.12)",  border: "rgba(38,198,218,0.4)",  text: "#26c6da" },
   { id: "orange",  bg: "rgba(255,152,0,0.12)",   border: "rgba(255,152,0,0.4)",   text: "#ff9800" },
   { id: "fuchsia", bg: "rgba(224,64,251,0.12)",  border: "rgba(224,64,251,0.4)",  text: "#e040fb" },
-  { id: "navy",    bg: "rgba(57,73,171,0.18)",   border: "rgba(57,73,171,0.5)",   text: "#5c6bc0" },
+  { id: "pink",    bg: "rgba(244,143,177,0.14)", border: "rgba(244,143,177,0.45)", text: "#f48fb1" },
   { id: "slate",   bg: "rgba(144,164,174,0.12)", border: "rgba(144,164,174,0.4)", text: "#90a4ae" },
 ];
 

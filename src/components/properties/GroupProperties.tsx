@@ -10,7 +10,7 @@ const COLOR_MAP: Record<string, string> = {
   cyan:    "#26c6da",
   orange:  "#ff9800",
   fuchsia: "#e040fb",
-  navy:    "#3949ab",
+  pink:    "#f48fb1",
   slate:   "#90a4ae",
 };
 const COLORS = Object.keys(COLOR_MAP);

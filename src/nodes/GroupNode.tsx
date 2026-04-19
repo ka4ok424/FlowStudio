@@ -11,7 +11,7 @@ const GROUP_COLORS = [
   { id: "cyan",    color: "#26c6da", bg: "rgba(38,198,218,0.06)",  border: "rgba(38,198,218,0.3)"  },
   { id: "orange",  color: "#ff9800", bg: "rgba(255,152,0,0.06)",   border: "rgba(255,152,0,0.3)"   },
   { id: "fuchsia", color: "#e040fb", bg: "rgba(224,64,251,0.06)",  border: "rgba(224,64,251,0.3)"  },
-  { id: "navy",    color: "#5c6bc0", bg: "rgba(57,73,171,0.08)",   border: "rgba(57,73,171,0.4)"   },
+  { id: "pink",    color: "#f48fb1", bg: "rgba(244,143,177,0.06)", border: "rgba(244,143,177,0.3)" },
   { id: "slate",   color: "#90a4ae", bg: "rgba(144,164,174,0.06)", border: "rgba(144,164,174,0.3)" },
 ];
 
