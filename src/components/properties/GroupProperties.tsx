@@ -1,11 +1,25 @@
 import { useWorkflowStore } from "../../store/workflowStore";
 
+// Shared palette — keep identical with CommentProperties.
+const COLOR_MAP: Record<string, string> = {
+  yellow:  "#fdd835",
+  blue:    "#5b9bd5",
+  green:   "#81c784",
+  red:     "#e85d75",
+  purple:  "#a78bfa",
+  cyan:    "#26c6da",
+  orange:  "#ff9800",
+  fuchsia: "#e040fb",
+  navy:    "#3949ab",
+  slate:   "#90a4ae",
+};
+const COLORS = Object.keys(COLOR_MAP);
+
 // ── Group Properties ──────────────────────────────────────────────
 function GroupProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
   const title = data.widgetValues?.title ?? "";
   const color = data.widgetValues?.color || "blue";
-  const COLORS = ["red", "blue", "green", "purple", "orange", "cyan"];
   return (
     <>
       <div className="props-section">
@@ -17,10 +31,15 @@ function GroupProperties({ nodeId, data }: { nodeId: string; data: any }) {
       </div>
       <div className="props-section">
         <div className="props-section-title">Color</div>
-        <div className="props-aspect-row">
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(10, 1fr)",
+          gap: 4,
+        }}>
           {COLORS.map((c) => (
             <button key={c} className={`props-color-btn ${color === c ? "active" : ""}`}
-              style={{ background: c === "red" ? "#e85d75" : c === "blue" ? "#5b9bd5" : c === "green" ? "#81c784" : c === "purple" ? "#a78bfa" : c === "orange" ? "#ff9800" : "#26c6da" }}
+              title={c}
+              style={{ width: "100%", aspectRatio: "1 / 1", background: COLOR_MAP[c] }}
               onClick={() => updateWidgetValue(nodeId, "color", c)} />
           ))}
         </div>

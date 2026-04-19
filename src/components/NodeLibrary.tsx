@@ -80,7 +80,7 @@ export default function NodeLibrary() {
         {/* ── Native FlowStudio nodes ─────────────────────────── */}
         {(() => {
           const allNative = getAllNativeNodes().filter((n) => !search || n.label.toLowerCase().includes(search.toLowerCase()));
-          const localTypes = new Set(["fs:localGenerate", "fs:img2img", "fs:kontext", "fs:ltxVideo", "fs:nextFrame", "fs:upscale", "fs:inpaint", "fs:removeBg", "fs:compare", "fs:enhance", "fs:controlNet", "fs:inpaintCN", "fs:wanVideo", "fs:wanAnimate", "fs:hunyuanVideo", "fs:hunyuanAvatar", "fs:prompt", "fs:preview", "fs:import", "fs:characterCard", "fs:scene", "fs:storyboard", "fs:group", "fs:comment", "fs:describe"]);
+          const localTypes = new Set(["fs:localGenerate", "fs:img2img", "fs:kontext", "fs:ltxVideo", "fs:nextFrame", "fs:upscale", "fs:inpaint", "fs:removeBg", "fs:compare", "fs:enhance", "fs:controlNet", "fs:inpaintCN", "fs:wanVideo", "fs:wanAnimate", "fs:hunyuanVideo", "fs:hunyuanAvatar", "fs:prompt", "fs:preview", "fs:import", "fs:characterCard", "fs:scene", "fs:storyboard", "fs:group", "fs:comment", "fs:describe", "fs:dataset", "fs:batch"]);
           const localNodes = allNative.filter((n) => localTypes.has(n.type));
           const cloudNodes = allNative.filter((n) => !localTypes.has(n.type));
 

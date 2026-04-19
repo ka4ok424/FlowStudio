@@ -3,12 +3,16 @@ import { type NodeProps, NodeResizer } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 
 const GROUP_COLORS = [
-  { id: "red", color: "#e85d75", bg: "rgba(232,93,117,0.06)", border: "rgba(232,93,117,0.3)" },
-  { id: "blue", color: "#5b9bd5", bg: "rgba(91,155,213,0.06)", border: "rgba(91,155,213,0.3)" },
-  { id: "green", color: "#81c784", bg: "rgba(129,199,132,0.06)", border: "rgba(129,199,132,0.3)" },
-  { id: "purple", color: "#a78bfa", bg: "rgba(167,139,250,0.06)", border: "rgba(167,139,250,0.3)" },
-  { id: "orange", color: "#ff9800", bg: "rgba(255,152,0,0.06)", border: "rgba(255,152,0,0.3)" },
-  { id: "cyan", color: "#26c6da", bg: "rgba(38,198,218,0.06)", border: "rgba(38,198,218,0.3)" },
+  { id: "yellow",  color: "#fdd835", bg: "rgba(253,216,53,0.06)",  border: "rgba(253,216,53,0.3)"  },
+  { id: "blue",    color: "#5b9bd5", bg: "rgba(91,155,213,0.06)",  border: "rgba(91,155,213,0.3)"  },
+  { id: "green",   color: "#81c784", bg: "rgba(129,199,132,0.06)", border: "rgba(129,199,132,0.3)" },
+  { id: "red",     color: "#e85d75", bg: "rgba(232,93,117,0.06)",  border: "rgba(232,93,117,0.3)"  },
+  { id: "purple",  color: "#a78bfa", bg: "rgba(167,139,250,0.06)", border: "rgba(167,139,250,0.3)" },
+  { id: "cyan",    color: "#26c6da", bg: "rgba(38,198,218,0.06)",  border: "rgba(38,198,218,0.3)"  },
+  { id: "orange",  color: "#ff9800", bg: "rgba(255,152,0,0.06)",   border: "rgba(255,152,0,0.3)"   },
+  { id: "fuchsia", color: "#e040fb", bg: "rgba(224,64,251,0.06)",  border: "rgba(224,64,251,0.3)"  },
+  { id: "navy",    color: "#5c6bc0", bg: "rgba(57,73,171,0.08)",   border: "rgba(57,73,171,0.4)"   },
+  { id: "slate",   color: "#90a4ae", bg: "rgba(144,164,174,0.06)", border: "rgba(144,164,174,0.3)" },
 ];
 
 function GroupNode({ id, data, selected }: NodeProps) {
@@ -18,7 +22,7 @@ function GroupNode({ id, data, selected }: NodeProps) {
 
   const title = nodeData.widgetValues?.title ?? "Group";
   const colorId = nodeData.widgetValues?.color || "blue";
-  const scheme = GROUP_COLORS.find((c) => c.id === colorId) || GROUP_COLORS[1];
+  const scheme = GROUP_COLORS.find((c) => c.id === colorId) || GROUP_COLORS.find((c) => c.id === "blue") || GROUP_COLORS[0];
 
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(title);

@@ -1,8 +1,10 @@
 import { useWorkflowStore } from "../../store/workflowStore";
+import BatchCountField from "./BatchCountField";
 
 // ── Kontext Properties ───────────────────────────────────────────
 function KontextProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const count = data.widgetValues?.count ?? 1;
   const steps = data.widgetValues?.steps ?? 24;
   const cfg = data.widgetValues?.cfg ?? 3.5;
   const seed = data.widgetValues?.seed ?? "";
@@ -11,6 +13,7 @@ function KontextProperties({ nodeId, data }: { nodeId: string; data: any }) {
 
   return (
     <>
+      <BatchCountField nodeId={nodeId} value={count} />
       <div className="props-section">
         <div className="props-section-title">Steps</div>
         <input type="range" className="props-range" min={1} max={30} step={1} value={steps}

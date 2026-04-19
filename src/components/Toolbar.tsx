@@ -3,6 +3,7 @@ import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt } from "../api/comfyApi";
 import SettingsModal from "./SettingsModal";
 import ProjectManager from "./ProjectManager";
+import SystemStatsIndicator from "./SystemStatsIndicator";
 
 export default function Toolbar() {
   const { isConnected, progress, buildWorkflow, currentProjectName, setCurrentProjectName, saveProject, undo, redo } = useWorkflowStore();
@@ -119,6 +120,7 @@ export default function Toolbar() {
       </div>
 
       <div className="toolbar-right">
+        <SystemStatsIndicator />
         <button className="btn-settings" onClick={() => setShowSettings(true)} title="Settings">
           ⚙
         </button>

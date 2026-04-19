@@ -25,61 +25,67 @@ function ControlNetNode({ id, data, selected }: NodeProps) {
 
   const previewUrl = nodeData.widgetValues?._previewUrl || null;
   const [processing, setProcessing] = useState(false);
+  const [batchInfo, setBatchInfo] = useState<{ done: number; total: number } | null>(null);
+  const count: number = Math.max(1, Math.min(20, nodeData.widgetValues?.count ?? 1));
   const [error, setError] = useState<string | null>(null);
 
   const handleGenerate = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     setProcessing(true);
     setError(null);
-    const startTime = Date.now();
-    log("ControlNet started", { nodeId: id, nodeType: "fs:controlNet", nodeLabel: "ControlNet" });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
     const steps = freshWv.steps || 20;
     const cfg = freshWv.cfg ?? 3.5;
     const width = freshWv.width || 1024;
     const height = freshWv.height || 1024;
-    const seed = freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647);
     const strength = freshWv.strength ?? 0.7;
     const startPercent = freshWv.startPercent ?? 0.0;
     const endPercent = freshWv.endPercent ?? 1.0;
     const controlType = freshWv.controlType || "canny";
     const cannyLow = freshWv.cannyLow ?? 0.4;
     const cannyHigh = freshWv.cannyHigh ?? 0.8;
+    const nRuns: number = Math.max(1, Math.min(20, freshWv.count ?? 1));
 
     const promptText = getConnectedPrompt(id, nodesAll as any[], edgesAll as any[]);
     if (!promptText) { setError("Connect a Prompt node"); setProcessing(false); return; }
-
     const imgEdge = edgesAll.find((edge) => edge.target === id && edge.targetHandle === "input");
     if (!imgEdge) { setError("Connect a reference image"); setProcessing(false); return; }
     const srcUrl = getConnectedImageUrl(id, "input", nodesAll as any[], edgesAll as any[]);
     if (!srcUrl) { setError("No image in source"); setProcessing(false); return; }
 
+    log(`ControlNet started${nRuns > 1 ? ` ×${nRuns}` : ""}`, { nodeId: id, nodeType: "fs:controlNet", nodeLabel: "ControlNet" });
+
     try {
-      const imgName = await uploadSourceImage(srcUrl, `fs_cn_${imgEdge.source}.png`);
-      const workflow = buildControlNetWorkflow({
-        imageName: imgName, prompt: promptText, seed, steps, cfg,
-        width, height, strength, startPercent, endPercent,
-        controlType, cannyLow, cannyHigh,
-      });
-
-      const result = await queuePrompt(workflow);
-      const pollResult = await pollForResult(result.prompt_id);
-      if (!pollResult || "error" in pollResult) {
-        setError(pollResult ? pollResult.error : "No result");
-        setProcessing(false);
-        return;
+      const imgName = await uploadSourceImage(srcUrl, `fs_cn_${imgEdge.source}_${Date.now()}.png`);
+      for (let i = 0; i < nRuns; i++) {
+        if (nRuns > 1) setBatchInfo({ done: i, total: nRuns });
+        const startTime = Date.now();
+        const seed = nRuns > 1
+          ? Math.floor(Math.random() * 2147483647)
+          : (freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647));
+        const workflow = buildControlNetWorkflow({
+          imageName: imgName, prompt: promptText, seed, steps, cfg,
+          width, height, strength, startPercent, endPercent,
+          controlType, cannyLow, cannyHigh,
+        });
+        const result = await queuePrompt(workflow);
+        const pollResult = await pollForResult(result.prompt_id);
+        if (!pollResult || "error" in pollResult) {
+          setError(pollResult ? pollResult.error : "No result");
+          break;
+        }
+        const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
+        await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
+          prompt: promptText, model: `ControlNet ${controlType}`, seed: String(seed),
+          steps, cfg, width, height, nodeType: "fs:controlNet",
+        });
+        log(`ControlNet done${nRuns > 1 ? ` (${i + 1}/${nRuns})` : ""}`, { nodeId: id, nodeType: "fs:controlNet", status: "success", details: `${controlType} seed ${seed}` });
       }
-
-      const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
-      await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
-        prompt: promptText, model: `ControlNet ${controlType}`, seed: String(seed),
-        steps, cfg, width, height, nodeType: "fs:controlNet",
-      });
-      log("ControlNet complete", { nodeId: id, nodeType: "fs:controlNet", nodeLabel: "ControlNet", status: "success", details: controlType });
     } catch (err: any) {
       setError(err.message);
     }
+    setBatchInfo(null);
     setProcessing(false);
   }, [id, edgesAll, nodesAll]);
 
@@ -99,7 +105,11 @@ function ControlNetNode({ id, data, selected }: NodeProps) {
           <span className="controlnet-icon">🎯</span>
           <div className="controlnet-header-text">
             <span className="controlnet-title">ControlNet</span>
-            <span className="controlnet-status">{processing ? "GENERATING..." : "FLUX.1 Dev"}</span>
+            <span className="controlnet-status">
+              {processing
+                ? (batchInfo ? `BATCH ${batchInfo.done + 1}/${batchInfo.total}` : "GENERATING...")
+                : `FLUX.1 Dev${count > 1 ? ` · ×${count}` : ""}`}
+            </span>
           </div>
         </div>
       </div>
@@ -122,7 +132,7 @@ function ControlNetNode({ id, data, selected }: NodeProps) {
       {error && <div className="nanob-error nodrag">{error}</div>}
 
       <div className="nanob-actions">
-        <button className={`localgen-generate-btn ${processing ? "generating" : ""}`} onClick={handleGenerate} disabled={processing}>
+        <button className={`localgen-generate-btn ${processing ? "generating" : ""}data-fs-run-id={id} `} onClick={handleGenerate} disabled={processing}>
           {processing ? "Generating..." : "🎯 Generate with ControlNet"}
         </button>
       </div>

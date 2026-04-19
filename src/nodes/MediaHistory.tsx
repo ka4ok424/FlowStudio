@@ -3,6 +3,7 @@ import { useWorkflowStore } from "../store/workflowStore";
 import { saveImage, loadImage } from "../store/imageDb";
 import { dataUrlToBlobUrl } from "../utils/blobUrl";
 import { makeDragGhost, findGhostSource } from "../utils/dragGhost";
+import AlbumModal from "../components/AlbumModal";
 
 interface MediaHistoryProps {
   nodeId: string;
@@ -16,6 +17,7 @@ interface MediaHistoryProps {
 
 export default function MediaHistory({ nodeId, history, historyIndex, fallbackUrl, emptyIcon, mediaType = "image", genTime }: MediaHistoryProps) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const [albumOpen, setAlbumOpen] = useState(false);
 
   const total = history.length;
   const currentIndex = total > 0 ? Math.max(0, Math.min(historyIndex, total - 1)) : -1;
@@ -94,6 +96,19 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
                   <polyline points="15 18 9 12 15 6" />
                 </svg>
               </button>
+              <button
+                className="img-history-btn"
+                onClick={(e) => { e.stopPropagation(); setAlbumOpen(true); }}
+                title="Open album"
+                style={{ padding: "0 6px" }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" />
+                  <rect x="14" y="3" width="7" height="7" />
+                  <rect x="3" y="14" width="7" height="7" />
+                  <rect x="14" y="14" width="7" height="7" />
+                </svg>
+              </button>
               <span className="img-history-counter">{currentIndex + 1} / {total}</span>
               <button
                 className="img-history-btn"
@@ -131,6 +146,14 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
           <span className="nanob-preview-logo">{emptyIcon}</span>
         </div>
       )}
+      <AlbumModal
+        open={albumOpen}
+        history={history}
+        currentIndex={currentIndex}
+        mediaType={mediaType}
+        onPick={(idx) => loadHistoryItem(idx)}
+        onClose={() => setAlbumOpen(false)}
+      />
     </div>
   );
 }

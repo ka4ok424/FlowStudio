@@ -101,7 +101,7 @@ function ImagenNode({ id, data, selected }: NodeProps) {
       {error && <div className="nanob-error nodrag">{error}</div>}
 
       <div className="nanob-actions">
-        <button className={`localgen-generate-btn ${generating ? "generating" : ""}`} onClick={handleGenerate} disabled={generating}>
+        <button className={`localgen-generate-btn ${generating ? "generating" : ""}data-fs-run-id={id} `} onClick={handleGenerate} disabled={generating}>
           {generating ? "Generating..." : "🖼 Generate"}
         </button>
       </div>

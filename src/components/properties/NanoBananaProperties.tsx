@@ -1,4 +1,5 @@
 import { useWorkflowStore } from "../../store/workflowStore";
+import BatchCountField from "./BatchCountField";
 
 // ── Nano Banana Properties ─────────────────────────────────────────
 function NanoBananaProperties({ nodeId, data }: { nodeId: string; data: any }) {
@@ -7,11 +8,13 @@ function NanoBananaProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const seed = data.widgetValues?.seed ?? "";
   const temperature = data.widgetValues?.temperature ?? 1.0;
   const numImages = data.widgetValues?.numImages ?? 1;
+  const count = data.widgetValues?.count ?? 1;
 
   const ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 
   return (
     <>
+      <BatchCountField nodeId={nodeId} value={count} />
       <div className="props-section">
         <div className="props-section-title">Aspect Ratio</div>
         <div className="props-aspect-row">

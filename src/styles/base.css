@@ -1809,6 +1809,14 @@ body {
   display: flex;
   gap: 4px;
 }
+
+/* Group node — widen NodeResizer line hit-area without changing the visible line.
+   Do NOT set position on .line — React Flow already positions it absolutely. */
+.react-flow__resize-control.line::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
 .props-aspect-btn {
   flex: 1;
   padding: 5px 0;

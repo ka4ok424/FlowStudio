@@ -18,33 +18,32 @@ function KontextNode({ id, data, selected }: NodeProps) {
   const previewUrl = nodeData.widgetValues?._previewUrl || null;
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [batchInfo, setBatchInfo] = useState<{ done: number; total: number } | null>(null);
+  const count: number = Math.max(1, Math.min(20, nodeData.widgetValues?.count ?? 1));
 
   const handleGenerate = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     setProcessing(true);
     setError(null);
-    const startTime = Date.now();
-    log("Kontext started", { nodeId: id, nodeType: "fs:kontext", nodeLabel: "Kontext" });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
     const steps = freshWv.steps || 24;
     const cfg = freshWv.cfg ?? 3.5;
-    const seed = freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647);
     const sampler = freshWv.sampler || "euler";
     const scheduler = freshWv.scheduler || "simple";
+    const nRuns: number = Math.max(1, Math.min(20, freshWv.count ?? 1));
 
     const promptText = getConnectedPrompt(id, nodesAll as any[], edgesAll as any[]);
     if (!promptText) { setError("Connect a Prompt node"); setProcessing(false); return; }
-
     const imgEdge = edgesAll.find((edge) => edge.target === id && edge.targetHandle === "input");
     if (!imgEdge) { setError("Connect a source image"); setProcessing(false); return; }
     const srcUrl = getConnectedImageUrl(id, "input", nodesAll as any[], edgesAll as any[]);
     if (!srcUrl) { setError("No image in source. Generate first."); setProcessing(false); return; }
 
-    try {
-      const imgName = await uploadSourceImage(srcUrl, `fs_ktx_${imgEdge.source}.png`);
+    log(`Kontext started${nRuns > 1 ? ` ×${nRuns}` : ""}`, { nodeId: id, nodeType: "fs:kontext", nodeLabel: "Kontext" });
 
-      // Get source image dimensions (min 768)
+    try {
+      const imgName = await uploadSourceImage(srcUrl, `fs_ktx_${imgEdge.source}_${Date.now()}.png`);
       const imgDims = await new Promise<{w:number,h:number}>((resolve) => {
         const img = new Image();
         img.onload = () => resolve({ w: Math.max(768, Math.round(img.width / 64) * 64) || 1024, h: Math.max(768, Math.round(img.height / 64) * 64) || 1024 });
@@ -52,27 +51,35 @@ function KontextNode({ id, data, selected }: NodeProps) {
         img.src = srcUrl;
       });
 
-      const workflow = buildKontextWorkflow({
-        imageName: imgName, prompt: promptText, seed, steps, cfg,
-        sampler, scheduler, width: imgDims.w, height: imgDims.h,
-      });
-      const result = await queuePrompt(workflow);
-
-      const pollResult = await pollForResult(result.prompt_id);
-      if (!pollResult || "error" in pollResult) {
-        setError(pollResult ? pollResult.error : "No result");
-        setProcessing(false);
-        return;
+      for (let i = 0; i < nRuns; i++) {
+        if (nRuns > 1) setBatchInfo({ done: i, total: nRuns });
+        const startTime = Date.now();
+        const seed = nRuns > 1
+          ? Math.floor(Math.random() * 2147483647)
+          : (freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647));
+        const workflow = buildKontextWorkflow({
+          imageName: imgName, prompt: promptText, seed, steps, cfg,
+          sampler, scheduler, width: imgDims.w, height: imgDims.h,
+        });
+        const result = await queuePrompt(workflow);
+        const pollResult = await pollForResult(result.prompt_id);
+        if (!pollResult || "error" in pollResult) {
+          setError(pollResult ? pollResult.error : "No result");
+          break;
+        }
+        const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
+        await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
+          prompt: promptText, model: "FLUX.1 Kontext", seed: String(seed), steps, cfg, nodeType: "fs:kontext",
+        });
+        log(`Kontext done${nRuns > 1 ? ` (${i + 1}/${nRuns})` : ""}`, {
+          nodeId: id, nodeType: "fs:kontext", nodeLabel: "Kontext",
+          status: "success", details: `seed ${seed}`,
+        });
       }
-
-      const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
-      await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
-        prompt: promptText, model: "FLUX.1 Kontext", seed: String(seed), steps, cfg, nodeType: "fs:kontext",
-      });
-      log("Kontext complete", { nodeId: id, nodeType: "fs:kontext", nodeLabel: "Kontext", status: "success" });
     } catch (err: any) {
       setError(err.message);
     }
+    setBatchInfo(null);
     setProcessing(false);
   }, [id, edgesAll, nodesAll]);
 
@@ -90,7 +97,11 @@ function KontextNode({ id, data, selected }: NodeProps) {
           <span className="kontext-icon">✏️</span>
           <div className="kontext-header-text">
             <span className="kontext-title">Kontext</span>
-            <span className="kontext-status">{processing ? "EDITING..." : "FLUX.1"}</span>
+            <span className="kontext-status">
+              {processing
+                ? (batchInfo ? `BATCH ${batchInfo.done + 1}/${batchInfo.total}` : "EDITING...")
+                : (count > 1 ? `FLUX.1 · ×${count}` : "FLUX.1")}
+            </span>
           </div>
         </div>
       </div>
@@ -113,7 +124,7 @@ function KontextNode({ id, data, selected }: NodeProps) {
       {error && <div className="nanob-error nodrag">{error}</div>}
 
       <div className="nanob-actions">
-        <button className={`localgen-generate-btn ${processing ? "generating" : ""}`} onClick={handleGenerate} disabled={processing}>
+        <button className={`localgen-generate-btn ${processing ? "generating" : ""}data-fs-run-id={id} `} onClick={handleGenerate} disabled={processing}>
           {processing ? "Editing..." : "✏️ Edit Image"}
         </button>
       </div>

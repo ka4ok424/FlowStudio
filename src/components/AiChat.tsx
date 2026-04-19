@@ -68,6 +68,18 @@ MOVING NODES — use node IDs from project state:
 { "moveNodes": [{ "id": "node_5", "x": 800, "y": 300 }] }
 \`\`\`
 
+UPDATING NODE WIDGET VALUES — change params on existing nodes without recreating:
+\`\`\`workflow
+{ "updateNodes": [{ "id": "node_5", "values": { "denoise": 0.65, "steps": 30 } }] }
+\`\`\`
+
+DELETING NODES — pass an array of node IDs (their edges are removed too):
+\`\`\`workflow
+{ "deleteNodes": ["node_5", "node_7"] }
+\`\`\`
+
+You can mix operations in one block: nodes (create) + edges + moveNodes + updateNodes + deleteNodes all together.
+
 GROUPS + COMMENTS:
 \`\`\`workflow
 {
@@ -254,6 +266,31 @@ export default function AiChat({ open, onClose }: { open: boolean; onClose: () =
             });
           }
         }
+      }
+
+      // Handle updateNodes — change widgetValues on existing nodes without recreating them.
+      if (wf.updateNodes && Array.isArray(wf.updateNodes)) {
+        for (const up of wf.updateNodes) {
+          if (!up.id || !up.values) continue;
+          useWorkflowStore.setState({
+            nodes: useWorkflowStore.getState().nodes.map((n) =>
+              n.id === up.id
+                ? { ...n, data: { ...n.data, widgetValues: { ...n.data.widgetValues, ...up.values } } }
+                : n
+            ),
+          });
+        }
+      }
+
+      // Handle deleteNodes — remove nodes by id (and their connected edges).
+      if (wf.deleteNodes && Array.isArray(wf.deleteNodes)) {
+        const toDel = new Set<string>(wf.deleteNodes);
+        useWorkflowStore.setState({
+          nodes: useWorkflowStore.getState().nodes.filter((n) => !toDel.has(n.id)),
+          edges: useWorkflowStore.getState().edges.filter(
+            (e) => !toDel.has(e.source) && !toDel.has(e.target)
+          ),
+        });
       }
 
       if (!wf.nodes) return;

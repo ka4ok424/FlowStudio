@@ -27,6 +27,8 @@ function InpaintNode({ id, data, selected }: NodeProps) {
   const edgesAll = useWorkflowStore((s) => s.edges);
 
   const previewUrl = nodeData.widgetValues?._previewUrl || null;
+  const [batchInfo, setBatchInfo] = useState<{ done: number; total: number } | null>(null);
+  const count: number = Math.max(1, Math.min(20, nodeData.widgetValues?.count ?? 1));
   const maskUrl = nodeData.widgetValues?._maskUrl || null;
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,81 +40,78 @@ function InpaintNode({ id, data, selected }: NodeProps) {
     e.stopPropagation();
     setProcessing(true);
     setError(null);
-    const startTime = Date.now();
-    log("Inpaint started", { nodeId: id, nodeType: "fs:inpaint", nodeLabel: "Inpaint" });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
     const modelType = freshWv.modelType || "flux1-fill";
     const steps = freshWv.steps || 20;
     const cfg = freshWv.cfg ?? 1.0;
     const denoise = freshWv.denoise ?? 0.85;
-    const seed = freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647);
     const samPrompt = freshWv.samPrompt || "";
     const currentMask = freshWv._maskUrl;
+    const nRuns: number = Math.max(1, Math.min(20, freshWv.count ?? 1));
 
     const promptText = getConnectedPrompt(id, nodesAll as any[], edgesAll as any[]);
     if (!promptText) { setError("Connect a Prompt node"); setProcessing(false); return; }
-
     const imgEdge = edgesAll.find((edge) => edge.target === id && edge.targetHandle === "input");
     if (!imgEdge) { setError("Connect a source image"); setProcessing(false); return; }
     const srcUrl = getSourceImage();
     if (!srcUrl) { setError("No image in source"); setProcessing(false); return; }
-
-    // Get mask: drawn > connected > SAM
     let maskData = currentMask;
     if (!maskData) {
       const maskEdge = edgesAll.find((edge) => edge.target === id && edge.targetHandle === "mask");
-      if (maskEdge) {
-        maskData = getConnectedImageUrl(id, "mask", nodesAll as any[], edgesAll as any[]);
-      }
+      if (maskEdge) maskData = getConnectedImageUrl(id, "mask", nodesAll as any[], edgesAll as any[]);
     }
     const useSAM = !maskData && samPrompt;
     if (!maskData && !useSAM) { setError("Draw a mask, connect one, or set SAM prompt"); setProcessing(false); return; }
 
+    log(`Inpaint started${nRuns > 1 ? ` ×${nRuns}` : ""}`, { nodeId: id, nodeType: "fs:inpaint", nodeLabel: "Inpaint" });
+
     try {
-      const imgName = await uploadSourceImage(srcUrl, `fs_inp_${imgEdge.source}.png`);
+      const imgName = await uploadSourceImage(srcUrl, `fs_inp_${imgEdge.source}_${Date.now()}.png`);
       let maskName: string | null = null;
-      if (maskData) {
-        maskName = await uploadSourceImage(maskData, `fs_inp_mask_${id}.png`);
-      }
+      if (maskData) maskName = await uploadSourceImage(maskData, `fs_inp_mask_${id}_${Date.now()}.png`);
 
-      let workflow: Record<string, any>;
+      for (let i = 0; i < nRuns; i++) {
+        if (nRuns > 1) setBatchInfo({ done: i, total: nRuns });
+        const startTime = Date.now();
+        const seed = nRuns > 1
+          ? Math.floor(Math.random() * 2147483647)
+          : (freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647));
 
-      if (useSAM) {
-        // SAM auto-mask workflow
-        workflow = {
-          "1": { class_type: "LoadImage", inputs: { image: imgName } },
-          "2": { class_type: "SAM2Segment", inputs: { image: ["1", 0], prompt: samPrompt, sam2_model: "sam2_hiera_small", dino_model: "GroundingDINO_SwinB", device: "cuda" } },
-        };
-        const samWf = buildInpaintWorkflow({
-          modelType, imgName, maskName: null, samMaskRef: ["2", 1],
-          prompt: promptText, seed, steps, cfg, denoise,
+        let workflow: Record<string, any>;
+        if (useSAM) {
+          workflow = {
+            "1": { class_type: "LoadImage", inputs: { image: imgName } },
+            "2": { class_type: "SAM2Segment", inputs: { image: ["1", 0], prompt: samPrompt, sam2_model: "sam2_hiera_small", dino_model: "GroundingDINO_SwinB", device: "cuda" } },
+          };
+          const samWf = buildInpaintWorkflow({
+            modelType, imgName, maskName: null, samMaskRef: ["2", 1],
+            prompt: promptText, seed, steps, cfg, denoise,
+          });
+          workflow = { ...workflow, ...samWf };
+        } else {
+          workflow = buildInpaintWorkflow({
+            modelType, imgName, maskName, samMaskRef: null,
+            prompt: promptText, seed, steps, cfg, denoise,
+          });
+        }
+
+        const result = await queuePrompt(workflow);
+        const pollResult = await pollForResult(result.prompt_id, { interval: 1500 });
+        if (!pollResult || "error" in pollResult) {
+          setError(pollResult ? pollResult.error : "No result");
+          break;
+        }
+        const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
+        await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
+          prompt: promptText, model: modelType, seed: String(seed), steps, cfg, nodeType: "fs:inpaint",
         });
-        workflow = { ...workflow, ...samWf };
-      } else {
-        workflow = buildInpaintWorkflow({
-          modelType, imgName, maskName, samMaskRef: null,
-          prompt: promptText, seed, steps, cfg, denoise,
-        });
+        log(`Inpaint done${nRuns > 1 ? ` (${i + 1}/${nRuns})` : ""}`, { nodeId: id, nodeType: "fs:inpaint", status: "success", details: `seed ${seed}` });
       }
-
-      const result = await queuePrompt(workflow);
-
-      const pollResult = await pollForResult(result.prompt_id, { interval: 1500 });
-      if (!pollResult || "error" in pollResult) {
-        setError(pollResult ? pollResult.error : "No result");
-        setProcessing(false);
-        return;
-      }
-
-      const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
-      await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
-        prompt: promptText, model: modelType, seed: String(seed), steps, cfg, nodeType: "fs:inpaint",
-      });
-      log("Inpaint complete", { nodeId: id, nodeType: "fs:inpaint", nodeLabel: "Inpaint", status: "success", details: modelType });
     } catch (err: any) {
       setError(err.message);
     }
+    setBatchInfo(null);
     setProcessing(false);
   }, [id, edgesAll, nodesAll, updateWidgetValue]);
 
@@ -133,7 +132,11 @@ function InpaintNode({ id, data, selected }: NodeProps) {
           <span className="inpaint-icon">🎭</span>
           <div className="inpaint-header-text">
             <span className="inpaint-title">Inpaint</span>
-            <span className="inpaint-status">{processing ? "INPAINTING..." : currentModel?.label || "FLUX.1 Fill"}</span>
+            <span className="inpaint-status">
+              {processing
+                ? (batchInfo ? `BATCH ${batchInfo.done + 1}/${batchInfo.total}` : "INPAINTING...")
+                : `${currentModel?.label || "FLUX.1 Fill"}${count > 1 ? ` · ×${count}` : ""}`}
+            </span>
           </div>
         </div>
       </div>
@@ -164,7 +167,7 @@ function InpaintNode({ id, data, selected }: NodeProps) {
       {error && <div className="nanob-error nodrag">{error}</div>}
 
       <div className="nanob-actions">
-        <button className={`inpaint-generate-btn ${processing ? "generating" : ""}`} onClick={handleGenerate} disabled={processing}>
+        <button className={`inpaint-generate-btn ${processing ? "generating" : ""}data-fs-run-id={id} `} onClick={handleGenerate} disabled={processing}>
           {processing ? "Inpainting..." : "🎭 Inpaint"}
         </button>
         <button className="inpaint-mask-btn" disabled={!sourceImg} onClick={(ev) => { ev.stopPropagation(); if (sourceImg) setShowMaskEditor(true); }} title="Draw mask">

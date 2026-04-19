@@ -49,13 +49,19 @@ import WanAnimateNode from "./nodes/WanAnimateNode";
 import HunyuanVideoNode from "./nodes/HunyuanVideoNode";
 import HunyuanAvatarNode from "./nodes/HunyuanAvatarNode";
 import DescribeNode from "./nodes/DescribeNode";
+import CritiqueNode from "./nodes/CritiqueNode";
+import RefineNode from "./nodes/RefineNode";
+import DatasetNode from "./nodes/DatasetNode";
+import BatchNode from "./nodes/BatchNode";
 import AiChat from "./components/AiChat";
 import MediaLibrary from "./components/MediaLibrary";
+import ModelLibrary from "./components/ModelLibrary";
 import { useMediaStore } from "./store/mediaStore";
 import NodeLibrary from "./components/NodeLibrary";
 import Toolbar from "./components/Toolbar";
 import PropertiesPanel from "./components/PropertiesPanel";
 import AlignmentGuidesOverlay, { useSnappingNodes } from "./components/AlignmentGuides";
+import CommandPalette from "./components/CommandPalette";
 import { processImportFile, detectMediaType } from "./utils/importFile";
 import "./styles/base.css";
 import "./styles/nodes.css";
@@ -95,6 +101,10 @@ const nodeTypes = {
   hunyuanVideoNode: HunyuanVideoNode,
   hunyuanAvatarNode: HunyuanAvatarNode,
   describeNode: DescribeNode,
+  critiqueNode: CritiqueNode,
+  refineNode: RefineNode,
+  datasetNode: DatasetNode,
+  batchNode: BatchNode,
 };
 
 function App() {
@@ -476,6 +486,17 @@ function App() {
         return;
       }
 
+      // Tab — open command palette (Spotlight-style node spawn)
+      if (e.key === "Tab" && !mod && !isTextInput) {
+        e.preventDefault();
+        const pos = lastMousePos.current
+          ? screenToFlowPosition({ x: lastMousePos.current.x, y: lastMousePos.current.y })
+          : getViewportCenter();
+        setPaletteAt(pos);
+        setPaletteOpen(true);
+        return;
+      }
+
       // Quick-spawn by single key: P = Prompt, I = Import, L = Local Gen
       // Use e.code (physical key) so it works on any keyboard layout (RU/UA/EN/...)
       if (!mod && !e.shiftKey && !e.altKey && !isTextInput) {
@@ -585,12 +606,17 @@ function App() {
     }
   }, []);
 
-  // Minimap & Logs toggle
+  // Command palette (Tab)
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteAt, setPaletteAt] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Minimap toggle (Logs is in zustand for cross-node access)
   const [showMinimap, setShowMinimap] = useState(false);
-  const [showLogs, setShowLogs] = useState(false);
+  const showLogs = useLogStore((s) => s.panelOpen);
+  const togglePanel = useLogStore((s) => s.togglePanel);
   const [showAiChat, setShowAiChat] = useState(false);
   const [rightTab, setRightTab] = useState<"inspector" | "ai">("inspector");
-  const [sidebarTab, setSidebarTab] = useState<"nodes" | "media">("nodes");
+  const [sidebarTab, setSidebarTab] = useState<"nodes" | "media" | "models">("nodes");
   const [logs, setLogs] = useState<string[]>([]);
 
   // Save undo state when user starts dragging a node
@@ -640,13 +666,15 @@ function App() {
   return (
     <>
       <Toolbar />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} addAt={paletteAt} />
       <div className="main-layout">
         <div className="node-library">
           <div className="sidebar-tabs">
             <button className={`sidebar-tab ${sidebarTab === "nodes" ? "active" : ""}`} onClick={() => setSidebarTab("nodes")}>Nodes</button>
             <button className={`sidebar-tab ${sidebarTab === "media" ? "active" : ""}`} onClick={() => setSidebarTab("media")}>Media</button>
+            <button className={`sidebar-tab ${sidebarTab === "models" ? "active" : ""}`} onClick={() => setSidebarTab("models")}>Models</button>
           </div>
-          {sidebarTab === "nodes" ? <NodeLibrary /> : <MediaLibrary />}
+          {sidebarTab === "nodes" ? <NodeLibrary /> : sidebarTab === "media" ? <MediaLibrary /> : <ModelLibrary />}
         </div>
         <div className="canvas-wrapper" onDrop={onDrop} onDragOver={onDragOver} onMouseMove={onCanvasMouseMove} onMouseLeave={onCanvasMouseLeave}>
           <ReactFlow
@@ -682,7 +710,7 @@ function App() {
           </ReactFlow>
           <div className="canvas-bottom-buttons">
             <button className={`canvas-btn ${rightTab === "ai" ? "active" : ""}`} onClick={() => setRightTab(rightTab === "ai" ? "inspector" : "ai")}>AI</button>
-            <button className="canvas-btn" onClick={() => setShowLogs(!showLogs)}>Logs</button>
+            <button className="canvas-btn" onClick={togglePanel}>Logs</button>
             <button className="canvas-btn" onClick={() => setShowMinimap(!showMinimap)}>Map</button>
           </div>
 
@@ -712,10 +740,15 @@ function App() {
 
 // ── Logs Panel ──────────────────────────────────────────────────
 function LogsPanel() {
-  const entries = useLogStore((s) => s.entries);
+  const allEntries = useLogStore((s) => s.entries);
   const clear = useLogStore((s) => s.clear);
   const loadLogs = useLogStore((s) => s.loadLogs);
   const loaded = useLogStore((s) => s.loaded);
+  const filterNodeId = useLogStore((s) => s.filterNodeId);
+  const closePanel = useLogStore((s) => s.closePanel);
+  const entries = filterNodeId
+    ? allEntries.filter((e) => e.nodeId === filterNodeId)
+    : allEntries;
   const setSelectedNode = useWorkflowStore((s) => s.setSelectedNode);
   const { fitView } = useReactFlow();
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -769,8 +802,16 @@ function LogsPanel() {
   return (
     <div className="logs-panel">
       <div className="logs-header">
-        <span>Logs ({entries.length})</span>
-        <button onClick={clear}>Clear</button>
+        <span>
+          Logs ({entries.length}{filterNodeId ? ` filtered to ${filterNodeId}` : ""})
+        </span>
+        <div style={{ display: "flex", gap: 6 }}>
+          {filterNodeId && (
+            <button onClick={() => useLogStore.setState({ filterNodeId: null })}>Show all</button>
+          )}
+          <button onClick={clear}>Clear</button>
+          <button onClick={closePanel} title="Close">✕</button>
+        </div>
       </div>
       <div className="logs-content">
         {entries.length === 0 && <div className="logs-empty">No logs yet</div>}

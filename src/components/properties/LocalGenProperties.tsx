@@ -1,4 +1,5 @@
 import { useWorkflowStore } from "../../store/workflowStore";
+import BatchCountField from "./BatchCountField";
 
 // ── Local Generate Properties ──────────────────────────────────────
 function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
@@ -26,6 +27,7 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const width = data.widgetValues?.width ?? 512;
   const height = data.widgetValues?.height ?? 512;
   const seed = data.widgetValues?.seed ?? "";
+  const count = data.widgetValues?.count ?? 1;
 
   return (
     <>
@@ -68,6 +70,8 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
           <span className="props-slider-value">{cfg}</span>
         </div>
       </div>
+
+      <BatchCountField nodeId={nodeId} value={count} />
 
       <div className="props-section">
         <div className="props-section-title">Seed</div>

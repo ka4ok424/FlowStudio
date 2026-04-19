@@ -2792,6 +2792,16 @@ body {
 .props-color-btn:hover { transform: scale(1.15); }
 .props-color-btn.active { border-color: #fff; transform: scale(1.2); }
 
+/* Group node — widen NodeResizer line hit-area without changing the visible line.
+   IMPORTANT: do NOT set position on .line — React Flow already positions it absolutely.
+   The ::before is absolute relative to that existing context. */
+.react-flow__resize-control.line::before {
+  content: "";
+  position: absolute;
+  inset: -8px;          /* +8 px on every side = 17 px hit-strip vs 1 px visible line */
+  /* cursor inherits from parent (ew-resize / ns-resize) */
+}
+
 /* TikTok Publish Node */
 .tiktok-node {
   background: var(--bg-node); border: 1px solid var(--border);

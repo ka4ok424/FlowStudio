@@ -3,11 +3,16 @@ import { type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 
 const COMMENT_COLORS = [
-  { id: "yellow", bg: "rgba(240,192,64,0.12)", border: "rgba(240,192,64,0.4)", text: "#f0c040" },
-  { id: "blue", bg: "rgba(91,155,213,0.12)", border: "rgba(91,155,213,0.4)", text: "#5b9bd5" },
-  { id: "green", bg: "rgba(129,199,132,0.12)", border: "rgba(129,199,132,0.4)", text: "#81c784" },
-  { id: "red", bg: "rgba(232,93,117,0.12)", border: "rgba(232,93,117,0.4)", text: "#e85d75" },
-  { id: "purple", bg: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.4)", text: "#a78bfa" },
+  { id: "yellow",  bg: "rgba(253,216,53,0.12)",  border: "rgba(253,216,53,0.4)",  text: "#fdd835" },
+  { id: "blue",    bg: "rgba(91,155,213,0.12)",  border: "rgba(91,155,213,0.4)",  text: "#5b9bd5" },
+  { id: "green",   bg: "rgba(129,199,132,0.12)", border: "rgba(129,199,132,0.4)", text: "#81c784" },
+  { id: "red",     bg: "rgba(232,93,117,0.12)",  border: "rgba(232,93,117,0.4)",  text: "#e85d75" },
+  { id: "purple",  bg: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.4)", text: "#a78bfa" },
+  { id: "cyan",    bg: "rgba(38,198,218,0.12)",  border: "rgba(38,198,218,0.4)",  text: "#26c6da" },
+  { id: "orange",  bg: "rgba(255,152,0,0.12)",   border: "rgba(255,152,0,0.4)",   text: "#ff9800" },
+  { id: "fuchsia", bg: "rgba(224,64,251,0.12)",  border: "rgba(224,64,251,0.4)",  text: "#e040fb" },
+  { id: "navy",    bg: "rgba(57,73,171,0.18)",   border: "rgba(57,73,171,0.5)",   text: "#5c6bc0" },
+  { id: "slate",   bg: "rgba(144,164,174,0.12)", border: "rgba(144,164,174,0.4)", text: "#90a4ae" },
 ];
 
 function CommentNode({ id, data, selected }: NodeProps) {
@@ -16,10 +21,20 @@ function CommentNode({ id, data, selected }: NodeProps) {
   const setSelectedNode = useWorkflowStore((s) => s.setSelectedNode);
 
   const text = nodeData.widgetValues?.text || "";
+  const title = nodeData.widgetValues?.title ?? "Comment";
   const colorId = nodeData.widgetValues?.color || "yellow";
   const scheme = COMMENT_COLORS.find((c) => c.id === colorId) || COMMENT_COLORS[0];
 
   const [editing, setEditing] = useState(!text);
+
+  // Title inline-edit
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(title);
+  useEffect(() => { setTitleDraft(title); }, [title]);
+  const commitTitle = useCallback(() => {
+    setEditingTitle(false);
+    updateWidgetValue(id, "title", titleDraft.trim() || "Comment");
+  }, [id, titleDraft, updateWidgetValue]);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     updateWidgetValue(id, "text", e.target.value);
@@ -33,7 +48,45 @@ function CommentNode({ id, data, selected }: NodeProps) {
     >
       <div className="comment-header">
         <span className="comment-icon">📝</span>
-        <span className="comment-label" style={{ color: scheme.text }}>Comment</span>
+        {editingTitle ? (
+          <input
+            className="nodrag"
+            autoFocus
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
+              if (e.key === "Escape") { setTitleDraft(title); setEditingTitle(false); }
+              e.stopPropagation();
+            }}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "transparent",
+              border: "none",
+              outline: `1px solid ${scheme.text}88`,
+              borderRadius: 3,
+              color: scheme.text,
+              fontWeight: 600,
+              fontSize: 13,
+              padding: "1px 6px",
+              width: "100%",
+            }}
+          />
+        ) : (
+          <span
+            className="comment-label"
+            style={{
+              color: scheme.text,
+              cursor: "text",
+              display: "inline-block",
+              padding: "0 30px",
+              margin: "0 -30px",   // visually unchanged, but +30 px hit-area on each side
+            }}
+            onDoubleClick={(e) => { e.stopPropagation(); setEditingTitle(true); }}
+            title="Double-click to rename"
+          >{title || "Comment"}</span>
+        )}
       </div>
       {editing ? (
         <AutoTextarea

@@ -30,6 +30,9 @@ import WanAnimateProperties from "./properties/WanAnimateProperties";
 import HunyuanVideoProperties from "./properties/HunyuanVideoProperties";
 import HunyuanAvatarProperties from "./properties/HunyuanAvatarProperties";
 import DescribeProperties from "./properties/DescribeProperties";
+import LlmTextProperties from "./properties/LlmTextProperties";
+import DatasetProperties from "./properties/DatasetProperties";
+import BatchProperties from "./properties/BatchProperties";
 import ComfyProperties from "./properties/ComfyProperties";
 
 const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: any }>> = {
@@ -64,6 +67,10 @@ const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: a
   "fs:hunyuanVideo": HunyuanVideoProperties,
   "fs:hunyuanAvatar": HunyuanAvatarProperties,
   "fs:describe": DescribeProperties,
+  "fs:critique": LlmTextProperties,
+  "fs:refine": LlmTextProperties,
+  "fs:dataset": DatasetProperties,
+  "fs:batch": BatchProperties,
 };
 
 export default function PropertiesPanel() {

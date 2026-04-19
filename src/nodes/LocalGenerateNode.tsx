@@ -48,13 +48,15 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
   const width = nodeData.widgetValues?.width || 512;
   const height = nodeData.widgetValues?.height || 512;
   const seed = nodeData.widgetValues?.seed || "";
+  const count: number = Math.max(1, Math.min(20, nodeData.widgetValues?.count ?? 1));
+  const [batchInfo, setBatchInfo] = useState<{ done: number; total: number } | null>(null);
 
   const handleGenerate = useCallback(async () => {
     setGenerating(true);
     setError(null);
     setProgress(null);
-    const startTime = Date.now();
-    log("Generate started", { nodeId: id, nodeType: "fs:localGenerate", nodeLabel: "Local Gen" });
+    const wv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
+    const nRuns: number = Math.max(1, Math.min(20, wv.count ?? 1));
 
     const promptText = getConnectedPrompt(id, nodesAll as any[], edgesAll as any[]);
     if (!promptText) {
@@ -63,37 +65,45 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
       return;
     }
 
-    const actualSeed = seed ? parseInt(seed) : Math.floor(Math.random() * 2147483647);
+    log(`Generate started${nRuns > 1 ? ` ×${nRuns}` : ""}`, { nodeId: id, nodeType: "fs:localGenerate", nodeLabel: "Local Gen" });
 
-    try {
-      const workflow = buildLocalGenWorkflow({
-        model: selectedModel, prompt: promptText,
-        seed: actualSeed, steps, cfg, width, height,
-      });
-
-      const result = await queuePrompt(workflow);
-
-      const pollResult = await pollForResult(result.prompt_id, { interval: 1000 });
-      if (!pollResult || "error" in pollResult) {
-        setError(pollResult ? pollResult.error : "Generation failed");
-        log("Generate failed", { nodeId: id, nodeType: "fs:localGenerate", nodeLabel: "Local Gen", status: "error", details: pollResult && "error" in pollResult ? pollResult.error : "" });
-        setGenerating(false);
-        return;
+    for (let i = 0; i < nRuns; i++) {
+      if (nRuns > 1) setBatchInfo({ done: i, total: nRuns });
+      const startTime = Date.now();
+      // Batch: randomize seed each run, even if a seed was pinned on the node.
+      const actualSeed = nRuns > 1
+        ? Math.floor(Math.random() * 2147483647)
+        : (seed ? parseInt(seed) : Math.floor(Math.random() * 2147483647));
+      try {
+        const workflow = buildLocalGenWorkflow({
+          model: selectedModel, prompt: promptText,
+          seed: actualSeed, steps, cfg, width, height,
+        });
+        const result = await queuePrompt(workflow);
+        const pollResult = await pollForResult(result.prompt_id, { interval: 1000 });
+        if (!pollResult || "error" in pollResult) {
+          setError(pollResult ? pollResult.error : "Generation failed");
+          log("Generate failed", { nodeId: id, nodeType: "fs:localGenerate", nodeLabel: "Local Gen", status: "error", details: pollResult && "error" in pollResult ? pollResult.error : "" });
+          break;
+        }
+        const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
+        updateWidgetValue(id, "_lastSeed", actualSeed);
+        await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
+          prompt: promptText, model: selectedModel, seed: actualSeed.toString(),
+          steps, cfg, width, height, nodeType: "fs:localGenerate",
+        });
+        log(`Image ready${nRuns > 1 ? ` (${i + 1}/${nRuns})` : ""}`, {
+          nodeId: id, nodeType: "fs:localGenerate", nodeLabel: "Local Gen",
+          status: "success", details: `${width}x${height}, seed ${actualSeed}`,
+        });
+      } catch (err: any) {
+        setError(err.message);
+        log("Generate error", { nodeId: id, nodeType: "fs:localGenerate", nodeLabel: "Local Gen", status: "error", details: err.message });
+        break;
       }
-
-      const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
-      updateWidgetValue(id, "_lastSeed", actualSeed);
-      await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
-        prompt: promptText, model: selectedModel, seed: actualSeed.toString(),
-        steps, cfg, width, height, nodeType: "fs:localGenerate",
-      });
-
-      log("Image ready", { nodeId: id, nodeType: "fs:localGenerate", nodeLabel: "Local Gen", status: "success", details: `${width}x${height}, ${steps} steps` });
-      useWorkflowStore.getState().saveProject();
-    } catch (err: any) {
-      setError(err.message);
-      log("Generate error", { nodeId: id, nodeType: "fs:localGenerate", nodeLabel: "Local Gen", status: "error", details: err.message });
     }
+    setBatchInfo(null);
+    useWorkflowStore.getState().saveProject();
     setGenerating(false);
   }, [id, selectedModel, steps, cfg, width, height, seed, edgesAll, nodesAll, updateWidgetValue]);
 
@@ -113,7 +123,11 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
           <span className="localgen-icon">⚡</span>
           <div className="localgen-header-text">
             <span className="localgen-title">Local Generate</span>
-            <span className="localgen-status">{generating ? "GENERATING..." : "READY"}</span>
+            <span className="localgen-status">
+              {generating
+                ? (batchInfo ? `BATCH ${batchInfo.done + 1}/${batchInfo.total}` : "GENERATING...")
+                : (count > 1 ? `READY · ×${count}` : "READY")}
+            </span>
           </div>
         </div>
       </div>
@@ -139,7 +153,7 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
 
       <div className="nanob-actions">
         <button
-          className={`localgen-generate-btn ${generating ? "generating" : ""}`}
+          className={`localgen-generate-btn ${generating ? "generating" : ""}data-fs-run-id={id} `}
           onClick={handleGenerate}
           disabled={generating}
         >

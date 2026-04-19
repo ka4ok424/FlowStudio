@@ -72,7 +72,7 @@ const EXTRA_LABELS: Record<keyof typeof JOY_EXTRAS_KEYS, string> = {
 function DescribeProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const update = useWorkflowStore((s) => s.updateWidgetValue);
   const wv = data.widgetValues || {};
-  const model: "florence2" | "joycaption" = wv.model || "florence2";
+  const model: "florence2" | "joycaption" = wv.model || "joycaption";
   const v = <T,>(key: string, dflt: T): T => (wv[key] !== undefined ? wv[key] : dflt);
 
   return (
@@ -82,8 +82,8 @@ function DescribeProperties({ nodeId, data }: { nodeId: string; data: any }) {
         <div className="props-section-title">Model</div>
         <select className="props-select" value={model}
           onChange={(e) => update(nodeId, "model", e.target.value)}>
-          <option value="florence2">Florence-2 (fast, small)</option>
           <option value="joycaption">JoyCaption Alpha Two (rich)</option>
+          <option value="florence2">Florence-2 (fast, small)</option>
         </select>
       </div>
 

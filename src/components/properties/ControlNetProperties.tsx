@@ -1,4 +1,5 @@
 import { useWorkflowStore } from "../../store/workflowStore";
+import BatchCountField from "./BatchCountField";
 
 const CONTROL_TYPES = [
   { value: "canny", label: "Canny (edges)" },
@@ -21,9 +22,11 @@ function ControlNetProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const seed = data.widgetValues?.seed ?? "";
   const cannyLow = data.widgetValues?.cannyLow ?? 0.4;
   const cannyHigh = data.widgetValues?.cannyHigh ?? 0.8;
+  const count = data.widgetValues?.count ?? 1;
 
   return (
     <>
+      <BatchCountField nodeId={nodeId} value={count} />
       <div className="props-section">
         <div className="props-section-title">Control Type</div>
         <select className="props-select" value={controlType}

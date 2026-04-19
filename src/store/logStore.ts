@@ -15,9 +15,14 @@ export interface LogEntry {
 interface LogState {
   entries: LogEntry[];
   loaded: boolean;
+  panelOpen: boolean;
+  filterNodeId: string | null;
   addLog: (entry: Omit<LogEntry, "id" | "time">) => void;
   clear: () => void;
   loadLogs: () => Promise<void>;
+  openPanel: (nodeId?: string | null) => void;
+  closePanel: () => void;
+  togglePanel: () => void;
 }
 
 const MAX_LOGS = 500;
@@ -32,6 +37,12 @@ export function saveLogsNow() {
 export const useLogStore = create<LogState>((set, get) => ({
   entries: [],
   loaded: false,
+  panelOpen: false,
+  filterNodeId: null,
+
+  openPanel: (nodeId = null) => set({ panelOpen: true, filterNodeId: nodeId }),
+  closePanel: () => set({ panelOpen: false, filterNodeId: null }),
+  togglePanel: () => set({ panelOpen: !get().panelOpen, filterNodeId: get().panelOpen ? null : get().filterNodeId }),
 
   addLog: (entry) => {
     const logEntry: LogEntry = {

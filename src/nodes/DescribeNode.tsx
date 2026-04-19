@@ -5,6 +5,7 @@ import { queuePrompt, getComfyUrl } from "../api/comfyApi";
 import { log } from "../store/logStore";
 import { uploadSourceImage, getConnectedImageUrl } from "../hooks/useNodeHelpers";
 import { buildDescribeWorkflow, JOY_EXTRAS_KEYS, type DescribeModel } from "../workflows/describe";
+import { useAutoGrowTextarea } from "../utils/useAutoGrow";
 
 async function pollForText(promptId: string, interval = 1500, maxAttempts = 300): Promise<string | { error: string }> {
   for (let i = 0; i < maxAttempts; i++) {
@@ -66,7 +67,7 @@ function DescribeNode({ id, data, selected }: NodeProps) {
     }
   }, [storedText]);
   const result = localText;
-  const model: DescribeModel = nodeData.widgetValues?.model || "florence2";
+  const model: DescribeModel = nodeData.widgetValues?.model || "joycaption";
   const task: string = nodeData.widgetValues?.task || "detailed_caption";
   const captionType: string = nodeData.widgetValues?.captionType || "Descriptive";
   const captionLength: string = nodeData.widgetValues?.captionLength || "medium-length";
@@ -89,7 +90,7 @@ function DescribeNode({ id, data, selected }: NodeProps) {
       const imgName = await uploadSourceImage(srcUrl, `fs_describe_${imgEdge.source}_${Date.now()}.png`);
       const seed = wv.seed ? parseInt(wv.seed) : Math.floor(Math.random() * 2147483647);
       let workflow: Record<string, any>;
-      const chosenModel: DescribeModel = wv.model || "florence2";
+      const chosenModel: DescribeModel = wv.model || "joycaption";
 
       if (chosenModel === "florence2") {
         workflow = buildDescribeWorkflow({
@@ -184,6 +185,7 @@ function DescribeNode({ id, data, selected }: NodeProps) {
       </div>
 
       <textarea
+        ref={useAutoGrowTextarea(result)}
         className="describe-result nodrag nowheel"
         value={result}
         placeholder="Connect an image and click Analyze"
@@ -204,7 +206,7 @@ function DescribeNode({ id, data, selected }: NodeProps) {
           margin: "8px 12px",
           padding: "10px 12px",
           minHeight: 150,
-          maxHeight: 360,
+          maxHeight: 600,
           resize: "vertical",
           overflowY: "auto",
           background: "rgba(59,130,246,0.06)",
@@ -223,7 +225,7 @@ function DescribeNode({ id, data, selected }: NodeProps) {
 
       <div className="nanob-actions">
         <button
-          className={`nanob-generate-btn ${processing ? "generating" : ""}`}
+          className={`nanob-generate-btn ${processing ? "generating" : ""}data-fs-run-id={id} `}
           style={{ background: processing ? "#2a5a8f" : "#3b82f6", color: "#fff" }}
           onClick={handleRun}
           disabled={processing}

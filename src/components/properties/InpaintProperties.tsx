@@ -1,4 +1,5 @@
 import { useWorkflowStore } from "../../store/workflowStore";
+import BatchCountField from "./BatchCountField";
 
 // ── Inpaint Properties ───────────────────────────────────────────
 function InpaintProperties({ nodeId, data }: { nodeId: string; data: any }) {
@@ -9,6 +10,7 @@ function InpaintProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const cfg = data.widgetValues?.cfg ?? 1.0;
   const seed = data.widgetValues?.seed ?? "";
   const samPrompt = data.widgetValues?.samPrompt ?? "";
+  const count = data.widgetValues?.count ?? 1;
 
   const models = [
     { value: "flux1-fill", label: "FLUX.1 Fill", desc: "Best quality, specialized inpaint model" },
@@ -21,6 +23,7 @@ function InpaintProperties({ nodeId, data }: { nodeId: string; data: any }) {
 
   return (
     <>
+      <BatchCountField nodeId={nodeId} value={count} />
       <div className="props-section">
         <div className="props-section-title">Model</div>
         <select className="props-select" value={modelType}

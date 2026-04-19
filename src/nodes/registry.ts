@@ -615,6 +615,107 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:batch",
+  label: "Batch",
+  icon: "🎲",
+  accentColor: "#ec407a",
+  component: "BatchNode",
+  description: "Sweep a parameter across a list of values OR run a Cartesian matrix of multiple parameters. Triggers any chosen generative node N times, randomizing inputs.",
+  inputs: [],
+  outputs: [],
+  aiDoc: {
+    purpose: "Drive another node N times, varying a widget value each iteration. List mode = single param sweep, Matrix mode = Cartesian product of two params.",
+    skills: [
+      "Run 10 prompts through the same generative node",
+      "Sweep CFG=[3,5,7,9] × steps=[8,16,24] for tuning",
+    ],
+    params: {
+      targetNodeId: "ID of the downstream generative node to drive",
+      mode: "'list' or 'matrix'",
+      paramA: "widget key to vary (e.g. 'seed', 'denoise', 'cfg')",
+      valuesA: "newline-separated list of values for paramA",
+      paramB: "(matrix) second key to vary",
+      valuesB: "(matrix) values for paramB",
+    },
+    examples: [
+      "Batch(target=Kontext, param=seed, values=10 random) → 10 outputs in Kontext history",
+      "Batch(matrix, param=cfg [3,5,7] × steps [16,24]) → 6 outputs",
+    ],
+  },
+});
+
+registerNativeNode({
+  type: "fs:dataset",
+  label: "Dataset",
+  icon: "📦",
+  accentColor: "#66bb6a",
+  component: "DatasetNode",
+  description: "Collect image+caption pairs and export as a LoRA-training ZIP. Missing captions are auto-filled via the selected vision model.",
+  inputs: [
+    // Dynamic image slots img_0, img_1, ... shown in the node UI
+  ],
+  outputs: [],
+  aiDoc: {
+    purpose: "Bootstrap a LoRA training dataset. Accepts N image inputs; if no caption text is provided for an image, runs it through Florence-2 / JoyCaption to auto-caption; exports a ZIP of image_001.png + image_001.txt pairs ready for kohya-ss / ai-toolkit.",
+    skills: ["Auto-caption via vision model", "Bulk export for LoRA training"],
+    params: {
+      model: "'florence2' or 'joycaption' — which vision model to use for auto-captioning",
+      captionTask: "Florence-2 task ('detailed_caption' / 'more_detailed_caption' / ...) or JoyCaption type",
+      prefix: "Base filename prefix, e.g. 'asmr_dirt'",
+    },
+    connectsFrom: ["fs:localGenerate", "fs:nanoBanana", "fs:kontext", "fs:import", "fs:describe"],
+    examples: [
+      "10 × LocalGen → Dataset(model=joycaption) → Export ZIP → upload to kohya trainer",
+    ],
+  },
+});
+
+registerNativeNode({
+  type: "fs:critique",
+  label: "Critique",
+  icon: "🧐",
+  accentColor: "#ef5350",
+  component: "CritiqueNode",
+  description: "Get a structured critique of an image (or a prompt) via Gemini vision. Outputs TEXT with concrete issues and suggestions.",
+  inputs: [
+    { name: "input", type: "IMAGE" },   // optional
+    { name: "prompt", type: "TEXT" },   // optional: what you wanted
+  ],
+  outputs: [{ name: "text", type: "TEXT" }],
+  aiDoc: {
+    purpose: "LLM-based feedback. Either analyses an image (what's wrong, composition/anatomy/lighting) or, if no image is connected, critiques the text prompt itself.",
+    skills: ["Critique a generated image", "Suggest concrete improvements", "Analyse a prompt for clarity"],
+    params: { model: "gemini-2.5-flash | gemini-2.5-pro | gemini-2.0-flash" },
+    connectsFrom: ["fs:localGenerate", "fs:nanoBanana", "fs:kontext", "fs:describe", "fs:prompt"],
+    connectsTo: ["fs:prompt", "fs:refine"],
+    examples: ["LocalGen → Critique(model=Flash) → PromptRefine → Prompt → Kontext"],
+  },
+});
+
+registerNativeNode({
+  type: "fs:refine",
+  label: "Prompt Refine",
+  icon: "✨",
+  accentColor: "#ffb74d",
+  component: "RefineNode",
+  description: "Rewrite a prompt to produce a better result. Uses an optional image as visual context (what the current prompt produced).",
+  inputs: [
+    { name: "prompt", type: "TEXT" },   // required: current prompt
+    { name: "input", type: "IMAGE" },   // optional: current result
+    { name: "goal", type: "TEXT" },     // optional: what user wants different
+  ],
+  outputs: [{ name: "text", type: "TEXT" }],
+  aiDoc: {
+    purpose: "Rewrite a prompt using LLM. If an image is supplied, the model sees the current result and can fix specific issues.",
+    skills: ["Improve prompt wording", "Address issues seen in current result"],
+    params: { model: "gemini-2.5-flash | gemini-2.5-pro | gemini-2.0-flash" },
+    connectsFrom: ["fs:prompt", "fs:describe", "fs:critique", "fs:localGenerate"],
+    connectsTo: ["fs:prompt", "fs:kontext", "fs:inpaintCN"],
+    examples: ["Prompt('portrait') + LocalGen output → Refine → better Prompt → regenerate"],
+  },
+});
+
+registerNativeNode({
   type: "fs:img2img",
   label: "Img2Img",
   icon: "🎨",

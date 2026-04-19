@@ -21,14 +21,14 @@ function Img2ImgNode({ id, data, selected }: NodeProps) {
 
   const previewUrl = nodeData.widgetValues?._previewUrl || null;
   const [processing, setProcessing] = useState(false);
+  const [batchInfo, setBatchInfo] = useState<{ done: number; total: number } | null>(null);
+  const count: number = Math.max(1, Math.min(20, nodeData.widgetValues?.count ?? 1));
   const [error, setError] = useState<string | null>(null);
 
   const handleGenerate = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     setProcessing(true);
     setError(null);
-    const startTime = Date.now();
-    log("Img2Img started", { nodeId: id, nodeType: "fs:img2img", nodeLabel: "Img2Img" });
 
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
     const steps = freshWv.steps || 28;
@@ -36,16 +36,15 @@ function Img2ImgNode({ id, data, selected }: NodeProps) {
     const denoise = freshWv.denoise ?? 0.75;
     const width = freshWv.width || 1024;
     const height = freshWv.height || 1024;
-    const seed = freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647);
     const negativePrompt = freshWv.negativePrompt || "";
     const sampler = freshWv.sampler || "euler";
     const scheduler = freshWv.scheduler || "simple";
     const kvCache = freshWv.kvCache || false;
+    const nRuns: number = Math.max(1, Math.min(20, freshWv.count ?? 1));
 
     const promptText = getConnectedPrompt(id, nodesAll as any[], edgesAll as any[]);
     if (!promptText) { setError("Connect a Prompt node"); setProcessing(false); return; }
 
-    // Collect reference images
     const curRefCount = freshWv._refCount || DEFAULT_REFS;
     const refUrls: { url: string; sourceId: string }[] = [];
     for (let i = 0; i < curRefCount; i++) {
@@ -57,54 +56,41 @@ function Img2ImgNode({ id, data, selected }: NodeProps) {
     }
     if (refUrls.length === 0) { setError("Connect at least 1 reference image"); setProcessing(false); return; }
 
+    log(`Img2Img started${nRuns > 1 ? ` ×${nRuns}` : ""}`, { nodeId: id, nodeType: "fs:img2img", nodeLabel: "Img2Img" });
+
     try {
-      // Upload all reference images
       const imgNames: string[] = [];
       for (const { url, sourceId } of refUrls) {
-        imgNames.push(await uploadSourceImage(url, `fs_ref_${sourceId}.png`));
+        imgNames.push(await uploadSourceImage(url, `fs_ref_${sourceId}_${Date.now()}.png`));
       }
 
-      const workflow = buildImg2ImgWorkflow({
-        imageNames: imgNames, prompt: promptText, negativePrompt,
-        seed, steps, cfg, denoise, width, height, sampler, scheduler, kvCache,
-      });
+      for (let i = 0; i < nRuns; i++) {
+        if (nRuns > 1) setBatchInfo({ done: i, total: nRuns });
+        const startTime = Date.now();
+        const seed = nRuns > 1
+          ? Math.floor(Math.random() * 2147483647)
+          : (freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647));
 
-      // Check for pending result from previous timeout
-      const pendingId = freshWv._pendingPromptId;
-      if (pendingId) {
-        const pollResult = await pollForResult(pendingId, { maxAttempts: 1, interval: 100 });
-        if (pollResult && !("error" in pollResult)) {
-          const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
-          updateWidgetValue(id, "_pendingPromptId", null);
-          await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
-            prompt: promptText, model: "FLUX.2 Dev", seed: String(seed), steps, cfg, width, height, nodeType: "fs:img2img",
-          });
-          log("Img2Img recovered", { nodeId: id, nodeType: "fs:img2img", nodeLabel: "Img2Img", status: "success" });
-          setProcessing(false);
-          return;
+        const workflow = buildImg2ImgWorkflow({
+          imageNames: imgNames, prompt: promptText, negativePrompt,
+          seed, steps, cfg, denoise, width, height, sampler, scheduler, kvCache,
+        });
+        const result = await queuePrompt(workflow);
+        const pollResult = await pollForResult(result.prompt_id);
+        if (!pollResult || "error" in pollResult) {
+          setError(pollResult ? pollResult.error : "No result");
+          break;
         }
-        updateWidgetValue(id, "_pendingPromptId", null);
+        const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
+        await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
+          prompt: promptText, model: "FLUX.2 Dev", seed: String(seed), steps, cfg, width, height, nodeType: "fs:img2img",
+        });
+        log(`Img2Img done${nRuns > 1 ? ` (${i + 1}/${nRuns})` : ""}`, { nodeId: id, nodeType: "fs:img2img", status: "success", details: `seed ${seed}` });
       }
-
-      const result = await queuePrompt(workflow);
-      updateWidgetValue(id, "_pendingPromptId", result.prompt_id);
-
-      const pollResult = await pollForResult(result.prompt_id);
-      if (!pollResult || "error" in pollResult) {
-        setError(pollResult ? pollResult.error : "No result");
-        setProcessing(false);
-        return;
-      }
-
-      const dataUrl = await fetchAsDataUrl(pollResult.apiUrl);
-      updateWidgetValue(id, "_pendingPromptId", null);
-      await saveGenerationResult(id, dataUrl, Date.now() - startTime, {
-        prompt: promptText, model: "FLUX.2 Dev", seed: String(seed), steps, cfg, width, height, nodeType: "fs:img2img",
-      });
-      log("Img2Img complete", { nodeId: id, nodeType: "fs:img2img", nodeLabel: "Img2Img", status: "success" });
     } catch (err: any) {
       setError(err.message);
     }
+    setBatchInfo(null);
     setProcessing(false);
   }, [id, edgesAll, nodesAll, updateWidgetValue]);
 
@@ -124,7 +110,11 @@ function Img2ImgNode({ id, data, selected }: NodeProps) {
           <span className="img2img-icon">🎨</span>
           <div className="img2img-header-text">
             <span className="img2img-title">Img2Img</span>
-            <span className="img2img-status">{processing ? "PROCESSING..." : "FLUX.2 Dev"}</span>
+            <span className="img2img-status">
+              {processing
+                ? (batchInfo ? `BATCH ${batchInfo.done + 1}/${batchInfo.total}` : "PROCESSING...")
+                : `FLUX.2 Dev${count > 1 ? ` · ×${count}` : ""}`}
+            </span>
           </div>
         </div>
       </div>
@@ -156,7 +146,7 @@ function Img2ImgNode({ id, data, selected }: NodeProps) {
       {error && <div className="nanob-error nodrag">{error}</div>}
 
       <div className="nanob-actions">
-        <button className={`localgen-generate-btn ${processing ? "generating" : ""}`} onClick={handleGenerate} disabled={processing}>
+        <button className={`localgen-generate-btn ${processing ? "generating" : ""}data-fs-run-id={id} `} onClick={handleGenerate} disabled={processing}>
           {processing ? "Generating..." : "🎨 Generate"}
         </button>
       </div>

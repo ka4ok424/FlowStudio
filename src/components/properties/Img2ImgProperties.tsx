@@ -1,8 +1,10 @@
 import { useWorkflowStore } from "../../store/workflowStore";
+import BatchCountField from "./BatchCountField";
 
 // ── Img2Img Properties ───────────────────────────────────────────
 function Img2ImgProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const count = data.widgetValues?.count ?? 1;
   const denoise = data.widgetValues?.denoise ?? 0.75;
   const steps = data.widgetValues?.steps ?? 28;
   const cfg = data.widgetValues?.cfg ?? 3.5;
@@ -17,6 +19,7 @@ function Img2ImgProperties({ nodeId, data }: { nodeId: string; data: any }) {
 
   return (
     <>
+      <BatchCountField nodeId={nodeId} value={count} />
       <div className="props-section">
         <div className="props-section-title">Denoise Strength</div>
         <input type="range" className="props-range" min={0.1} max={1.0} step={0.05} value={denoise}

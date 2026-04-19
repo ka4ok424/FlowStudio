@@ -23,6 +23,8 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
   );
 
   const [generating, setGenerating] = useState(false);
+  const [batchInfo, setBatchInfo] = useState<{ done: number; total: number } | null>(null);
+  const count: number = Math.max(1, Math.min(20, nodeData.widgetValues?.count ?? 1));
   const [error, setError] = useState<string | null>(null);
   const previewUrl = nodeData.widgetValues?._previewUrl || null;
   const refCount = nodeData.widgetValues?._refCount || 1;
@@ -32,7 +34,9 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
   const handleGenerate = useCallback(async () => {
     setGenerating(true);
     setError(null);
-    log("Generate started", { nodeId: id, nodeType: "fs:nanoBanana", nodeLabel: "Nano Banana" });
+    const wv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
+    const nRuns: number = Math.max(1, Math.min(20, wv.count ?? 1));
+    log(`Generate started${nRuns > 1 ? ` ×${nRuns}` : ""}`, { nodeId: id, nodeType: "fs:nanoBanana", nodeLabel: "Nano Banana" });
 
     // Get prompt from connected Prompt node
     let prompt = "";
@@ -87,44 +91,52 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
       }
     }
 
-    const result = await generateImage({
-      prompt: prompt || "Generate an image",
-      model: nodeData.widgetValues?.model || "gemini-2.5-flash-image",
-      aspectRatio: nodeData.widgetValues?.aspectRatio || "1:1",
-      seed: nodeData.widgetValues?.seed ? parseInt(nodeData.widgetValues.seed) : undefined,
-      temperature: nodeData.widgetValues?.temperature,
-      numberOfImages: nodeData.widgetValues?.numImages || 1,
-      inputImage,
-      referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
-      safetySettings: {
-        HARM_CATEGORY_HARASSMENT: nodeData.widgetValues?.safety_harassment || "BLOCK_MEDIUM_AND_ABOVE",
-        HARM_CATEGORY_HATE_SPEECH: nodeData.widgetValues?.safety_hate || "BLOCK_MEDIUM_AND_ABOVE",
-        HARM_CATEGORY_SEXUALLY_EXPLICIT: nodeData.widgetValues?.safety_sexual || "BLOCK_MEDIUM_AND_ABOVE",
-        HARM_CATEGORY_DANGEROUS_CONTENT: nodeData.widgetValues?.safety_dangerous || "BLOCK_MEDIUM_AND_ABOVE",
-      },
-    });
-
-    if (result.error) {
-      setError(result.error);
-      log("Generation error", { nodeId: id, nodeType: "fs:nanoBanana", nodeLabel: "Nano Banana", status: "error", details: result.error });
-      console.error("[NanoBanana]", result.error);
-    } else if (result.images.length > 0) {
-      const dataUrl = `data:image/png;base64,${result.images[0]}`;
-      updateWidgetValue(id, "_previewUrl", dataUrlToBlobUrl(dataUrl));
-      const prev = nodeData.widgetValues?._history || [];
-      const { history: newHistory, index: newIdx } = await addToHistory(id, prev, dataUrl);
-      updateWidgetValue(id, "_history", newHistory);
-      updateWidgetValue(id, "_historyIndex", newIdx);
-      log("Image ready", { nodeId: id, nodeType: "fs:nanoBanana", nodeLabel: "Nano Banana", status: "success" });
-      useWorkflowStore.getState().saveProject();
-      addGenerationToLibrary(dataUrl, {
-        prompt: prompt || "",
+    for (let i = 0; i < nRuns; i++) {
+      if (nRuns > 1) setBatchInfo({ done: i, total: nRuns });
+      const runSeed = nRuns > 1
+        ? Math.floor(Math.random() * 2147483647)
+        : (nodeData.widgetValues?.seed ? parseInt(nodeData.widgetValues.seed) : undefined);
+      const result = await generateImage({
+        prompt: prompt || "Generate an image",
         model: nodeData.widgetValues?.model || "gemini-2.5-flash-image",
-        seed: nodeData.widgetValues?.seed || "random",
-        nodeType: "fs:nanoBanana",
+        aspectRatio: nodeData.widgetValues?.aspectRatio || "1:1",
+        seed: runSeed,
+        temperature: nodeData.widgetValues?.temperature,
+        numberOfImages: nodeData.widgetValues?.numImages || 1,
+        inputImage,
+        referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
+        safetySettings: {
+          HARM_CATEGORY_HARASSMENT: nodeData.widgetValues?.safety_harassment || "BLOCK_MEDIUM_AND_ABOVE",
+          HARM_CATEGORY_HATE_SPEECH: nodeData.widgetValues?.safety_hate || "BLOCK_MEDIUM_AND_ABOVE",
+          HARM_CATEGORY_SEXUALLY_EXPLICIT: nodeData.widgetValues?.safety_sexual || "BLOCK_MEDIUM_AND_ABOVE",
+          HARM_CATEGORY_DANGEROUS_CONTENT: nodeData.widgetValues?.safety_dangerous || "BLOCK_MEDIUM_AND_ABOVE",
+        },
       });
-    }
 
+      if (result.error) {
+        setError(result.error);
+        log("Generation error", { nodeId: id, nodeType: "fs:nanoBanana", nodeLabel: "Nano Banana", status: "error", details: result.error });
+        console.error("[NanoBanana]", result.error);
+        break;
+      }
+      if (result.images.length > 0) {
+        const dataUrl = `data:image/png;base64,${result.images[0]}`;
+        updateWidgetValue(id, "_previewUrl", dataUrlToBlobUrl(dataUrl));
+        const prev = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues?._history || [];
+        const { history: newHistory, index: newIdx } = await addToHistory(id, prev, dataUrl);
+        updateWidgetValue(id, "_history", newHistory);
+        updateWidgetValue(id, "_historyIndex", newIdx);
+        log(`Image ready${nRuns > 1 ? ` (${i + 1}/${nRuns})` : ""}`, { nodeId: id, nodeType: "fs:nanoBanana", status: "success" });
+        addGenerationToLibrary(dataUrl, {
+          prompt: prompt || "",
+          model: nodeData.widgetValues?.model || "gemini-2.5-flash-image",
+          seed: String(runSeed ?? "random"),
+          nodeType: "fs:nanoBanana",
+        });
+      }
+    }
+    setBatchInfo(null);
+    useWorkflowStore.getState().saveProject();
     setGenerating(false);
   }, [id, edgesAll, nodes, nodeData.widgetValues, updateWidgetValue]);
 
@@ -163,7 +175,9 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
           <div className="nanob-header-text">
             <span className="nanob-title">Nano Banana</span>
             <span className="nanob-status">
-              {generating ? "GENERATING..." : "READY"}
+              {generating
+                ? (batchInfo ? `BATCH ${batchInfo.done + 1}/${batchInfo.total}` : "GENERATING...")
+                : (count > 1 ? `READY · ×${count}` : "READY")}
             </span>
           </div>
         </div>
@@ -225,7 +239,7 @@ function NanoBananaNode({ id, data, selected }: NodeProps) {
       {/* Generate + Dice */}
       <div className="nanob-actions">
         <button
-          className={`nanob-generate-btn ${generating ? "generating" : ""}`}
+          className={`nanob-generate-btn ${generating ? "generating" : ""}data-fs-run-id={id} `}
           onClick={handleGenerate}
           disabled={generating}
         >
