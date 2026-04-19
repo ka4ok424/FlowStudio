@@ -50,22 +50,41 @@ function GroupNode({ id, data, selected }: NodeProps) {
         handleStyle={{ background: scheme.color, width: 8, height: 8 }}
         isVisible={selected}
       />
-      <div className="group-header" style={{ borderBottomColor: scheme.border }}>
+      {/* Title sits ABOVE the group rectangle as a floating tag. */}
+      <div
+        className="group-header"
+        style={{
+          position: "absolute",
+          top: -28,
+          left: 0,
+          padding: "0 4px",
+          borderBottom: "none",
+          background: "transparent",
+          pointerEvents: "auto",
+        }}
+      >
         {editing ? (
           <input
-            className="group-title-input"
+            className="group-title-input nodrag"
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
             onBlur={commitTitle}
             onKeyDown={(e) => { if (e.key === "Enter") commitTitle(); if (e.key === "Escape") setEditing(false); }}
             autoFocus
             onClick={(e) => e.stopPropagation()}
+            style={{ color: scheme.color, borderColor: scheme.color }}
           />
         ) : (
           <span
             className="group-title"
-            style={{ color: scheme.color }}
+            style={{
+              color: scheme.color,
+              padding: "2px 10px",
+              display: "inline-block",
+              textShadow: "0 1px 2px rgba(0,0,0,0.5)",
+            }}
             onDoubleClick={(e) => { e.stopPropagation(); setEditValue(title); setEditing(true); }}
+            title="Double-click to rename"
           >
             {title}
           </span>
