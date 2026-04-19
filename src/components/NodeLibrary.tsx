@@ -80,9 +80,53 @@ export default function NodeLibrary() {
         {/* ── Native FlowStudio nodes ─────────────────────────── */}
         {(() => {
           const allNative = getAllNativeNodes().filter((n) => !search || n.label.toLowerCase().includes(search.toLowerCase()));
-          const localTypes = new Set(["fs:localGenerate", "fs:img2img", "fs:kontext", "fs:ltxVideo", "fs:nextFrame", "fs:upscale", "fs:inpaint", "fs:removeBg", "fs:compare", "fs:enhance", "fs:controlNet", "fs:inpaintCN", "fs:wanVideo", "fs:wanAnimate", "fs:hunyuanVideo", "fs:hunyuanAvatar", "fs:prompt", "fs:preview", "fs:import", "fs:characterCard", "fs:scene", "fs:storyboard", "fs:group", "fs:comment", "fs:describe", "fs:dataset", "fs:batch"]);
-          const localNodes = allNative.filter((n) => localTypes.has(n.type));
-          const cloudNodes = allNative.filter((n) => !localTypes.has(n.type));
+
+          // Visual / canvas-organisation helpers — don't generate anything,
+          // just structure the workspace.
+          const visualTypes = new Set(["fs:group", "fs:comment", "fs:text", "fs:sticker"]);
+
+          // Utilities — image-processing & dataset helpers (not pure generation).
+          const utilityTypes = new Set([
+            "fs:upscale", "fs:describe", "fs:batch", "fs:dataset", "fs:enhance",
+            "fs:removeBg", "fs:compare",
+          ]);
+
+          // Video — local video generation + video publishing.
+          // Cloud video (Veo videoGen / videoGenPro) lives in Cloud / API since
+          // its boundary is "where does it run?", not "what does it produce?".
+          const videoTypes = new Set([
+            "fs:ltxVideo", "fs:wanVideo", "fs:wanAnimate",
+            "fs:hunyuanVideo", "fs:hunyuanAvatar",
+            "fs:tiktokPublish",
+          ]);
+
+          // Local image generation + universal helpers (Prompt/Preview/Import/Character/Scene/Storyboard).
+          // Anything image-output goes here even if intended for a video pipeline downstream.
+          const localTypes = new Set([
+            "fs:localGenerate", "fs:img2img", "fs:kontext", "fs:nextFrame",
+            "fs:inpaint", "fs:inpaintCN", "fs:controlNet",
+            "fs:prompt", "fs:preview", "fs:import",
+            "fs:characterCard", "fs:scene", "fs:storyboard",
+          ]);
+
+          // Pinned to the bottom of Local — pipeline-organisation nodes (character/scene/storyboard).
+          const localBottomTypes = ["fs:characterCard", "fs:scene", "fs:storyboard"];
+          const localNodesRaw = allNative.filter((n) => localTypes.has(n.type));
+          const localNodes = [
+            ...localNodesRaw.filter((n) => !localBottomTypes.includes(n.type)),
+            ...localBottomTypes
+              .map((t) => localNodesRaw.find((n) => n.type === t))
+              .filter((n): n is NonNullable<typeof n> => Boolean(n)),
+          ];
+          const utilityNodes = allNative.filter((n) => utilityTypes.has(n.type));
+          const visualNodes = allNative.filter((n) => visualTypes.has(n.type));
+          const videoNodes = allNative.filter((n) => videoTypes.has(n.type));
+          const cloudNodes = allNative.filter((n) =>
+            !localTypes.has(n.type) &&
+            !utilityTypes.has(n.type) &&
+            !visualTypes.has(n.type) &&
+            !videoTypes.has(n.type)
+          );
 
           const renderGrid = (nodes: typeof allNative) => (
             <div className="native-nodes-grid">
@@ -112,13 +156,38 @@ export default function NodeLibrary() {
 
           return (
             <div className="library-category">
-              <div className="native-section-header">Local</div>
-              {renderGrid(localNodes)}
+              {localNodes.length > 0 && (
+                <>
+                  <div className="native-section-header">Local</div>
+                  {renderGrid(localNodes)}
+                </>
+              )}
+              {utilityNodes.length > 0 && (
+                <>
+                  <div className="native-section-divider" />
+                  <div className="native-section-header">Utilities</div>
+                  {renderGrid(utilityNodes)}
+                </>
+              )}
+              {visualNodes.length > 0 && (
+                <>
+                  <div className="native-section-divider" />
+                  <div className="native-section-header">Tools</div>
+                  {renderGrid(visualNodes)}
+                </>
+              )}
               {cloudNodes.length > 0 && (
                 <>
                   <div className="native-section-divider" />
                   <div className="native-section-header">Cloud / API</div>
                   {renderGrid(cloudNodes)}
+                </>
+              )}
+              {videoNodes.length > 0 && (
+                <>
+                  <div className="native-section-divider" />
+                  <div className="native-section-header">Video</div>
+                  {renderGrid(videoNodes)}
                 </>
               )}
             </div>

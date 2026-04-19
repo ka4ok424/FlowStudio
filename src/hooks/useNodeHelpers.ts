@@ -20,6 +20,39 @@ export async function uploadSourceImage(url: string, fileName: string): Promise<
   return uploadImage(dataUrl, fileName);
 }
 
+// Per-session cache of "already uploaded this filename".
+// Skipping the second upload preserves the file's mtime on disk, which keeps
+// ComfyUI's LoadImage IS_CHANGED hash stable → the whole downstream chain
+// (VAEEncode/ReferenceLatent/KSampler) is reused from cache on a re-Generate.
+const uploadedSession = new Set<string>();
+
+async function sha1Hex(s: string): Promise<string> {
+  const buf = new TextEncoder().encode(s);
+  const hash = await crypto.subtle.digest("SHA-1", buf);
+  return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Upload image with a deterministic filename derived from the source URL.
+ * Re-clicking Generate without changing inputs reuses the same filename and
+ * skips the upload entirely → ComfyUI sees an unchanged workflow → cache hit.
+ *
+ * Pass `prefix` to namespace by node type (e.g. "fs_ref", "fs_ktx").
+ */
+export async function uploadSourceImageCached(url: string, prefix: string): Promise<string> {
+  const hash = (await sha1Hex(url)).slice(0, 16);
+  const fileName = `${prefix}_${hash}.png`;
+  if (uploadedSession.has(fileName)) return fileName;
+  await uploadSourceImage(url, fileName);
+  uploadedSession.add(fileName);
+  return fileName;
+}
+
+/** Drop a cached entry — call when a workflow fails so the next click re-uploads. */
+export function invalidateUploadCache(fileName: string) {
+  uploadedSession.delete(fileName);
+}
+
 /** Fetch image from ComfyUI API URL and convert to data URL */
 export async function fetchAsDataUrl(apiUrl: string): Promise<string> {
   const resp = await fetch(apiUrl);

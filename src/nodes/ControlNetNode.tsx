@@ -3,7 +3,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt } from "../api/comfyApi";
 import { log } from "../store/logStore";
-import { uploadSourceImage, pollForResult, fetchAsDataUrl, saveGenerationResult, getConnectedImageUrl, getConnectedPrompt } from "../hooks/useNodeHelpers";
+import { uploadSourceImageCached, pollForResult, fetchAsDataUrl, saveGenerationResult, getConnectedImageUrl, getConnectedPrompt } from "../hooks/useNodeHelpers";
 import { buildControlNetWorkflow } from "../workflows/controlNet";
 import MediaHistory from "./MediaHistory";
 
@@ -57,7 +57,7 @@ function ControlNetNode({ id, data, selected }: NodeProps) {
     log(`ControlNet started${nRuns > 1 ? ` ×${nRuns}` : ""}`, { nodeId: id, nodeType: "fs:controlNet", nodeLabel: "ControlNet" });
 
     try {
-      const imgName = await uploadSourceImage(srcUrl, `fs_cn_${imgEdge.source}_${Date.now()}.png`);
+      const imgName = await uploadSourceImageCached(srcUrl, "fs_cn");
       for (let i = 0; i < nRuns; i++) {
         if (nRuns > 1) setBatchInfo({ done: i, total: nRuns });
         const startTime = Date.now();

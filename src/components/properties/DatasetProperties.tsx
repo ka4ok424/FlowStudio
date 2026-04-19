@@ -18,6 +18,11 @@ function DatasetProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const wv = data.widgetValues || {};
   const v = <T,>(k: string, d: T): T => (wv[k] !== undefined ? wv[k] : d);
   const model = v("model", "joycaption");
+  const triggerToken = v("triggerToken", "") as string;
+  const triggerPosition = v("triggerPosition", "prefix") as "prefix" | "suffix";
+  const samplePreview = triggerPosition === "prefix"
+    ? `${triggerToken || "<token>"}, a person standing in a forest…`
+    : `a person standing in a forest…, ${triggerToken || "<token>"}`;
 
   return (
     <>
@@ -27,6 +32,33 @@ function DatasetProperties({ nodeId, data }: { nodeId: string; data: any }) {
           value={v("prefix", "dataset")}
           placeholder="e.g. asmr_dirt"
           onChange={(e) => update(nodeId, "prefix", e.target.value.replace(/[^a-zA-Z0-9_-]/g, "_"))} />
+      </div>
+
+      <div className="props-section">
+        <div className="props-section-title">Trigger Token</div>
+        <input className="props-input" type="text"
+          value={triggerToken}
+          placeholder="e.g. mychar woman"
+          onChange={(e) => update(nodeId, "triggerToken", e.target.value)} />
+        <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+          {(["prefix", "suffix"] as const).map((pos) => (
+            <button
+              key={pos}
+              onClick={() => update(nodeId, "triggerPosition", pos)}
+              style={{
+                flex: 1, padding: "6px 8px", borderRadius: 4, cursor: "pointer",
+                border: "1px solid var(--border)",
+                background: triggerPosition === pos ? "#3b82f6" : "transparent",
+                color: triggerPosition === pos ? "#fff" : "var(--text-primary)",
+                fontWeight: 600, fontSize: 12,
+              }}
+            >{pos === "prefix" ? "Prefix (start)" : "Suffix (end)"}</button>
+          ))}
+        </div>
+        <p className="settings-hint" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.4 }}>
+          Inserted into every <code>.txt</code> caption (auto + user). Empty = off.<br />
+          Preview: <code style={{ color: "var(--text-primary)" }}>{samplePreview}</code>
+        </p>
       </div>
 
       <div className="props-section">

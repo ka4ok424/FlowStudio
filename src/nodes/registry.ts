@@ -476,6 +476,61 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:text",
+  label: "Text",
+  icon: "🔤",
+  accentColor: "#ffffff",
+  component: "TextNode",
+  description: "Free-floating text label on the canvas. Purely informational — no inputs or outputs, does not affect workflow.",
+  inputs: [],
+  outputs: [],
+  aiDoc: {
+    purpose: "Add a text annotation or title to the canvas. Does not participate in the workflow.",
+    skills: ["Label sections", "Add captions", "Visual documentation of the workflow"],
+    params: {
+      text: "The text to display (multiline supported)",
+      fontSize: "8-96 px, default 16",
+      bold: "Boolean toggle",
+      italic: "Boolean toggle",
+      underline: "Boolean toggle",
+      strikethrough: "Boolean toggle",
+      align: "left | center | right",
+      color: "Palette id from EXTENDED_COLORS",
+    },
+    examples: [
+      "Title above a group: 'Character generation → Kontext variations'",
+    ],
+  },
+});
+
+registerNativeNode({
+  type: "fs:sticker",
+  label: "Sticker",
+  icon: "🗒️",
+  accentColor: "#fdd835",
+  component: "StickerNode",
+  description: "Miro-style sticky note with 4 connection points. Drag from any edge to another sticker to draw an arrow. Used for brainstorming, not workflow execution.",
+  inputs: [],   // handles are added directly in the component (all 4 sides bidirectional)
+  outputs: [],
+  aiDoc: {
+    purpose: "Free-form sticky note that can be linked to other stickers with arrows. Brainstorming / mind-map UX on the canvas.",
+    skills: ["Stickies with arrows", "Diagram ideas before building a workflow"],
+    params: {
+      text: "Sticker body text",
+      color: "Palette id from EXTENDED_COLORS",
+      fontSize: "10-40 px, default 14",
+      bold: "Boolean toggle",
+      italic: "Boolean toggle",
+      underline: "Boolean toggle",
+      strikethrough: "Boolean toggle",
+    },
+    examples: [
+      "Three linked stickers: 'Idea' → 'Refinement' → 'Final'",
+    ],
+  },
+});
+
+registerNativeNode({
   type: "fs:comment",
   label: "Comment",
   icon: "📝",
@@ -657,15 +712,17 @@ registerNativeNode({
   outputs: [],
   aiDoc: {
     purpose: "Bootstrap a LoRA training dataset. Accepts N image inputs; if no caption text is provided for an image, runs it through Florence-2 / JoyCaption to auto-caption; exports a ZIP of image_001.png + image_001.txt pairs ready for kohya-ss / ai-toolkit.",
-    skills: ["Auto-caption via vision model", "Bulk export for LoRA training"],
+    skills: ["Auto-caption via vision model", "Bulk export for LoRA training", "Inject character trigger token into every caption"],
     params: {
       model: "'florence2' or 'joycaption' — which vision model to use for auto-captioning",
       captionTask: "Florence-2 task ('detailed_caption' / 'more_detailed_caption' / ...) or JoyCaption type",
       prefix: "Base filename prefix, e.g. 'asmr_dirt'",
+      triggerToken: "Optional. Token that identifies the LoRA subject (e.g. 'mychar woman'). Inserted into every caption — both auto-generated and user-provided. Empty = no trigger.",
+      triggerPosition: "'prefix' (default, recommended) or 'suffix'. Where the trigger token is placed inside each caption.",
     },
     connectsFrom: ["fs:localGenerate", "fs:nanoBanana", "fs:kontext", "fs:import", "fs:describe"],
     examples: [
-      "10 × LocalGen → Dataset(model=joycaption) → Export ZIP → upload to kohya trainer",
+      "10 × LocalGen → Dataset(model=joycaption, triggerToken='mychar woman') → Export ZIP → upload to kohya trainer",
     ],
   },
 });
@@ -970,7 +1027,7 @@ registerNativeNode({
   icon: "✨",
   accentColor: "#ffd54f",
   component: "EnhanceNode",
-  description: "AI image quality improvement using SUPIR. Adds detail, sharpness, removes artifacts and noise.",
+  description: "AI image quality improvement using SUPIR. Adds detail, sharpness, removes artifacts and noise. ⚠ Heavy: ~12 GB VRAM (SDXL+SUPIR) — pushes FLUX.2 out of memory and triggers slow swap on next FLUX run. For batch work with FLUX, run all FLUX generations first, then process images through SUPIR in a second pass. For lightweight upscaling stay on Upscale (UltraSharp/RealESRGAN).",
   inputs: [
     { name: "input", type: "IMAGE" },
   ],

@@ -3,7 +3,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt } from "../api/comfyApi";
 import { log } from "../store/logStore";
-import { uploadSourceImage, pollForResult, fetchAsDataUrl, saveGenerationResult, getConnectedImageUrl, getConnectedPrompt } from "../hooks/useNodeHelpers";
+import { uploadSourceImageCached, pollForResult, fetchAsDataUrl, saveGenerationResult, getConnectedImageUrl, getConnectedPrompt } from "../hooks/useNodeHelpers";
 import { buildImg2ImgWorkflow } from "../workflows/img2img";
 import MediaHistory from "./MediaHistory";
 
@@ -60,8 +60,9 @@ function Img2ImgNode({ id, data, selected }: NodeProps) {
 
     try {
       const imgNames: string[] = [];
-      for (const { url, sourceId } of refUrls) {
-        imgNames.push(await uploadSourceImage(url, `fs_ref_${sourceId}_${Date.now()}.png`));
+      for (const { url } of refUrls) {
+        // Deterministic filename → re-Generate without changes hits ComfyUI cache.
+        imgNames.push(await uploadSourceImageCached(url, "fs_ref"));
       }
 
       for (let i = 0; i < nRuns; i++) {

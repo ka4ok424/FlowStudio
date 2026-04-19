@@ -688,3 +688,485 @@ HyVideoModelLoader(I2V_fp8) → HyVideoVAELoader → DownloadAndLoadHyVideoTextE
 
 **ComfyUI Mapping:**
 HY_Avatar_Loader(FP8+cpu_offload) → LoadImage + LoadAudio → HY_Avatar_PreData → HY_Avatar_Sampler → CreateVideo → SaveVideo
+
+---
+
+## fs:img2img — Img2Img
+
+**Purpose:** Multi-reference image generation using FLUX.2 Dev with ReferenceLatent chaining. Up to 6 reference images for character/style/object consistency.
+
+**Component:** `src/nodes/Img2ImgNode.tsx`
+**Workflow Builder:** `src/workflows/img2img.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Text prompt |
+| Input | IMAGE | ref_0..ref_5 | Up to 6 reference images |
+| Output | IMAGE | image | Generated image |
+
+**Parameters:** steps (28), cfg (3.5), denoise (0.75), width (1024), height (1024), seed
+
+**ComfyUI Mapping:**
+UNETLoader(flux2-dev) → CLIPLoader(mistral) → VAELoader → CLIPTextEncode → VAEEncode(refs) → ReferenceLatent (chained per ref) → KSampler → VAEDecode → SaveImage
+
+---
+
+## fs:kontext — Kontext
+
+**Purpose:** Context-aware image editing using FLUX.1 Kontext Dev. Source image + text describing the desired edit.
+
+**Component:** `src/nodes/KontextNode.tsx`
+**Workflow Builder:** `src/workflows/kontext.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Edit instructions |
+| Input | IMAGE | input | Source image |
+| Output | IMAGE | image | Edited image |
+
+**Parameters:** steps (24), cfg (3.5), denoise (0.85, lower = subtler), seed
+
+**ComfyUI Mapping:**
+UNETLoader(kontext) → DualCLIPLoader(clip_l + t5xxl) → VAELoader → FluxKontextImageScale → ReferenceLatent → CLIPTextEncode → KSampler → VAEDecode → SaveImage
+
+---
+
+## fs:nextFrame — Next Frame
+
+**Purpose:** Generate a visually consistent next frame from a source frame via low-denoise img2img. Designed for first/mid/last keyframes for LTX Video.
+
+**Component:** `src/nodes/NextFrameNode.tsx`
+**Workflow Builder:** `src/workflows/nextFrame.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Action description |
+| Input | IMAGE | input | Previous frame |
+| Output | IMAGE | frame | Next frame |
+
+**Parameters:** denoise (0.35, range 0.2-0.55), steps (8), cfg (1.2), seed, negativePrompt (default quality phrases)
+
+**ComfyUI Mapping:** UNETLoader(klein-9b) → CLIPLoader → VAELoader → LoadImage → VAEEncode → CLIPTextEncode(pos+neg) → KSampler(denoise<1) → VAEDecode → SaveImage
+
+---
+
+## fs:inpaint — Inpaint
+
+**Purpose:** Edit masked area of an image with FLUX.1 Fill. Built-in brush tool or external mask input.
+
+**Component:** `src/nodes/InpaintNode.tsx`
+**Workflow Builder:** `src/workflows/inpaint.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | What to paint into mask |
+| Input | IMAGE | input | Source image |
+| Input | IMAGE | mask | White=edit, black=keep (optional, can draw on node) |
+| Output | IMAGE | image | Edited image |
+
+**Parameters:** denoise (0.85), steps (8), cfg (1.0), seed
+
+**ComfyUI Mapping:** UNETLoader(flux1-fill) → CLIPLoader → VAELoader → LoadImage + LoadImageMask → VAEEncode → SetLatentNoiseMask → CLIPTextEncode → KSampler → VAEDecode → SaveImage
+
+---
+
+## fs:inpaintCN — Inpaint + ControlNet
+
+**Purpose:** Inpaint with structural guidance. FLUX.1 Fill paints inside mask while ControlNet Union Pro 2.0 preserves edges/depth/pose from the original.
+
+**Component:** `src/nodes/InpaintCNNode.tsx`
+**Workflow Builder:** `src/workflows/inpaintCN.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Edit description |
+| Input | IMAGE | input | Source image |
+| Input | IMAGE | mask | Mask |
+| Output | IMAGE | image | Result |
+
+**Parameters:** controlType (canny / soft_edge / depth / pose / gray), cnStrength (0.7), cnEndPercent (0.8), guidance (30), denoise (0.85), steps (20)
+
+**ComfyUI Mapping:** FLUX.1 Fill UNETLoader + DualCLIPLoader + VAELoader + ControlNetLoader(Union Pro 2.0) → DifferentialDiffusion → InpaintModelConditioning → ControlNetApplyAdvanced → KSampler → VAEDecode
+
+---
+
+## fs:removeBg — Remove BG
+
+**Purpose:** Remove background using BRIA RMBG model. Outputs transparent PNG.
+
+**Component:** `src/nodes/RemoveBgNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | IMAGE | input | Source image |
+| Output | IMAGE | image | Subject on transparent background |
+
+**Parameters:** none
+
+**ComfyUI Mapping:** LoadImage → BriaRemoveImageBackground → SaveImage
+
+---
+
+## fs:compare — A/B Compare
+
+**Purpose:** Visual side-by-side comparison of two images with draggable slider.
+
+**Component:** `src/nodes/CompareNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | IMAGE | image_a | Left image |
+| Input | IMAGE | image_b | Right image |
+| Output | — | — | Visual only, no output |
+
+**Parameters:** none. Slider position is local to the node UI.
+
+---
+
+## fs:ltxVideo — LTX Video
+
+**Purpose:** Local video generation using LTX-2.3 distilled. ~4s clip from text + optional first/mid/last frames.
+
+**Component:** `src/nodes/LtxVideoNode.tsx`
+**Workflow Builder:** `src/workflows/ltxVideo.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Text prompt |
+| Input | IMAGE | first_frame / mid_frame / last_frame | Optional keyframes |
+| Input | AUDIO | ref_audio | Optional audio reference |
+| Output | VIDEO | video | Generated video (animated WebP) |
+
+**Parameters:** steps (8, distilled), cfg (1.0), width (768), height (512), frames (97 ≈ 4s @ 24fps), seed
+
+**ComfyUI Mapping:** LTXVModelLoader → LTXVTextEncoderLoader → LTXVTextEncoder → EmptyLTXVLatentVideo (or with keyframes) → LTXVSampler → LTXVDecode → SaveAnimatedWEBP
+
+---
+
+## fs:videoGen — Video Gen
+
+**Purpose:** Cloud video generation via Google Veo API. Text-to-video and image-to-video.
+
+**Component:** `src/nodes/VideoGenNode.tsx`
+**API:** `src/api/geminiApi.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Text prompt |
+| Input | IMAGE | input_image | Optional first frame |
+| Output | VIDEO | video | Generated video |
+
+**Parameters:** model (`veo-2.0-generate-001` default; veo-3.0-fast/generate, veo-3.1-fast/lite/generate-preview), aspectRatio (16:9 / 9:16 / 1:1)
+
+---
+
+## fs:videoGenPro — Video Gen Pro
+
+**Purpose:** Advanced Veo with full parameter control: first+last frame interpolation, up to 3 reference images, duration, resolution, negative prompt, seed.
+
+**Component:** `src/nodes/VideoGenProNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Text prompt |
+| Input | IMAGE | first_frame / last_frame | Frame interpolation |
+| Input | IMAGE | ref_0..ref_2 | Up to 3 references (Veo 3.1) |
+| Output | VIDEO | video | Generated video |
+
+**Parameters:** model, aspectRatio (16:9 / 9:16), duration (4/6/8s), resolution (720p/1080p/4k Veo3.1 only), negativePrompt, seed (Veo 3+), numberOfVideos (1-4 Veo 3+, 1-2 Veo 2)
+
+---
+
+## fs:imagen — Imagen
+
+**Purpose:** Image generation via Google Imagen 4 API.
+
+**Component:** `src/nodes/ImagenNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Text prompt |
+| Output | IMAGE | image | Generated image |
+
+**Parameters:** model (`imagen-4.0-fast-generate-001` default; `imagen-4.0-generate-001`, `imagen-4.0-ultra-generate-001`), aspectRatio (1:1 / 16:9 / 9:16 / 4:3 / 3:4)
+
+---
+
+## fs:music — Music Gen
+
+**Purpose:** Music generation via Google Lyria 3 API.
+
+**Component:** `src/nodes/MusicNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Music description |
+| Output | AUDIO | audio | Generated audio clip |
+
+**Parameters:** model (`lyria-3-clip-preview` default 30s, `lyria-3-pro-preview` full track)
+
+---
+
+## fs:tts — TTS
+
+**Purpose:** Text-to-Speech via Gemini TTS.
+
+**Component:** `src/nodes/TtsNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | text | Text to speak |
+| Output | AUDIO | audio | Generated speech |
+
+**Parameters:** model (`gemini-2.5-flash-preview-tts` / `gemini-2.5-pro-preview-tts`), voice (Kore, Charon, Fenrir, Aoede, Puck, Leda, Orus, Zephyr)
+
+---
+
+## fs:tiktokPublish — TikTok Publish
+
+**Purpose:** Publish video to TikTok via OAuth.
+
+**Component:** `src/nodes/TikTokPublishNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | VIDEO | video | Video to publish |
+| Input | TEXT | caption | Caption text |
+| Output | — | — | Side effect (publish) |
+
+**Parameters:** title, privacy (PUBLIC_TO_EVERYONE / FOLLOWER_OF_CREATOR / MUTUAL_FOLLOW_FRIENDS / SELF_ONLY)
+
+**Auth:** Requires TikTok OAuth connection in settings.
+
+---
+
+## fs:critique — Critique
+
+**Purpose:** LLM-based feedback on an image (or text prompt). Returns concrete issues + suggestions.
+
+**Component:** `src/nodes/CritiqueNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | IMAGE | input | Image to critique (optional) |
+| Input | TEXT | prompt | What you wanted (optional) |
+| Output | TEXT | text | Structured critique |
+
+**Parameters:** model (`gemini-2.5-flash` / `gemini-2.5-pro` / `gemini-2.0-flash`)
+
+**Behavior:** If no image is connected, critiques the prompt itself (clarity, contradictions). Local mirror state preserves cursor while editing notes.
+
+---
+
+## fs:refine — Prompt Refine
+
+**Purpose:** Rewrite a prompt to produce a better result. Uses optional image as visual context.
+
+**Component:** `src/nodes/RefineNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Current prompt |
+| Input | IMAGE | input | Current result (optional) |
+| Input | TEXT | goal | Desired change (optional) |
+| Output | TEXT | text | Refined prompt |
+
+**Parameters:** model (`gemini-2.5-flash` / `gemini-2.5-pro` / `gemini-2.0-flash`)
+
+---
+
+## fs:preview — Preview
+
+**Purpose:** Display image / video / audio output. Fullscreen view, download.
+
+**Component:** `src/nodes/PreviewNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | MEDIA | input | Any image/video/audio |
+| Output | — | — | Display only |
+
+**Parameters:** none. Renders inline preview + fullscreen modal on click.
+
+---
+
+# Utilities
+
+These nodes don't generate new images — they process, analyse, batch, or package existing images.
+
+---
+
+## fs:upscale — Upscale
+
+**Purpose:** Upscale image using ComfyUI's ImageScaleBy with selectable interpolation.
+
+**Component:** `src/nodes/UpscaleNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | IMAGE | input | Source image |
+| Output | IMAGE | image | Upscaled image |
+
+**Parameters:** scale (1.5, 2, 3, 4 multiplier), method (lanczos default / bicubic / bilinear / nearest-exact / area)
+
+**ComfyUI Mapping:** LoadImage → ImageScaleBy(method, scale) → SaveImage
+
+---
+
+## fs:describe — Describe
+
+**Purpose:** Image-to-text. Florence-2 (small, fast) or JoyCaption Alpha Two (rich natural language). Outputs TEXT.
+
+**Component:** `src/nodes/DescribeNode.tsx`
+**Workflow Builder:** `src/workflows/autocaption.ts` (`buildAutoCaptionWorkflow`)
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | IMAGE | input | Source image |
+| Output | TEXT | text | Caption / tags / OCR |
+
+**Parameters:**
+| Key | Type | Default | Description |
+|---|---|---|---|
+| model | "florence2" \| "joycaption" | "florence2" | Vision model |
+| task | string | "detailed_caption" | Florence-2 task: caption / detailed_caption / more_detailed_caption / ocr / prompt_gen_tags |
+| captionType | string | "Descriptive" | JoyCaption style: Descriptive / MidJourney / Booru tags / Art Critic / Product Listing / etc. |
+| captionLength | string | "medium-length" | JoyCaption length preset |
+
+**ComfyUI Mapping:**
+- Florence-2: `DownloadAndLoadFlorence2Model` → `Florence2Run` → `PreviewAny`
+- JoyCaption: `Joy_caption_two_load` → `Joy_extra_options` → `Joy_caption_two_advanced` → `PreviewAny`
+
+**Note:** JoyCaption requires patched `joy_caption_two_node.py` (transformers 5.x compatibility — manually iterates `SiglipEncoder.layers`). Model files in `ComfyUI/models/Joy_caption_two/` (~2.5 GB).
+
+---
+
+## fs:batch — Batch
+
+**Purpose:** Drive another node N times, varying a widget value each iteration. List mode = single param sweep, Matrix mode = Cartesian product of two params.
+
+**Component:** `src/nodes/BatchNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | — | — | None — picks target by node ID |
+| Output | — | — | Side effect — triggers target N times |
+
+**Parameters:**
+| Key | Type | Default | Description |
+|---|---|---|---|
+| targetNodeId | string | "" | ID of the downstream generative node |
+| mode | "list" \| "matrix" | "list" | Sweep mode |
+| paramA | string | "seed" | Widget key to vary |
+| valuesA | string | "" | Newline-separated values |
+| paramB | string | "" | (matrix only) Second key |
+| valuesB | string | "" | (matrix only) Values for paramB |
+
+**Behavior:** Locates target via `data-fs-run-id={id}` DOM attribute; clicks Generate N times with the right widgetValues. Result history accumulates on the target node.
+
+---
+
+## fs:dataset — Dataset
+
+**Purpose:** Collect image+caption pairs and export as a LoRA-training ZIP. Missing captions are auto-filled via Florence-2 / JoyCaption. Optional trigger token is injected into every caption.
+
+**Component:** `src/nodes/DatasetNode.tsx`
+**Uses:** `src/workflows/autocaption.ts`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | IMAGE | img_0..img_N | Image slots (3-30, dynamic via +/− buttons) |
+| Input | TEXT | cap_0..cap_N | Optional caption per image |
+| Output | — | — | Side effect — downloads ZIP |
+
+**Parameters:**
+| Key | Type | Default | Description |
+|---|---|---|---|
+| _slots | number | 6 | Number of image+caption slot pairs (3-30) |
+| model | "florence2" \| "joycaption" | "joycaption" | Auto-caption model for empty captions |
+| florenceTask | string | "detailed_caption" | Florence-2 task |
+| captionType | string | "Descriptive" | JoyCaption style |
+| captionLength | string | "medium-length" | JoyCaption length |
+| prefix | string | "dataset" | Filename prefix → `prefix_001.png` / `.txt` |
+| triggerToken | string | "" | LoRA trigger token (e.g. `mychar woman`) — injected into every caption. Empty = off |
+| triggerPosition | "prefix" \| "suffix" | "prefix" | Where the trigger token is placed |
+
+**Output ZIP structure:**
+```
+prefix_001.png
+prefix_001.txt    ← "<triggerToken>, <caption>" if triggerPosition=prefix
+prefix_002.png
+prefix_002.txt
+…
+_manifest.json    ← { count, prefix, triggerToken, triggerPosition, captioner, exportedAt }
+```
+
+**Workflow:** suitable for kohya-ss / ai-toolkit / Replicate FLUX LoRA trainers.
+
+---
+
+## fs:enhance — Quality
+
+**Purpose:** AI image quality improvement using SUPIR. Adds detail and sharpness, removes blur/noise.
+
+**Component:** `src/nodes/EnhanceNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | IMAGE | input | Source image |
+| Output | IMAGE | image | Enhanced + upscaled image |
+
+**Parameters:** scale (1-4, default 2), steps (10-50, default 20), restoration (0-1, default 0.5), cfg (1-10, default 4), colorFix (None / AdaIn / Wavelet)
+
+**ComfyUI Mapping:** SUPIR_Upscale → SaveImage
+
+---
+
+# Tools (visual / canvas-organisation)
+
+These nodes don't participate in execution — they only structure the workspace.
+
+---
+
+## fs:group — Group
+
+**Purpose:** Resizable colored container. Drag nodes inside to organize sections (e.g. "Scene 1", "Character pipeline").
+
+**Component:** `src/nodes/GroupNode.tsx`
+
+**Parameters:** title, color (palette id), width, height. Title editable via double-click; rendered above the box (out of body) on selection.
+
+---
+
+## fs:text — Text
+
+**Purpose:** Free-floating text label / title. Purely informational.
+
+**Component:** `src/nodes/TextNode.tsx`
+
+**Parameters:** text (multiline), fontSize (8-96, default 16), bold, italic, underline, strikethrough, align (left / center / right), color (palette id)
+
+---
+
+## fs:sticker — Sticker
+
+**Purpose:** Miro-style sticky note with 4 bidirectional connection points (one source + one target per side). Drag from any edge to another sticker to draw an arrow. Brainstorming UX.
+
+**Component:** `src/nodes/StickerNode.tsx`
+
+**Parameters:** text, color (palette id, default "yellow"), fontSize (8-40, default 12), bold, italic, underline, strikethrough, align (left / center)
+
+**Behavior:**
+- 4 sides × (target + source) = 8 handles, IDs `t-top`/`s-top`/…/`t-left`/`s-left`. Hidden (opacity 0) when not selected to avoid visual clutter.
+- Resizable via NodeResizer, also S/M/L presets in Inspector (140/200/280 px square).
+- View mode pins text to top when overflowing, vertical-centers when it fits.
+
+---
+
+## fs:comment — Comment
+
+**Purpose:** Sticky note for canvas annotations. No connection points (unlike Sticker).
+
+**Component:** `src/nodes/CommentNode.tsx`
+
+**Parameters:** title, text, color (10-color shared palette with Group, default "yellow"). Title editable via double-click.

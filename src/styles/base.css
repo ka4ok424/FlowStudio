@@ -1817,6 +1817,13 @@ body {
   position: absolute;
   inset: -8px;
 }
+
+/* Sticker rich-text — force absolute weight 700 for inline bold tags so
+   per-word selection looks really bold even when the base weight is 300. */
+.sticker-node b, .sticker-node strong { font-weight: 700; }
+.sticker-node i, .sticker-node em     { font-style: italic; }
+.sticker-node u                        { text-decoration: underline; }
+.sticker-node s, .sticker-node strike  { text-decoration: line-through; }
 .props-aspect-btn {
   flex: 1;
   padding: 5px 0;

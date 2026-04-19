@@ -53,6 +53,8 @@ import CritiqueNode from "./nodes/CritiqueNode";
 import RefineNode from "./nodes/RefineNode";
 import DatasetNode from "./nodes/DatasetNode";
 import BatchNode from "./nodes/BatchNode";
+import TextNode from "./nodes/TextNode";
+import StickerNode from "./nodes/StickerNode";
 import AiChat from "./components/AiChat";
 import MediaLibrary from "./components/MediaLibrary";
 import ModelLibrary from "./components/ModelLibrary";
@@ -105,6 +107,8 @@ const nodeTypes = {
   refineNode: RefineNode,
   datasetNode: DatasetNode,
   batchNode: BatchNode,
+  textNode: TextNode,
+  stickerNode: StickerNode,
 };
 
 function App() {
@@ -355,12 +359,15 @@ function App() {
 
         const selectedIds = new Set(selected.map(n => n.id));
 
-        // Save nodes with relative positions
+        // Save nodes with relative positions + size (Sticker, Group both use NodeResizer)
         const copiedNodes = selected.map(n => ({
           originalId: n.id,
           type: n.data.type,
           position: { ...n.position },
           data: { ...n.data, widgetValues: { ...n.data.widgetValues } },
+          width: (n as any).width,
+          height: (n as any).height,
+          style: n.style ? { ...n.style } : undefined,
         }));
 
         // Save edges between selected nodes only
@@ -397,26 +404,37 @@ function App() {
             y: center.y + offsetY + 30,
           });
 
-          // Get the newly created node and apply widget values
+          // Get the newly created node and apply widget values + preserved size
           const state = useWorkflowStore.getState();
           const newNode = state.nodes[state.nodes.length - 1];
           if (newNode) {
             idMap.set(item.originalId, newNode.id);
             useWorkflowStore.setState({
-              nodes: state.nodes.map(n =>
-                n.id === newNode.id
-                  ? { ...n, data: { ...n.data, widgetValues: { ...item.data.widgetValues } } }
-                  : n
-              ),
+              nodes: state.nodes.map(n => {
+                if (n.id !== newNode.id) return n;
+                const next: any = {
+                  ...n,
+                  data: { ...n.data, widgetValues: { ...item.data.widgetValues } },
+                };
+                // Preserve resized geometry — both top-level (NodeResizer) and CSS style.
+                if (item.style) next.style = { ...n.style, ...item.style };
+                if (typeof item.width === "number") next.width = item.width;
+                if (typeof item.height === "number") next.height = item.height;
+                return next;
+              }),
             });
           }
         }
 
-        // Select only pasted nodes, deselect others
+        // Select only pasted nodes, deselect others.
+        // Also point Inspector (selectedNodeId) at the first pasted node so the
+        // properties panel edits the new copy, not the original.
         const newIds = new Set(idMap.values());
+        const firstPastedId = Array.from(idMap.values())[0] || null;
         const stateAfter = useWorkflowStore.getState();
         useWorkflowStore.setState({
           nodes: stateAfter.nodes.map(n => ({ ...n, selected: newIds.has(n.id) })),
+          selectedNodeId: firstPastedId,
         });
 
         // Recreate edges with new IDs

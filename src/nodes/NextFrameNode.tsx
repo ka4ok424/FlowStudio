@@ -3,7 +3,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt } from "../api/comfyApi";
 import { log } from "../store/logStore";
-import { uploadSourceImage, pollForResult, fetchAsDataUrl, saveGenerationResult, getConnectedImageUrl, getConnectedPrompt } from "../hooks/useNodeHelpers";
+import { uploadSourceImageCached, pollForResult, fetchAsDataUrl, saveGenerationResult, getConnectedImageUrl, getConnectedPrompt } from "../hooks/useNodeHelpers";
 import { buildNextFrameWorkflow } from "../workflows/nextFrame";
 import MediaHistory from "./MediaHistory";
 
@@ -43,7 +43,7 @@ function NextFrameNode({ id, data, selected }: NodeProps) {
     if (!srcUrl) { setError("No image in source"); setProcessing(false); return; }
 
     try {
-      const imgName = await uploadSourceImage(srcUrl, `fs_nf_${imgEdge.source}.png`);
+      const imgName = await uploadSourceImageCached(srcUrl, "fs_nf");
       const workflow = buildNextFrameWorkflow({ imageName: imgName, prompt: promptText, negativePrompt, seed, steps, cfg, denoise });
       const result = await queuePrompt(workflow);
 

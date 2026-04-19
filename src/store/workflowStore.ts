@@ -324,8 +324,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         RefineNode: "refineNode",
         DatasetNode: "datasetNode",
         BatchNode: "batchNode",
+        TextNode: "textNode",
+        StickerNode: "stickerNode",
       };
       const isGroup = nativeDef.type === "fs:group";
+      const isSticker = nativeDef.type === "fs:sticker";
       const newNode: Node<ComfyNodeData> = {
         id,
         type: componentMap[nativeDef.component] || "comfyNode",
@@ -333,6 +336,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         ...(isGroup ? {
           style: { width: 800, height: 400 },
           zIndex: -1,
+        } : {}),
+        ...(isSticker ? {
+          width: 200,
+          height: 200,
+          style: { width: 200, height: 200 },
         } : {}),
         data: {
           label: nativeDef.label,

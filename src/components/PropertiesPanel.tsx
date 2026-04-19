@@ -33,6 +33,8 @@ import DescribeProperties from "./properties/DescribeProperties";
 import LlmTextProperties from "./properties/LlmTextProperties";
 import DatasetProperties from "./properties/DatasetProperties";
 import BatchProperties from "./properties/BatchProperties";
+import TextProperties from "./properties/TextProperties";
+import StickerProperties from "./properties/StickerProperties";
 import ComfyProperties from "./properties/ComfyProperties";
 
 const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: any }>> = {
@@ -71,6 +73,8 @@ const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: a
   "fs:refine": LlmTextProperties,
   "fs:dataset": DatasetProperties,
   "fs:batch": BatchProperties,
+  "fs:text": TextProperties,
+  "fs:sticker": StickerProperties,
 };
 
 export default function PropertiesPanel() {

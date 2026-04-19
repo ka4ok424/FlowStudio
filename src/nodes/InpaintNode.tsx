@@ -4,7 +4,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt } from "../api/comfyApi";
 import { log } from "../store/logStore";
-import { uploadSourceImage, pollForResult, fetchAsDataUrl, saveGenerationResult, getConnectedImageUrl, getConnectedPrompt } from "../hooks/useNodeHelpers";
+import { uploadSourceImageCached, pollForResult, fetchAsDataUrl, saveGenerationResult, getConnectedImageUrl, getConnectedPrompt } from "../hooks/useNodeHelpers";
 import { buildInpaintWorkflow } from "../workflows/inpaint";
 import MediaHistory from "./MediaHistory";
 import MaskCanvas from "../components/MaskCanvas";
@@ -67,9 +67,9 @@ function InpaintNode({ id, data, selected }: NodeProps) {
     log(`Inpaint started${nRuns > 1 ? ` ×${nRuns}` : ""}`, { nodeId: id, nodeType: "fs:inpaint", nodeLabel: "Inpaint" });
 
     try {
-      const imgName = await uploadSourceImage(srcUrl, `fs_inp_${imgEdge.source}_${Date.now()}.png`);
+      const imgName = await uploadSourceImageCached(srcUrl, "fs_inp");
       let maskName: string | null = null;
-      if (maskData) maskName = await uploadSourceImage(maskData, `fs_inp_mask_${id}_${Date.now()}.png`);
+      if (maskData) maskName = await uploadSourceImageCached(maskData, "fs_inp_mask");
 
       for (let i = 0; i < nRuns; i++) {
         if (nRuns > 1) setBatchInfo({ done: i, total: nRuns });

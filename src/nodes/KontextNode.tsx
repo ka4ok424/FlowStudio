@@ -3,7 +3,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { queuePrompt } from "../api/comfyApi";
 import { log } from "../store/logStore";
-import { uploadSourceImage, pollForResult, fetchAsDataUrl, saveGenerationResult, getConnectedImageUrl, getConnectedPrompt } from "../hooks/useNodeHelpers";
+import { uploadSourceImageCached, pollForResult, fetchAsDataUrl, saveGenerationResult, getConnectedImageUrl, getConnectedPrompt } from "../hooks/useNodeHelpers";
 import { buildKontextWorkflow } from "../workflows/kontext";
 import MediaHistory from "./MediaHistory";
 
@@ -43,7 +43,7 @@ function KontextNode({ id, data, selected }: NodeProps) {
     log(`Kontext started${nRuns > 1 ? ` ×${nRuns}` : ""}`, { nodeId: id, nodeType: "fs:kontext", nodeLabel: "Kontext" });
 
     try {
-      const imgName = await uploadSourceImage(srcUrl, `fs_ktx_${imgEdge.source}_${Date.now()}.png`);
+      const imgName = await uploadSourceImageCached(srcUrl, "fs_ktx");
       const imgDims = await new Promise<{w:number,h:number}>((resolve) => {
         const img = new Image();
         img.onload = () => resolve({ w: Math.max(768, Math.round(img.width / 64) * 64) || 1024, h: Math.max(768, Math.round(img.height / 64) * 64) || 1024 });

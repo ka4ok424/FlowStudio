@@ -61,6 +61,8 @@ function DatasetNode({ id, data, selected }: NodeProps) {
   const captionType: string = nodeData.widgetValues?.captionType || "Descriptive";
   const captionLength: string = nodeData.widgetValues?.captionLength || "medium-length";
   const florenceTask: string = nodeData.widgetValues?.florenceTask || "detailed_caption";
+  const triggerToken: string = (nodeData.widgetValues?.triggerToken || "").trim();
+  const triggerPosition: "prefix" | "suffix" = nodeData.widgetValues?.triggerPosition || "prefix";
   const lastExport: { count: number; at: number } | null = nodeData.widgetValues?._lastExport || null;
 
   const addSlot = useCallback(() => {
@@ -124,12 +126,22 @@ function DatasetNode({ id, data, selected }: NodeProps) {
         const imgBlob = await imgRes.blob();
         const imgBuf = await imgBlob.arrayBuffer();
         zip.file(`${stem}.png`, imgBuf);
-        zip.file(`${stem}.txt`, it.caption);
+        // Inject trigger token into final caption if configured.
+        // Convention: separate with ", " — works for kohya/ai-toolkit tokenization.
+        let finalCaption = it.caption;
+        if (triggerToken) {
+          finalCaption = triggerPosition === "prefix"
+            ? `${triggerToken}, ${it.caption}`
+            : `${it.caption}, ${triggerToken}`;
+        }
+        zip.file(`${stem}.txt`, finalCaption);
       }
       // a small manifest for reproducibility
       zip.file("_manifest.json", JSON.stringify({
         count: items.length,
         prefix,
+        triggerToken: triggerToken || null,
+        triggerPosition: triggerToken ? triggerPosition : null,
         captioner: needsCaption.length > 0 ? model : "user-provided",
         exportedAt: new Date().toISOString(),
       }, null, 2));
@@ -150,7 +162,7 @@ function DatasetNode({ id, data, selected }: NodeProps) {
     }
     setProgress(null);
     setProcessing(false);
-  }, [id, collectItems, model, prefix, captionType, captionLength, florenceTask, updateWidgetValue]);
+  }, [id, collectItems, model, prefix, captionType, captionLength, florenceTask, triggerToken, triggerPosition, updateWidgetValue]);
 
   const items = collectItems();
   const itemsWithCap = items.filter((i) => i.caption.trim()).length;
@@ -213,6 +225,9 @@ function DatasetNode({ id, data, selected }: NodeProps) {
         Auto-caption model: <b style={{ color: "#66bb6a" }}>{model === "florence2" ? "Florence-2" : "JoyCaption"}</b>
         <br />
         Prefix: <b style={{ color: "#66bb6a" }}>{prefix}_XXX</b>
+        {triggerToken && (
+          <><br />Trigger ({triggerPosition}): <b style={{ color: "#66bb6a" }}>{triggerToken}</b></>
+        )}
         {lastExport && (
           <><br /><span style={{ opacity: 0.7 }}>Last export: {lastExport.count} items · {new Date(lastExport.at).toLocaleTimeString()}</span></>
         )}

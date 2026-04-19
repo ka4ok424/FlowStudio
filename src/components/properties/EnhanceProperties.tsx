@@ -73,6 +73,10 @@ function EnhanceProperties({ nodeId, data }: { nodeId: string; data: any }) {
             onChange={(e) => updateWidgetValue(nodeId, "negPrompt", e.target.value)} />
         </div>
       </details>
+
+      <p className="settings-hint" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 12, lineHeight: 1.4 }}>
+        Heavy node: ~12 GB VRAM (SDXL + SUPIR).
+      </p>
     </>
   );
 }

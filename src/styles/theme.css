@@ -2802,6 +2802,14 @@ body {
   /* cursor inherits from parent (ew-resize / ns-resize) */
 }
 
+/* Sticker rich-text — keep bold visibly bold even when the base weight is 300.
+   Browser default for <b>/<strong> is "bolder" (relative), which from 300 only
+   bumps to ~400. Force absolute 700 so per-word selection looks really bold. */
+.sticker-node b, .sticker-node strong { font-weight: 700; }
+.sticker-node i, .sticker-node em     { font-style: italic; }
+.sticker-node u                        { text-decoration: underline; }
+.sticker-node s, .sticker-node strike  { text-decoration: line-through; }
+
 /* TikTok Publish Node */
 .tiktok-node {
   background: var(--bg-node); border: 1px solid var(--border);
