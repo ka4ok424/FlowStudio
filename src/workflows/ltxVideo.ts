@@ -61,13 +61,13 @@ export function buildLtxVideoWorkflow(p: LtxVideoParams): Record<string, any> {
     guideIndices.push(frame.idx);
   }
 
-  // 6. Scheduler (LTXVScheduler — native for LTX, optimized sigma schedule)
+  // 6. Scheduler (LTXVScheduler). stretch=true = karras-like sigma schedule — Lightricks default for distilled.
   const schedId = String(n++);
-  workflow[schedId] = { class_type: "LTXVScheduler", inputs: { steps: p.steps, max_shift: p.maxShift, base_shift: p.baseShift, stretch: false, terminal: 0.1 } };
+  workflow[schedId] = { class_type: "LTXVScheduler", inputs: { steps: p.steps, max_shift: p.maxShift, base_shift: p.baseShift, stretch: true, terminal: 0.1 } };
 
-  // 7. Sampler select — euler (CFG=1 optimization: 1 model pass per step)
+  // 7. Sampler select — euler_ancestral_cfg_pp (official Lightricks distilled pick, better quality than plain euler at CFG=1)
   const sampSelId = String(n++);
-  workflow[sampSelId] = { class_type: "KSamplerSelect", inputs: { sampler_name: "euler" } };
+  workflow[sampSelId] = { class_type: "KSamplerSelect", inputs: { sampler_name: "euler_ancestral_cfg_pp" } };
 
   // 8. Noise
   const noiseId = String(n++);
@@ -142,8 +142,8 @@ export function buildLtxWarmupWorkflow(prompt: string, seed: number, fps: number
     "3": { class_type: "CLIPTextEncode", inputs: { text: prompt, clip: ["2", 0] } },
     "4": { class_type: "CLIPTextEncode", inputs: { text: "", clip: ["2", 0] } },
     "5": { class_type: "LTXVConditioning", inputs: { positive: ["3", 0], negative: ["4", 0], frame_rate: fps } },
-    "6": { class_type: "LTXVScheduler", inputs: { steps: 1, max_shift: maxShift, base_shift: baseShift, stretch: false, terminal: 0.1 } },
-    "7": { class_type: "KSamplerSelect", inputs: { sampler_name: "euler" } },
+    "6": { class_type: "LTXVScheduler", inputs: { steps: 1, max_shift: maxShift, base_shift: baseShift, stretch: true, terminal: 0.1 } },
+    "7": { class_type: "KSamplerSelect", inputs: { sampler_name: "euler_ancestral_cfg_pp" } },
     "8": { class_type: "RandomNoise", inputs: { noise_seed: seed } },
     "9": { class_type: "LTXVApplySTG", inputs: { model: ["1", 0], block_indices: "27" } },
     "10": { class_type: "CFGGuider", inputs: { model: ["9", 0], positive: ["5", 0], negative: ["5", 1], cfg: 1.0 } },
