@@ -54,6 +54,8 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
     const maxShift = freshWv.maxShift ?? 0.6;
     const baseShift = freshWv.baseShift ?? 0.6;
     const frameStrength = freshWv.frameStrength ?? 0.85;
+    const spatialUpscale = !!freshWv.spatialUpscale;
+    const temporalUpscale = !!freshWv.temporalUpscale;
 
     // Get prompt
     let promptText = "";
@@ -100,6 +102,7 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
         width, height, frames, fps, stg, maxShift, baseShift, maxLength,
         guideFrames: frameUploads.map(f => ({ name: f.url, idx: f.idx })),
         frameStrength,
+        spatialUpscale, temporalUpscale,
       });
 
       const result = await queuePrompt(workflow);

@@ -303,6 +303,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         VideoGenProNode: "videoGenProNode",
         TikTokPublishNode: "tikTokPublishNode",
         UpscaleNode: "upscaleNode",
+        SmoothFpsNode: "smoothFpsNode",
         GroupNode: "groupNode",
         CommentNode: "commentNode",
         Img2ImgNode: "img2ImgNode",

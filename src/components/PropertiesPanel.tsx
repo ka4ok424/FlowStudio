@@ -36,6 +36,7 @@ import BatchProperties from "./properties/BatchProperties";
 import TextProperties from "./properties/TextProperties";
 import StickerProperties from "./properties/StickerProperties";
 import ComfyProperties from "./properties/ComfyProperties";
+import SmoothFpsProperties from "./properties/SmoothFpsProperties";
 
 const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: any }>> = {
   "fs:import": ImportProperties,
@@ -44,6 +45,7 @@ const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: a
   "fs:group": GroupProperties,
   "fs:comment": CommentProperties,
   "fs:upscale": UpscaleProperties,
+  "fs:smoothFps": SmoothFpsProperties,
   "fs:tiktokPublish": TikTokProperties,
   "fs:videoGenPro": VideoGenProProperties,
   "fs:videoGen": VideoGenProperties,

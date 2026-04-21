@@ -16,6 +16,13 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const baseShift = data.widgetValues?.baseShift ?? 0.6;
   const frameStrength = data.widgetValues?.frameStrength ?? 0.85;
   const maxLength = data.widgetValues?.maxLength ?? 512;
+  const spatialUpscale = !!data.widgetValues?.spatialUpscale;
+  const temporalUpscale = !!data.widgetValues?.temporalUpscale;
+
+  const outputW = spatialUpscale ? width * 2 : width;
+  const outputH = spatialUpscale ? height * 2 : height;
+  const outputFps = temporalUpscale ? fps * 2 : fps;
+  const outputFrames = temporalUpscale ? frames * 2 : frames;
 
   return (
     <>
@@ -43,7 +50,13 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
             onBlur={() => { if (!height || isNaN(height)) updateWidgetValue(nodeId, "height", 512); }} style={{ width: "50%" }} />
         </div>
         <div className="props-aspect-row" style={{ marginTop: 10 }}>
-          {[{w:512,h:512,l:"1:1"},{w:768,h:512,l:"3:2"},{w:512,h:768,l:"2:3"},{w:768,h:432,l:"16:9"}].map((s) => (
+          {[
+            {w:512,h:512,l:"1:1"},
+            {w:768,h:512,l:"3:2"},
+            {w:512,h:768,l:"2:3"},
+            {w:960,h:544,l:"16:9"},
+            {w:544,h:960,l:"9:16"},
+          ].map((s) => (
             <button key={s.l} className={`props-aspect-btn ${width === s.w && height === s.h ? "active" : ""}`}
               onClick={() => { updateWidgetValue(nodeId, "width", s.w); updateWidgetValue(nodeId, "height", s.h); }}>{s.l}</button>
           ))}
@@ -70,6 +83,28 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
             onClick={() => updateWidgetValue(nodeId, "seed", Math.floor(Math.random() * 2147483647).toString())}>🎲</button>
         </div>
       </div>
+
+      <div className="props-section">
+        <div className="props-section-title">Upscaling</div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", cursor: "pointer" }}>
+          <input type="checkbox" checked={spatialUpscale}
+            onChange={(e) => updateWidgetValue(nodeId, "spatialUpscale", e.target.checked)} />
+          <span>Spatial 2× <span style={{ color: "var(--text-muted)", fontSize: 11 }}>(resolution)</span></span>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", cursor: "pointer" }}>
+          <input type="checkbox" checked={temporalUpscale}
+            onChange={(e) => updateWidgetValue(nodeId, "temporalUpscale", e.target.checked)} />
+          <span>Temporal 2× <span style={{ color: "var(--text-muted)", fontSize: 11 }}>(smoother motion)</span></span>
+        </label>
+        {(spatialUpscale || temporalUpscale) && (
+          <p className="settings-hint" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.4 }}>
+            Output: {outputW}×{outputH} · {outputFrames} frames @ {outputFps}fps
+            ({(outputFrames / outputFps).toFixed(1)}s)
+            <br />Generation time roughly +30–50% per enabled stage.
+          </p>
+        )}
+      </div>
+
       <details className="props-section props-temp-section">
         <summary className="props-temp-header">Advanced <span className="props-temp-badge">PRO</span></summary>
         <div className="props-section">

@@ -32,6 +32,7 @@ import TtsNode from "./nodes/TtsNode";
 // import MultiRefNode from "./nodes/MultiRefNode"; // REMOVED: uses SDXL Lightning (not available)
 import TikTokPublishNode from "./nodes/TikTokPublishNode";
 import UpscaleNode from "./nodes/UpscaleNode";
+import SmoothFpsNode from "./nodes/SmoothFpsNode";
 import GroupNode from "./nodes/GroupNode";
 import CommentNode from "./nodes/CommentNode";
 import Img2ImgNode from "./nodes/Img2ImgNode";
@@ -86,6 +87,7 @@ const nodeTypes = {
   videoGenProNode: VideoGenProNode,
   tikTokPublishNode: TikTokPublishNode,
   upscaleNode: UpscaleNode,
+  smoothFpsNode: SmoothFpsNode,
   groupNode: GroupNode,
   commentNode: CommentNode,
   img2ImgNode: Img2ImgNode,

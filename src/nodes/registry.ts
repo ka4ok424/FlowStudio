@@ -577,6 +577,39 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:smoothFps",
+  label: "Smooth FPS",
+  icon: "⚡",
+  accentColor: "#66bb6a",
+  component: "SmoothFpsNode",
+  description: "Frame interpolation via RIFE. Inserts intermediate frames to double/triple/quadruple the fps of an existing video. Standard post-process for LTX Video output.",
+  inputs: [{ name: "input", type: "VIDEO" }],
+  outputs: [{ name: "video", type: "VIDEO" }],
+  aiDoc: {
+    purpose: "Post-process a video to smoother motion via RIFE frame interpolation. Extracts frames from input video, generates intermediate frames with RIFE, recomposes to mp4 at multiplied fps.",
+    skills: [
+      "Double/triple/quadruple video fps (smoother motion)",
+      "Recommended for LTX Video output — pairs well with Spatial upscale",
+      "Uses specialized RIFE model — 50× smaller than LTX, no ghosting on long clips",
+    ],
+    params: {
+      multiplier: "2, 3, or 4 — how many times to multiply fps. Output = sourceFps × multiplier.",
+      sourceFps: "Input video fps (default 24 for LTX Video output). Adjust if source differs.",
+      model: "RIFE version: rife49.pth (default, recommended), rife47, rife417, rife426",
+      fastMode: "Skip refinement pass. Faster but slightly lower quality.",
+      ensemble: "Ensemble prediction. Slower but higher quality (recommended on).",
+    },
+    connectsFrom: ["fs:ltxVideo", "fs:wanVideo", "fs:hunyuanVideo", "fs:videoGen", "fs:videoGenPro", "fs:import"],
+    connectsTo: ["fs:preview", "fs:tiktokPublish"],
+    examples: [
+      "LTX Video (24fps) → Smooth FPS (2×) → 48fps smooth video",
+      "LTX Video + Spatial x2 → Smooth FPS (2×) → FHD @ 48fps",
+    ],
+    comfyMapping: "LoadVideo → GetVideoComponents → RIFE VFI (multiplier) → CreateVideo (fps × multiplier) → SaveVideo",
+  },
+});
+
+registerNativeNode({
   type: "fs:upscale",
   label: "Upscale",
   icon: "🔍",
@@ -861,7 +894,7 @@ registerNativeNode({
   icon: "🎬",
   accentColor: "#e85d75",
   component: "LtxVideoNode",
-  description: "Generate video locally using LTX-2.3 model. 22B parameters with first/mid/last frame control and audio.",
+  description: "Generate video locally using LTX-2.3 (Kijai build, transformer-only fp8_input_scaled_v3). 22B parameters, Gemma 12B text encoder, first/mid/last frame control. Optional spatial/temporal upscale.",
   inputs: [
     { name: "prompt", type: "TEXT" },
     { name: "first_frame", type: "IMAGE" },
@@ -873,16 +906,20 @@ registerNativeNode({
     { name: "video", type: "VIDEO" },
   ],
   aiDoc: {
-    purpose: "Local video generation using LTX-2.3 via ComfyUI. Generates short video clips from text prompts.",
+    purpose: "Local video generation using LTX-2.3 via ComfyUI. Kijai-style separated loaders (UNETLoader + DualCLIPLoader Gemma + VAELoaderKJ) + standard LTXV sampling chain. Supports optional multi-stage upscaling (spatial x2 for 2× resolution, temporal x2 for 2× fps).",
     skills: [
       "Text-to-video generation",
       "Up to 97 frames at 24fps (~4 seconds)",
-      "FP8 quantized for 32GB VRAM",
+      "Blackwell-optimized fp8_input_scaled_v3 weights",
       "Distilled model: 8 steps for fast generation",
+      "Optional spatial upscale x2 (1536×1024 from 768×512)",
+      "Optional temporal upscale x2 (48fps smooth from 24fps)",
     ],
     params: {
       steps: "Sampling steps, 4-20, default 8 (distilled)",
       cfg: "CFG scale, 1-5, default 1.0",
+      spatialUpscale: "Boolean. Enables Stage 2 refinement with ltx-2.3-spatial-upscaler-x2-1.1 (resolution 2×). +30-50% time.",
+      temporalUpscale: "Boolean. Enables Stage 3 refinement with ltx-2.3-temporal-upscaler-x2-1.0 (fps 2× for smoother motion). +30-50% time.",
       width: "Video width, default 768",
       height: "Video height, default 512",
       frames: "Number of frames, 25-193, default 97 (~4s at 24fps)",
@@ -894,7 +931,7 @@ registerNativeNode({
       "Prompt('a cat walking in a garden') → LTX Video → Preview",
       "Prompt('cinematic drone shot over mountains') → LTX Video (97 frames) → TikTok Publish",
     ],
-    comfyMapping: "LTXVModelLoader + LTXVTextEncoderLoader + LTXVTextEncoder + EmptyLTXVLatentVideo + LTXVSampler + LTXVDecode + SaveAnimatedWEBP",
+    comfyMapping: "UNETLoader(fp8_input_scaled_v3) + DualCLIPLoader(gemma+projection,ltxv) + VAELoaderKJ(video bf16) → CLIPTextEncode × 2 → LTXVConditioning → LTXVScheduler(stretch=true) + KSamplerSelect(euler_ancestral_cfg_pp) + RandomNoise + LTXVApplySTG + CFGGuider → LTXVBaseSampler → [optional: LatentUpscaleModelLoader + LTXVLatentUpsampler + ManualSigmas + SamplerCustomAdvanced for spatial/temporal stages] → LTXVTiledVAEDecode → CreateVideo → SaveVideo",
   },
 });
 

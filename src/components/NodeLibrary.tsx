@@ -85,10 +85,10 @@ export default function NodeLibrary() {
           // just structure the workspace.
           const visualTypes = new Set(["fs:group", "fs:comment", "fs:text", "fs:sticker"]);
 
-          // Utilities — image-processing & dataset helpers (not pure generation).
+          // Utilities — image/video processing & dataset helpers (not pure generation).
           const utilityTypes = new Set([
-            "fs:upscale", "fs:describe", "fs:batch", "fs:dataset", "fs:enhance",
-            "fs:removeBg", "fs:compare",
+            "fs:upscale", "fs:smoothFps", "fs:describe", "fs:batch", "fs:dataset",
+            "fs:enhance", "fs:removeBg", "fs:compare",
           ]);
 
           // Video — local video generation + video publishing.
