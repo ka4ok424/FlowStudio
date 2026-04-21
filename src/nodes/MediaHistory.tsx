@@ -79,7 +79,18 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
       {currentUrl ? (
         <>
           {mediaType === "video" ? (
-            <video src={currentUrl} className="nanob-preview-img" controls muted loop style={{ width: "100%", height: "auto" }} />
+            // preload="metadata" + reserved min-height avoids the "thin semi-transparent
+            // strip" bug on page reload where intrinsic height is 0 before the ComfyUI
+            // API responds with video metadata.
+            <video
+              src={currentUrl}
+              className="nanob-preview-img"
+              controls
+              muted
+              loop
+              preload="metadata"
+              style={{ width: "100%", minHeight: 160, objectFit: "contain", background: "#000", borderRadius: "inherit" }}
+            />
           ) : mediaType === "audio" ? (
             <audio src={currentUrl} controls style={{ width: "100%", padding: "8px" }} />
           ) : (

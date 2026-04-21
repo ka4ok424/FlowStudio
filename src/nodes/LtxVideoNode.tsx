@@ -220,7 +220,7 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
         historyIndex={nodeData.widgetValues?._historyIndex ?? -1}
         fallbackUrl={previewUrl}
         emptyIcon="🎬"
-        mediaType={previewUrl?.includes(".mp4") || previewUrl?.includes("format=mp4") ? "video" : "image"}
+        mediaType="video"
         genTime={nodeData.widgetValues?._genTime}
       />
 

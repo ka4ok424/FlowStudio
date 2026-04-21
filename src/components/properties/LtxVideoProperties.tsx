@@ -28,9 +28,19 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
     <>
       <div className="props-section">
         <div className="props-section-title">Frames ({(frames / fps).toFixed(1)}s at {fps}fps)</div>
-        <input type="range" className="props-range" min={25} max={193} step={8} value={frames}
+        <input type="range" className="props-range" min={25} max={481} step={8} value={frames}
           onChange={(e) => updateWidgetValue(nodeId, "frames", parseInt(e.target.value))} />
         <span className="props-range-value">{frames}</span>
+        {frames > 121 && temporalUpscale && (
+          <p className="settings-hint" style={{ fontSize: 11, color: "#f59e0b", marginTop: 4, lineHeight: 1.4 }}>
+            ⚠ Temporal x2 may produce ghosting on clips &gt;121 frames. Use Smooth FPS node instead.
+          </p>
+        )}
+        {frames > 193 && (
+          <p className="settings-hint" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, lineHeight: 1.4 }}>
+            Long clips (&gt;8s): Stage 1 ~proportionally longer. 481 frames ≈ 20s @ 24fps (LTX max).
+          </p>
+        )}
       </div>
       <div className="props-section">
         <div className="props-section-title">FPS</div>
