@@ -126,23 +126,13 @@ export function buildLtxVideoWorkflow(p: LtxVideoParams): Record<string, any> {
   const noiseId = String(n++);
   workflow[noiseId] = { class_type: "RandomNoise", inputs: { noise_seed: p.seed } };
 
-  // 10. STGGuider — combines CFG + Spatiotemporal Skip Guidance in one node.
-  // Replaces former LTXVApplySTG → CFGGuider chain. STGGuider applies STG internally
-  // by selectively skipping transformer layers (arxiv.org/abs/2411.18664), so the
-  // separate LTXVApplySTG node is not needed. Strength is now controlled by p.stg.
-  // rescale=0.7 is the Lightricks default (balances CFG vs STG without competing).
+  // 10. STG — Spatiotemporal Guidance (block 27)
+  const stgId = String(n++);
+  workflow[stgId] = { class_type: "LTXVApplySTG", inputs: { model: [unetId, 0], block_indices: "27" } };
+
+  // 11. CFGGuider (cfg=1.0 with euler → single model pass per step)
   const guiderId = String(n++);
-  workflow[guiderId] = {
-    class_type: "STGGuider",
-    inputs: {
-      model: [unetId, 0],
-      positive: [condId, 0],
-      negative: [condId, 1],
-      cfg: p.cfg,
-      stg: p.stg,
-      rescale: 0.7,
-    },
-  };
+  workflow[guiderId] = { class_type: "CFGGuider", inputs: { model: [stgId, 0], positive: [condId, 0], negative: [condId, 1], cfg: p.cfg } };
 
   // 12. LTXVBaseSampler — Stage 1
   const baseSampId = String(n++);
