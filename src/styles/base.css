@@ -2190,6 +2190,8 @@ body {
 .nextframe-node.incompatible,
 .frameex-node.incompatible,
 .crop-node.incompatible,
+.multicrop-node.incompatible,
+.montage-node.incompatible,
 .ltxvideo-node.incompatible {
   opacity: 0.35;
   transition: opacity 0.15s;

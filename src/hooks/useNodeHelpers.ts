@@ -64,7 +64,10 @@ export async function fetchAsDataUrl(apiUrl: string): Promise<string> {
   });
 }
 
-/** Get preview URL from a connected node */
+/** Get preview URL from a connected node.
+ * Multi-output support: if upstream has `_cellPreviews` map (e.g. Multi Crop),
+ * resolve via edge.sourceHandle to pick the specific cell. Falls back to
+ * standard single-output `_previewUrl`/`_preview`/`portraitUrl`. */
 export function getConnectedImageUrl(
   nodeId: string,
   handleId: string,
@@ -76,6 +79,11 @@ export function getConnectedImageUrl(
   const src = nodes.find((n: any) => n.id === edge.source);
   if (!src) return null;
   const sd = src.data as any;
+  // Multi-output: handle-specific cell preview takes priority
+  if (sd.widgetValues?._cellPreviews && edge.sourceHandle) {
+    const cell = sd.widgetValues._cellPreviews[edge.sourceHandle];
+    if (cell) return cell;
+  }
   return sd.widgetValues?._previewUrl || sd.widgetValues?._preview || sd.widgetValues?.portraitUrl || null;
 }
 

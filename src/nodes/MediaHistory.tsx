@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef } from "react";
+import { useCallback, useState, useRef, useEffect } from "react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { saveImage, loadImage } from "../store/imageDb";
 import { dataUrlToBlobUrl } from "../utils/blobUrl";
@@ -42,6 +42,21 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
       updateWidgetValue(nodeId, "_previewUrl", marker);
     }
   }, [nodeId, history, updateWidgetValue]);
+
+  // Page-reload fix: blob: URLs from previous browser session are DEAD (gone with
+  // memory). _previewUrl persists in widgetValues but points to a stale blob.
+  // On first mount, if URL is blob: AND history exists, re-resolve from history
+  // to get a fresh blob URL backed by IndexedDB. Without this, video/image
+  // preview stays broken until user navigates history (← then →).
+  const didReloadFixRef = useRef(false);
+  useEffect(() => {
+    if (didReloadFixRef.current) return;
+    didReloadFixRef.current = true;
+    if (currentUrl?.startsWith("blob:") && currentIndex >= 0 && history[currentIndex]) {
+      loadHistoryItem(currentIndex);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const goPrev = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();

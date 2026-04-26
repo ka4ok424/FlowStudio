@@ -1057,6 +1057,91 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:multiCrop",
+  label: "Multi Crop",
+  icon: "▦",
+  accentColor: "#a78bfa",
+  component: "MultiCropNode",
+  description: "Slice an image into a grid of N×M cells with one IMAGE output handle per cell. Auto-detect grid via whitespace projection. Pixel-perfect lossless PNG cells. Browser-side, no backend. Designed for slicing storyboards / contact sheets / collages into independent downstream pipelines.",
+  inputs: [
+    { name: "input", type: "IMAGE" },
+  ],
+  outputs: [
+    // Single placeholder — actual N×M handles rendered dynamically in the
+    // component based on rows×cols widgetValues. Downstream resolves via
+    // edge.sourceHandle (e.g. "out_2_3") through getConnectedImageUrl's
+    // multi-output extension.
+    { name: "cells", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Cut a single source image into a grid of cells, each emitted on its own IMAGE output handle. Used for slicing storyboards and grid-layout images into independent frames for parallel downstream processing.",
+    skills: [
+      "Manual rows × cols selection (1..12 each, max 144 cells)",
+      "Optional gap (px shrunk from each cell edge — useful when source has visible borders/separators)",
+      "Auto-detect grid via luminance-stdev projection (best for uniform-color separators like white or black bands)",
+      "Dynamic output handles: out_<row>_<col> 1-indexed (e.g. out_1_1, out_1_2, out_2_1...)",
+      "Pixel-perfect lossless PNG per cell",
+      "Lock + coalesce extraction (no thrashing on rapid grid changes)",
+    ],
+    params: {
+      rows: "Number of rows in the grid, 1-12, default 2",
+      cols: "Number of columns in the grid, 1-12, default 2",
+      gapPx: "Pixels to shrink from each cell edge (gap/border compensation), 0-200, default 0",
+      _cellPreviews: "Output map: { 'out_<r>_<c>': blob URL } per cell. Read by downstream via edge.sourceHandle.",
+      _previewUrl: "Convenience: first cell (out_1_1) blob URL, for downstream that doesn't use sourceHandle.",
+    },
+    connectsFrom: ["fs:import", "fs:localGenerate", "fs:nanoBanana", "fs:img2img", "fs:kontext", "fs:storyboard", "fs:upscale", "fs:enhance"],
+    connectsTo: ["fs:nanoBanana", "fs:img2img", "fs:kontext", "fs:nextFrame", "fs:controlNet", "fs:upscale", "fs:enhance", "fs:removeBg", "fs:preview", "fs:ltxVideo", "fs:crop"],
+    examples: [
+      "Import(2x2 storyboard) → Multi Crop(2×2) → 4 outputs to 4× Img2Img refine pipelines",
+      "Storyboard(grid output) → Multi Crop → individual scenes → SmoothFps → final clips",
+      "Generation(contact sheet) → Multi Crop(auto-detect) → individual variations",
+    ],
+    comfyMapping: "Browser-only. Equivalent to running ImageCrop N times with grid coords, but with single configuration and N output handles in one node.",
+  },
+});
+
+registerNativeNode({
+  type: "fs:montage",
+  label: "Montage",
+  icon: "▶▶",
+  accentColor: "#a78bfa",
+  component: "MontageNode",
+  description: "Concatenate up to 10 video clips into a single output. Per-clip trim on the timeline, Mute/Keep Audio toggle. Sequential preview player. Phase 1 = preview + trim; Phase 2 will add ffmpeg.wasm browser-side render to MP4.",
+  inputs: [
+    // Dynamic — actual handles rendered in component as video-0, video-1, ... video-N
+    { name: "video", type: "VIDEO" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "Stitch multiple short video clips into one continuous video. Designed for assembling LTX/Wan/Hunyuan generations into a sequence (e.g. multi-shot scene), with per-clip trim and audio mute control.",
+    skills: [
+      "2-10 dynamic VIDEO input handles (video-0..video-9)",
+      "Per-clip trim via draggable handles on the timeline",
+      "Sequential preview player — plays clips back-to-back with auto-advance",
+      "Audio mode: Keep / Mute All",
+      "Output single VIDEO suitable for downstream (Preview, SmoothFps, Frame Extract, TikTok Publish)",
+    ],
+    params: {
+      clipCount: "Number of video input slots (2-10, default 2). Use [+]/[−] buttons in the node to change.",
+      audioMode: "'keep' or 'mute'. Default 'keep'. In Mute mode the rendered output strips audio.",
+      _clipTrims: "Per-clip trim map: { 'video-<i>': { start: seconds, end: seconds } }",
+      _previewUrl: "Output: blob URL of the rendered MP4 (Phase 2). Phase 1 = stub (null until Render is wired up).",
+    },
+    connectsFrom: ["fs:videoGen", "fs:videoGenPro", "fs:ltxVideo", "fs:wanVideo", "fs:wanAnimate", "fs:hunyuanVideo", "fs:hunyuanAvatar", "fs:smoothFps", "fs:import"],
+    connectsTo: ["fs:preview", "fs:smoothFps", "fs:frameExtract", "fs:tiktokPublish"],
+    examples: [
+      "LTX shot 1 + LTX shot 2 + LTX shot 3 → Montage(3 clips, trimmed) → Preview",
+      "Multiple Veo generations → Montage → SmoothFps → final 60fps clip",
+      "Wan animation segments → Montage(mute audio) → TikTok Publish",
+    ],
+    comfyMapping: "Browser-only (Phase 2 via ffmpeg.wasm — no backend roundtrip). Equivalent to running ffmpeg -f concat -i list.txt with optional re-encode for trim.",
+  },
+});
+
+registerNativeNode({
   type: "fs:removeBg",
   label: "Remove BG",
   icon: "✂️",

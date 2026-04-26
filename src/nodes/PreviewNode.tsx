@@ -34,9 +34,18 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
       const srcType: string = srcData.type || "";
       const wv = srcData.widgetValues || {};
 
-      // 1. Resolve URL: prefer the freshest output (_previewUrl from generators),
-      //    then Import's blob (_preview), then audio-only nodes (_audioUrl).
-      previewUrl = wv._previewUrl || wv._preview || wv._audioUrl || null;
+      // 1. Resolve URL.
+      // Multi-output sources (e.g. fs:multiCrop) store per-cell blobs in
+      // `_cellPreviews` keyed by handle id (`out_1`, `out_2`...). Use
+      // `inputEdge.sourceHandle` to pick the correct cell — otherwise all
+      // downstream Previews would show cell 1.
+      if (wv._cellPreviews && inputEdge.sourceHandle) {
+        previewUrl = wv._cellPreviews[inputEdge.sourceHandle] || null;
+      }
+      // Fall back to single-output preview (generators, Import, etc.)
+      if (!previewUrl) {
+        previewUrl = wv._previewUrl || wv._preview || wv._audioUrl || null;
+      }
 
       // 2. Resolve mediaType — trust upstream's explicit hint first.
       if (wv._mediaType && wv._mediaType !== "none") {

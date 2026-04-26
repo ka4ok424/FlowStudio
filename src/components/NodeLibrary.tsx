@@ -88,7 +88,8 @@ export default function NodeLibrary() {
           // Utilities — image/video processing & dataset helpers (not pure generation).
           const utilityTypes = new Set([
             "fs:upscale", "fs:smoothFps", "fs:describe", "fs:batch", "fs:dataset",
-            "fs:enhance", "fs:removeBg", "fs:compare", "fs:frameExtract", "fs:crop",
+            "fs:enhance", "fs:removeBg", "fs:compare", "fs:frameExtract", "fs:crop", "fs:multiCrop",
+            "fs:montage",
           ]);
 
           // Video — local video generation + video publishing.

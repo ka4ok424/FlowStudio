@@ -395,6 +395,73 @@ EmptyLatentImage (width, height) → KSampler → VAEDecode → SaveImage
 
 ---
 
+## fs:multiCrop — Multi Crop
+
+**Purpose:** Slice a single image into a grid of N×M cells, with **one IMAGE output handle per cell**. Auto-detect grid via whitespace projection. Browser-side, no backend. The "multi-output" companion of fs:crop — instead of duplicating the node N times, configure rows×cols once and connect each cell to its own downstream pipeline.
+
+**Component:** `src/nodes/MultiCropNode.tsx`
+**Properties:** `src/components/properties/MultiCropProperties.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | IMAGE | input | Source image with grid layout |
+| Output | IMAGE | out_<r>_<c> | One handle per cell, 1-indexed (e.g. `out_1_1`, `out_1_2`, `out_2_1`...). Dynamic — number = rows × cols |
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| rows | int | 2 | Number of rows in the grid (1-12) |
+| cols | int | 2 | Number of columns in the grid (1-12) |
+| gapPx | int | 0 | Pixels to shrink from each cell edge (gap/border compensation, 0-200) |
+| _cellPreviews | object | {} | Map `{ "out_<r>_<c>": blob URL }` per cell |
+| _previewUrl | string | null | Convenience: blob URL of `out_1_1` (for downstream that doesn't use sourceHandle) |
+| _lastSourceUrl | string | null | Internal: tracks source URL to reset cells on input change |
+
+**UI:**
+- Embedded preview of source image with **grid overlay** (purple lines + cell numbers `r,c` in each cell corner)
+- Controls below preview: Rows / Cols / Gap number inputs + **🔍 Auto-detect grid** button
+- Status: NO INPUT / DETECTING… / CROPPING… / `<rows>×<cols> — N cells`
+- **Dynamic right-side handles**: one per cell, vertically stacked, 1-indexed (`out_1_1` at top-left of grid, then row by row)
+- Properties panel: SOURCE info, GRID summary, Manual params, **Cell previews thumbnail grid** (mirrors the actual layout)
+
+**Auto-detect algorithm:**
+- Downscales image to ≤512px on long edge
+- Computes per-row & per-column **luminance standard deviation**
+- Rows/cols where stdev < 20% of max → treated as gap (uniform color = separator)
+- Counts contiguous non-gap segments → that's rows / cols
+- Capped at 1..12 each
+- Best results: storyboards with white/black uniform separators
+- Fallback: if detection produces 1×1 (no separators found), keep manual values
+
+**Multi-output integration:**
+Downstream nodes resolve per-cell via `getConnectedImageUrl()` in `useNodeHelpers.ts`:
+```ts
+if (sd.widgetValues?._cellPreviews && edge.sourceHandle) {
+  const cell = sd.widgetValues._cellPreviews[edge.sourceHandle];
+  if (cell) return cell;
+}
+```
+This means existing nodes (Img2Img, NanoBanana, NextFrame, Preview, etc.) **work as-is** — they connect to a specific Multi Crop output handle and pull that cell's blob URL.
+
+**Performance:**
+- Lock + coalesce extraction: only one crop pass at a time
+- Each cell encodes to PNG via canvas.toBlob → blob URL via `dataUrlToBlobUrl()`
+- For 4×4 = 16 cells on 4K image: ~500-800ms total
+- Auto-detect: ~100-200ms typical
+
+**Use cases:**
+- 2×2 storyboard → 4 separate pipelines (different prompts, refinements per panel)
+- Contact sheet of generation variants → individual selection / refinement
+- Comic book page → per-panel translation/recoloring
+- Multi-character reference sheet → per-character pipelines
+
+**Connects from:** Any IMAGE producer (`fs:import`, `fs:localGenerate`, `fs:nanoBanana`, `fs:img2img`, `fs:storyboard`, `fs:enhance`, `fs:upscale`)
+**Connects to:** Any IMAGE consumer (per cell handle); commonly `fs:img2img`, `fs:kontext`, `fs:nanoBanana`, `fs:nextFrame`, `fs:enhance`, `fs:preview`, `fs:ltxVideo`, `fs:crop` (further crop a single cell)
+
+**No ComfyUI mapping** — pure browser. Equivalent to running ImageCrop N times with grid coords.
+
+---
+
 ## fs:controlNet — ControlNet
 
 **Purpose:** Structure-guided generation using ControlNet Union Pro 2.0. Preserves edges, depth, pose, or lineart from a reference image.

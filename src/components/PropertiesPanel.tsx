@@ -18,6 +18,8 @@ import Img2ImgProperties from "./properties/Img2ImgProperties";
 import NextFrameProperties from "./properties/NextFrameProperties";
 import FrameExtractProperties from "./properties/FrameExtractProperties";
 import CropProperties from "./properties/CropProperties";
+import MultiCropProperties from "./properties/MultiCropProperties";
+import MontageProperties from "./properties/MontageProperties";
 import KontextProperties from "./properties/KontextProperties";
 import LtxVideoProperties from "./properties/LtxVideoProperties";
 // import MultiRefProperties from "./properties/MultiRefProperties"; // REMOVED
@@ -61,6 +63,8 @@ const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: a
   "fs:nextFrame": NextFrameProperties,
   "fs:frameExtract": FrameExtractProperties,
   "fs:crop": CropProperties,
+  "fs:multiCrop": MultiCropProperties,
+  "fs:montage": MontageProperties,
   "fs:kontext": KontextProperties,
   "fs:ltxVideo": LtxVideoProperties,
   // "fs:multiRef": MultiRefProperties, // REMOVED

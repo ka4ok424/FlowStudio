@@ -86,24 +86,45 @@ function CropNode({ id, data, selected }: NodeProps) {
     return ASPECT_RATIOS[aspect];
   })();
 
-  // Load source image, capture dimensions, init full-image crop on first load
+  // Load source image, capture dimensions.
+  // Persistence rule: crop coords survive page reload. We compare by source
+  // DIMENSIONS, not URL, because blob: URLs from Import are regenerated each
+  // session — comparing URLs would falsely "reset" on every reload.
+  // - First-ever connect (cropW=0): init to full image.
+  // - Same source dimensions as before: keep crop, just clamp to bounds.
+  // - Different dimensions: clamp existing crop to fit new image (don't reset).
   useEffect(() => {
     if (!srcUrl) { setSrcDim(null); return; }
     let cancelled = false;
     setError(null);
     loadImage(srcUrl).then((img) => {
       if (cancelled) return;
-      setSrcDim({ w: img.naturalWidth, h: img.naturalHeight });
-      // Reset crop to full image when source changes
-      const lastSrc = nodeData.widgetValues?._lastSourceUrl;
-      if (lastSrc !== srcUrl) {
-        updateWidgetValue(id, "_lastSourceUrl", srcUrl);
+      const w = img.naturalWidth, h = img.naturalHeight;
+      setSrcDim({ w, h });
+      const wv = nodeData.widgetValues || {};
+      const cw = wv.cropW ?? 0;
+      const ch = wv.cropH ?? 0;
+      if (cw <= 0 || ch <= 0) {
+        // First load — init to full image
         updateWidgetValue(id, "cropX", 0);
         updateWidgetValue(id, "cropY", 0);
-        updateWidgetValue(id, "cropW", img.naturalWidth);
-        updateWidgetValue(id, "cropH", img.naturalHeight);
-        lastExtractedRef.current = null;
+        updateWidgetValue(id, "cropW", w);
+        updateWidgetValue(id, "cropH", h);
+      } else {
+        // Clamp existing crop to new image bounds (no-op if dims match)
+        const cx = wv.cropX ?? 0;
+        const cy = wv.cropY ?? 0;
+        const nx = Math.max(0, Math.min(w - 1, cx));
+        const ny = Math.max(0, Math.min(h - 1, cy));
+        const nw = Math.max(1, Math.min(cw, w - nx));
+        const nh = Math.max(1, Math.min(ch, h - ny));
+        if (nx !== cx) updateWidgetValue(id, "cropX", nx);
+        if (ny !== cy) updateWidgetValue(id, "cropY", ny);
+        if (nw !== cw) updateWidgetValue(id, "cropW", nw);
+        if (nh !== ch) updateWidgetValue(id, "cropH", nh);
       }
+      // _previewUrl blob from prev session is dead after reload — force re-extract
+      lastExtractedRef.current = null;
     }).catch((err) => {
       if (!cancelled) setError(err.message || "Load failed");
     });
@@ -345,7 +366,10 @@ function CropNode({ id, data, selected }: NodeProps) {
             )}
           </div>
         ) : (
-          <div className="crop-placeholder">{srcUrl ? "Loading…" : "Connect an IMAGE input"}</div>
+          <div className="crop-placeholder">
+            <span className="crop-placeholder-icon">✂</span>
+            <span className="crop-placeholder-text">{srcUrl ? "Loading…" : "Connect an IMAGE input"}</span>
+          </div>
         )}
       </div>
 

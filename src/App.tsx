@@ -6,6 +6,7 @@ import {
   Controls,
   MiniMap,
   BackgroundVariant,
+  SelectionMode,
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -41,6 +42,8 @@ import LtxVideoNode from "./nodes/LtxVideoNode";
 import NextFrameNode from "./nodes/NextFrameNode";
 import FrameExtractNode from "./nodes/FrameExtractNode";
 import CropNode from "./nodes/CropNode";
+import MultiCropNode from "./nodes/MultiCropNode";
+import MontageNode from "./nodes/MontageNode";
 import RemoveBgNode from "./nodes/RemoveBgNode";
 import InpaintNode from "./nodes/InpaintNode";
 import CompareNode from "./nodes/CompareNode";
@@ -98,6 +101,8 @@ const nodeTypes = {
   nextFrameNode: NextFrameNode,
   frameExtractNode: FrameExtractNode,
   cropNode: CropNode,
+  multiCropNode: MultiCropNode,
+  montageNode: MontageNode,
   removeBgNode: RemoveBgNode,
   inpaintNode: InpaintNode,
   compareNode: CompareNode,
@@ -717,6 +722,7 @@ function App() {
             fitView
             minZoom={0.1}
             maxZoom={2}
+            selectionMode={SelectionMode.Full}
             defaultEdgeOptions={{
               type: "default",
               animated: false,

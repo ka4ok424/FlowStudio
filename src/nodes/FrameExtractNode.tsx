@@ -283,7 +283,10 @@ function FrameExtractNode({ id, data, selected }: NodeProps) {
             onLoadedMetadata={onMeta}
           />
         ) : (
-          <div className="frameex-placeholder">Connect a VIDEO input</div>
+          <div className="frameex-placeholder">
+            <span className="frameex-placeholder-icon">🎞</span>
+            <span className="frameex-placeholder-text">Connect a VIDEO input</span>
+          </div>
         )}
       </div>
 
