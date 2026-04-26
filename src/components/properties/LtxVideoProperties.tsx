@@ -155,7 +155,9 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
         </div>
         {temporalUpscale && (
           <div className="props-section">
-            <div className="props-section-title">Temporal Strength</div>
+            <div className="props-section-title">
+              Temporal Strength <span style={{ color: "#f59e0b", fontWeight: 400, fontSize: 10 }}>(sigma temporarily disabled)</span>
+            </div>
             <input type="range" className="props-range" min={0.05} max={1} step={0.05} value={temporalStartSigma}
               onChange={(e) => updateWidgetValue(nodeId, "temporalStartSigma", parseFloat(e.target.value))} />
             <span className="props-range-value">{temporalStartSigma.toFixed(2)}</span>

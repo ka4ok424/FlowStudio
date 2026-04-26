@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useRef } from "react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { saveImage, loadImage } from "../store/imageDb";
 import { dataUrlToBlobUrl } from "../utils/blobUrl";
@@ -17,6 +17,7 @@ interface MediaHistoryProps {
 
 export default function MediaHistory({ nodeId, history, historyIndex, fallbackUrl, emptyIcon, mediaType = "image", genTime }: MediaHistoryProps) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const [albumOpen, setAlbumOpen] = useState(false);
 
   const total = history.length;
@@ -54,14 +55,20 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
 
   const onDragStart = useCallback((e: React.DragEvent) => {
     if (!currentUrl) return;
-    // If drag started inside a native media element, let its built-in controls
-    // handle the pointer (e.g. video timeline scrubber) instead of starting an
-    // HTML5 drag of the whole preview.
-    const target = e.target as HTMLElement;
-    if (target && (target.tagName === "VIDEO" || target.tagName === "AUDIO"
-        || target.closest?.("video, audio"))) {
-      e.preventDefault();
-      return;
+    // GEOMETRIC check: dragstart fires on the wrapper (e.target = DIV always),
+    // but e.clientX/Y is the real pointer position. If pointer is inside the
+    // bounding rect of the inner <video>/<audio>, cancel — let native controls
+    // (timeline scrubber, volume) handle the drag instead of HTML5 DnD hijacking.
+    if (wrapRef.current) {
+      const mediaEl = wrapRef.current.querySelector("video, audio") as HTMLElement | null;
+      if (mediaEl) {
+        const r = mediaEl.getBoundingClientRect();
+        if (e.clientX >= r.left && e.clientX <= r.right
+            && e.clientY >= r.top && e.clientY <= r.bottom) {
+          e.preventDefault();
+          return;
+        }
+      }
     }
     e.stopPropagation();
     const ext = mediaType === "video" ? "mp4" : mediaType === "audio" ? "wav" : "png";
@@ -81,6 +88,7 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
 
   return (
     <div
+      ref={wrapRef}
       className={`nanob-preview ${currentUrl ? "nodrag" : ""}`}
       draggable={!!currentUrl}
       onDragStart={onDragStart}

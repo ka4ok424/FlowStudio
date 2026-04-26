@@ -17,7 +17,7 @@
   /* Node width system: S / M / L / XL */
   --node-s: 260px;   /* text-only nodes (Prompt, Music, TTS) */
   --node-m: 320px;   /* nodes with preview (LocalGen, NanoBanana, Imagen, Video, Scene, CharacterCard, Preview) */
-  --node-l: 420px;   /* grid/container nodes (Storyboard) */
+  --node-l: 360px;   /* nodes with image preview / canvas (Frame Extract, Crop, Storyboard) */
   --node-xl: 500px;  /* reserved for future wide nodes */
 }
 
@@ -2189,6 +2189,7 @@ body {
 .inpaint-node.incompatible,
 .nextframe-node.incompatible,
 .frameex-node.incompatible,
+.crop-node.incompatible,
 .ltxvideo-node.incompatible {
   opacity: 0.35;
   transition: opacity 0.15s;

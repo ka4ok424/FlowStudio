@@ -334,6 +334,67 @@ EmptyLatentImage (width, height) → KSampler → VAEDecode → SaveImage
 
 ---
 
+## fs:crop — Crop
+
+**Purpose:** Crop a rectangular region from any image. Drag-resize selection box with optional aspect-ratio lock. Pixel-perfect lossless PNG output. Browser-side, no backend.
+
+**Component:** `src/nodes/CropNode.tsx`
+**Properties:** `src/components/properties/CropProperties.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | IMAGE | input | Source image (from any IMAGE-producing node) |
+| Output | IMAGE | image | Cropped region at exact pixel dimensions (PNG) |
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| aspect | string | "custom" | One of: "custom" / "1:1" / "16:9" / "9:16" / "4:3" / "3:4" / "manual" |
+| manualW | int | 1 | Numerator of W:H ratio when aspect=manual |
+| manualH | int | 1 | Denominator of W:H ratio when aspect=manual |
+| cropX | int | 0 | Top-left X in source-image pixel space |
+| cropY | int | 0 | Top-left Y in source-image pixel space |
+| cropW | int | full | Width of crop area = output width (pixel-perfect) |
+| cropH | int | full | Height of crop area = output height (pixel-perfect) |
+| _previewUrl | string | null | Output: blob URL of cropped PNG |
+| _extractedSize | string | null | "<width> × <height>" of last cropped output |
+| _lastSourceUrl | string | null | Internal: tracks source URL to reset crop on input change |
+
+**Default behavior on connection:**
+- New crop is the **entire source image** (Custom aspect, cropX=0, cropY=0, cropW=src.w, cropH=src.h)
+- When source URL changes, crop resets to full image again
+
+**UI:**
+- Embedded scaled preview of source image (max 540px tall)
+- Selection box overlay: drag inside body to move, drag corners to resize
+- Outside-of-crop area dimmed for visual contrast
+- Aspect dropdown below preview: Custom / 1:1 / 16:9 / 9:16 / 4:3 / 3:4 / Manual W:H
+- When Manual: two number inputs for W:H ratio appear
+- Status badge: NO INPUT / ADJUSTING… / CROPPING… / FRESH / PENDING / ERROR
+- Properties panel: SOURCE info + OUTPUT info + manual coord inputs (X, Y, W, H)
+
+**Aspect ratio lock behavior:**
+- Custom: free resize, any width/height
+- Locked ratios: corner-resize maintains the ratio. Larger drag direction wins; auto-clamps to source bounds.
+- Switching to a locked ratio from Custom: snaps current crop to that ratio while keeping its center & area
+
+**Performance:**
+- Drag-resize seeks live (no extract during drag) — instant visual feedback
+- PNG extraction triggered on pointerup
+- Lock + coalesce: only one extract runs at a time, latest crop wins
+
+**Connects from:** Any IMAGE producer (`fs:import`, `fs:localGenerate`, `fs:nanoBanana`, `fs:img2img`, `fs:kontext`, `fs:frameExtract`, `fs:upscale`, `fs:enhance`)
+**Connects to:** Any IMAGE consumer (`fs:nanoBanana`, `fs:img2img`, `fs:kontext`, `fs:nextFrame`, `fs:controlNet`, `fs:upscale`, `fs:enhance`, `fs:removeBg`, `fs:preview`, `fs:ltxVideo`)
+
+**No ComfyUI mapping** — pure browser. Equivalent to ImageCrop but runs locally.
+
+**Use cases:**
+- Slice a 4-panel storyboard: 4× Crop nodes, each cropping one quadrant → 4 independent pipelines
+- Reframe generation output before downstream refinement (e.g., 1024² → center 768²)
+- Focus a Frame Extract result on subject before SUPIR upscale
+
+---
+
 ## fs:controlNet — ControlNet
 
 **Purpose:** Structure-guided generation using ControlNet Union Pro 2.0. Preserves edges, depth, pose, or lineart from a reference image.

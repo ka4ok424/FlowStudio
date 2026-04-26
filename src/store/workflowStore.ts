@@ -311,6 +311,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         LtxVideoNode: "ltxVideoNode",
         NextFrameNode: "nextFrameNode",
         FrameExtractNode: "frameExtractNode",
+        CropNode: "cropNode",
         RemoveBgNode: "removeBgNode",
         InpaintNode: "inpaintNode",
         CompareNode: "compareNode",

@@ -1013,6 +1013,50 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:crop",
+  label: "Crop",
+  icon: "✂",
+  accentColor: "#f59e0b",
+  component: "CropNode",
+  description: "Crop a rectangular region from an image. Drag to position/resize, lock to preset aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4) or manual W:H. Pixel-perfect output (lossless PNG). Browser-side, no backend.",
+  inputs: [
+    { name: "input", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "image", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Extract a precise rectangular region from any image. Designed for slicing storyboards/grids into individual frames, focal cropping, aspect-ratio reframing for downstream generation. Pixel-perfect — output dimensions exactly match the selected crop area.",
+    skills: [
+      "Drag to position selection box, drag corners to resize",
+      "Aspect ratio lock: Custom (free) / 1:1 / 16:9 / 9:16 / 4:3 / 3:4 / Manual W:H",
+      "Default = full image (Custom mode) on first connection",
+      "Source dimensions auto-detected, crop coords stored in source pixel space",
+      "Lossless PNG output at exact crop dimensions (no resize)",
+    ],
+    params: {
+      aspect: "'custom' | '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | 'manual'. Locked ratios constrain corner-resize.",
+      manualW: "When aspect=manual, W component of W:H ratio (default 1)",
+      manualH: "When aspect=manual, H component of W:H ratio (default 1)",
+      cropX: "Source-space X (pixels) of crop top-left",
+      cropY: "Source-space Y (pixels) of crop top-left",
+      cropW: "Source-space width (pixels) of crop area = output width",
+      cropH: "Source-space height (pixels) of crop area = output height",
+      _previewUrl: "Output: blob URL of the cropped PNG",
+      _extractedSize: "Output meta: '<width> × <height>' of the crop",
+    },
+    connectsFrom: ["fs:import", "fs:localGenerate", "fs:nanoBanana", "fs:img2img", "fs:kontext", "fs:frameExtract", "fs:upscale", "fs:enhance"],
+    connectsTo: ["fs:nanoBanana", "fs:img2img", "fs:kontext", "fs:nextFrame", "fs:controlNet", "fs:upscale", "fs:enhance", "fs:removeBg", "fs:preview", "fs:ltxVideo"],
+    examples: [
+      "Import(storyboard 4-panel grid) → 4× Crop nodes (each cropping one cell) → 4× downstream pipelines",
+      "Generation(1024×1024) → Crop(center 768×768) → Img2Img refine",
+      "Frame Extract(video) → Crop(focus on subject) → Enhance(SUPIR upscale)",
+    ],
+    comfyMapping: "Browser-only. Equivalent to ImageCrop / VAEDecodeTiled crop region but runs locally without sending the image to ComfyUI.",
+  },
+});
+
+registerNativeNode({
   type: "fs:removeBg",
   label: "Remove BG",
   icon: "✂️",

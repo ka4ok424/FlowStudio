@@ -18,26 +18,12 @@ export interface LtxVideoParams {
   // Optional upscalers (Stage 2 refinement, Lightricks multi-stage pipeline)
   spatialUpscale?: boolean;   // x2 spatial — 2× width and 2× height
   temporalUpscale?: boolean;  // x2 temporal — 2× frames and 2× fps (smoother motion)
-  // Starting sigma for temporal refinement noise schedule (default 0.4).
-  // Lower = preserves Stage-1 identity more strictly (no face drift).
-  // Higher = more "creative" interpolation but characters may shift.
-  // Lightricks default = 0.85; we lowered for identity preservation.
-  temporalStartSigma?: number;
 }
 
 const SPATIAL_UPSCALER_MODEL = "ltx-2.3-spatial-upscaler-x2-1.1.safetensors";
 const TEMPORAL_UPSCALER_MODEL = "ltx-2.3-temporal-upscaler-x2-1.0.safetensors";
-// Refinement sigma schedule from Lightricks' Two_Stage_Distilled reference workflow.
-// Spatial keeps the original Lightricks values — high sigma is fine because spatial
-// has lots of pixel constraints, identity drift is minimal.
-const SPATIAL_REFINEMENT_SIGMAS = "0.85, 0.725, 0.422, 0.0";
-// Temporal sigma schedule is parameterized via p.temporalStartSigma (default 0.4).
-// We scale Lightricks' original ratios (1.0, 0.853, 0.497, 0.0) by the start value, so
-// the schedule keeps the same "shape" — just a different peak.
-function buildTemporalSigmas(start: number): string {
-  const ratios = [1.0, 0.853, 0.497, 0.0];
-  return ratios.map((r) => (start * r).toFixed(3)).join(", ");
-}
+// Refinement sigma schedule from Lightricks' Two_Stage_Distilled reference workflow
+const REFINEMENT_SIGMAS = "0.85, 0.725, 0.422, 0.0";
 
 /**
  * Build ComfyUI workflow for LTX Video 2.3 — Kijai-style separated loaders
@@ -168,7 +154,7 @@ export function buildLtxVideoWorkflow(p: LtxVideoParams): Record<string, any> {
 
   // Refinement helper: build Stage 2+ chain after latent upscaler.
   // Uses SamplerCustomAdvanced + ManualSigmas (partial denoise 0.85 → 0) per Lightricks reference.
-  const buildRefinementStage = (upscalerModel: string, seedOffset: number, sigmas: string): void => {
+  const buildRefinementStage = (upscalerModel: string, seedOffset: number): void => {
     // Latent upscale model loader
     const loaderId = String(n++);
     workflow[loaderId] = { class_type: "LatentUpscaleModelLoader", inputs: { model_name: upscalerModel } };
@@ -190,7 +176,7 @@ export function buildLtxVideoWorkflow(p: LtxVideoParams): Record<string, any> {
 
     // Manual sigmas for partial denoising (starts at 0.85, ends at 0 over 3 steps)
     const refSigmasId = String(n++);
-    workflow[refSigmasId] = { class_type: "ManualSigmas", inputs: { sigmas } };
+    workflow[refSigmasId] = { class_type: "ManualSigmas", inputs: { sigmas: REFINEMENT_SIGMAS } };
 
     // SamplerCustomAdvanced — uses existing guider + sampler from Stage 1
     const refSampId = String(n++);
@@ -211,13 +197,12 @@ export function buildLtxVideoWorkflow(p: LtxVideoParams): Record<string, any> {
 
   // Optional Stage 2 — Spatial upscale (x2 resolution)
   if (p.spatialUpscale) {
-    buildRefinementStage(SPATIAL_UPSCALER_MODEL, 1, SPATIAL_REFINEMENT_SIGMAS);
+    buildRefinementStage(SPATIAL_UPSCALER_MODEL, 1);
   }
 
   // Optional Stage 3 — Temporal upscale (x2 fps / smoother motion)
   if (p.temporalUpscale) {
-    const tStart = p.temporalStartSigma ?? 0.4;
-    buildRefinementStage(TEMPORAL_UPSCALER_MODEL, 2, buildTemporalSigmas(tStart));
+    buildRefinementStage(TEMPORAL_UPSCALER_MODEL, 2);
   }
 
   // Final VAE Decode — tiled for video (tile size accommodates upscaled latents)
