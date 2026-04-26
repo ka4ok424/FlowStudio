@@ -975,6 +975,44 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:frameExtract",
+  label: "Frame Extract",
+  icon: "🎞",
+  accentColor: "#a78bfa",
+  component: "FrameExtractNode",
+  description: "Extract a single frame from a video at native resolution as a lossless PNG image. Browser-side, no backend required. Defaults to the last frame.",
+  inputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  outputs: [
+    { name: "frame", type: "IMAGE" },
+  ],
+  aiDoc: {
+    purpose: "Pick a single frame from any video stream and emit it as an IMAGE for downstream nodes (img2img, IPAdapter, NextFrame, ControlNet, etc.). Decoded by the browser at native videoWidth × videoHeight, written as PNG — no quality loss.",
+    skills: [
+      "Default = last frame (sentinel frameIndex = -1, auto-resolves on source change)",
+      "Scrub through video with frame-accurate slider",
+      "Lossless: native resolution + PNG encoding",
+      "Pure browser, no PC/GPU work, no upload roundtrip",
+    ],
+    params: {
+      frameIndex: "Frame number to extract (0-based). -1 = always use the last frame (default). Manual values clamp to [0, totalFrames-1].",
+      _previewUrl: "Output: blob URL of the extracted PNG frame",
+      _extractedFrame: "Output meta: which frame index is currently materialized",
+      _extractedSize: "Output meta: '<width> × <height>' of the extracted frame",
+    },
+    connectsFrom: ["fs:import", "fs:videoGen", "fs:videoGenPro", "fs:ltxVideo", "fs:wanVideo", "fs:hunyuanVideo"],
+    connectsTo: ["fs:nanoBanana", "fs:img2img", "fs:kontext", "fs:nextFrame", "fs:controlNet", "fs:upscale", "fs:removeBg", "fs:preview"],
+    examples: [
+      "Import(video.mp4) → Frame Extract(last) → IPAdapter ref",
+      "Video Gen → Frame Extract(frame 0) → Next Frame → LTX Video (continue scene from final)",
+      "LTX Video → Frame Extract(last) → Upscale → Frame Extract(another LTX) chain",
+    ],
+    comfyMapping: "Browser-only. Equivalent to VHS_LoadVideo with frame_load_cap=1, skip_first_frames=N — but runs locally without sending the video to ComfyUI.",
+  },
+});
+
+registerNativeNode({
   type: "fs:removeBg",
   label: "Remove BG",
   icon: "✂️",
@@ -1077,7 +1115,7 @@ registerNativeNode({
     params: {
       scale: "Upscale factor, 1-4, default 2",
       steps: "Enhancement steps, 10-50, default 20",
-      restoration: "Restoration strength, 0-1, default 0.5",
+      restoration: "Restoration strength (control_scale), 0-1, default 1.0. Higher = sticks more strictly to source structure (less hallucinated detail). 1.0 = max adherence to original.",
       cfg: "CFG scale, 1-10, default 4",
       colorFix: "None / AdaIn / Wavelet",
     },

@@ -54,6 +54,15 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
 
   const onDragStart = useCallback((e: React.DragEvent) => {
     if (!currentUrl) return;
+    // If drag started inside a native media element, let its built-in controls
+    // handle the pointer (e.g. video timeline scrubber) instead of starting an
+    // HTML5 drag of the whole preview.
+    const target = e.target as HTMLElement;
+    if (target && (target.tagName === "VIDEO" || target.tagName === "AUDIO"
+        || target.closest?.("video, audio"))) {
+      e.preventDefault();
+      return;
+    }
     e.stopPropagation();
     const ext = mediaType === "video" ? "mp4" : mediaType === "audio" ? "wav" : "png";
     e.dataTransfer.setData("application/flowstudio-media", JSON.stringify({

@@ -39,6 +39,7 @@ import Img2ImgNode from "./nodes/Img2ImgNode";
 import KontextNode from "./nodes/KontextNode";
 import LtxVideoNode from "./nodes/LtxVideoNode";
 import NextFrameNode from "./nodes/NextFrameNode";
+import FrameExtractNode from "./nodes/FrameExtractNode";
 import RemoveBgNode from "./nodes/RemoveBgNode";
 import InpaintNode from "./nodes/InpaintNode";
 import CompareNode from "./nodes/CompareNode";
@@ -94,6 +95,7 @@ const nodeTypes = {
   kontextNode: KontextNode,
   ltxVideoNode: LtxVideoNode,
   nextFrameNode: NextFrameNode,
+  frameExtractNode: FrameExtractNode,
   removeBgNode: RemoveBgNode,
   inpaintNode: InpaintNode,
   compareNode: CompareNode,

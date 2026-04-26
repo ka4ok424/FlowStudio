@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useWorkflowStore } from "../store/workflowStore";
-import { queuePrompt } from "../api/comfyApi";
+import { queuePrompt, stopAll } from "../api/comfyApi";
 import SettingsModal from "./SettingsModal";
 import ProjectManager from "./ProjectManager";
 import SystemStatsIndicator from "./SystemStatsIndicator";
+import PresetIndicator from "./PresetIndicator";
 
 export default function Toolbar() {
   const { isConnected, progress, buildWorkflow, currentProjectName, setCurrentProjectName, saveProject, undo, redo } = useWorkflowStore();
@@ -15,9 +16,9 @@ export default function Toolbar() {
 
   const handleStop = async () => {
     try {
-      await fetch("/api/interrupt", { method: "POST" });
+      await stopAll();
     } catch (err) {
-      console.error("[Toolbar] Failed to interrupt:", err);
+      console.error("[Toolbar] Failed to stop:", err);
     }
   };
 
@@ -121,6 +122,7 @@ export default function Toolbar() {
 
       <div className="toolbar-right">
         <SystemStatsIndicator />
+        <PresetIndicator />
         <button className="btn-settings" onClick={() => setShowSettings(true)} title="Settings">
           ⚙
         </button>

@@ -52,7 +52,7 @@ export default function SettingsModal({ open, onClose }: Props) {
 
   const comfyPresets = [
     { label: "Local (Vite Proxy)", value: "" },
-    { label: "Windows PC (RTX 5090)", value: "http://192.168.0.67:8188" },
+    { label: "Windows PC (RTX 5090)", value: "http://192.168.31.175:8188" },
   ];
 
   if (!open) return null;

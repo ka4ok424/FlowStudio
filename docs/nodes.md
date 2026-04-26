@@ -282,6 +282,58 @@ EmptyLatentImage (width, height) → KSampler → VAEDecode → SaveImage
 
 ---
 
+## fs:frameExtract — Frame Extract
+
+**Purpose:** Extract a single frame from a video as a lossless PNG image. Browser-side only — no PC/GPU work, no upload roundtrip. Defaults to the last frame.
+
+**Component:** `src/nodes/FrameExtractNode.tsx`
+**Properties:** `src/components/properties/FrameExtractProperties.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | VIDEO | video | Source video (from Import, VideoGen, LTX, Wan, Hunyuan, etc.) |
+| Output | IMAGE | frame | Extracted frame at native resolution (PNG) |
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| frameIndex | int | -1 | Frame number to extract. **-1 = sentinel for "last frame"** (auto-recomputed when source changes). Manual values clamp to `[0, totalFrames-1]`. |
+| _previewUrl | string | null | Output: blob URL of the extracted PNG frame (read by downstream nodes) |
+| _extractedFrame | int \| null | null | Which frame index is currently materialized (for FRESH/PENDING badge) |
+| _extractedSize | string | null | "<width> × <height>" of the extracted frame |
+| _lastSourceUrl | string | null | Internal: tracks source URL to reset frameIndex on input change |
+
+**Quality / extraction behavior:**
+- Canvas drawn at `video.videoWidth × video.videoHeight` — **no resize, no scaling**
+- Encoded via `canvas.toBlob('image/png')` — **lossless** (no JPEG)
+- Stored as blob URL via `dataUrlToBlobUrl()` — keeps decoded image in native memory
+- Frame seek uses `requestVideoFrameCallback` after `seeked` event for frame-accurate timing
+- `crossOrigin="anonymous"` on `<video>` — required for canvas access (PC ComfyUI sends `Access-Control-Allow-Origin: *`)
+
+**Source metadata reuse:**
+- Reads `_fileInfo.fps` and `_fileInfo.frames` from upstream node (Import populates these via `requestVideoFrameCallback`)
+- If upstream lacks fps (e.g., generated video without metadata) — falls back to 30fps assumption based on `<video>.duration`
+
+**UI:**
+- Embedded `<video>` preview at top — instant scrub during slider drag (no extraction)
+- Range slider [0..totalFrames-1] for frame selection
+- Frame number + Timecode (`MM:SS:MMM` format) display
+- "● LAST" / "↦ Last" toggle button to lock to / jump to last frame
+- Status badge: NO VIDEO / EXTRACTING… / FRESH / PENDING / ERROR
+- Properties panel: SOURCE VIDEO + EXTRACTED FRAME info cards + manual frame number input
+
+**Performance:**
+- Slider scrub seeks the visible video element instantly
+- PNG extraction is **debounced 180ms** after last slider change (avoids thrashing during drag)
+- Re-extracts only when `(videoUrl, effectiveFrame)` actually changes (`lastExtractedRef` guard)
+
+**Connects from:** Any node producing VIDEO (`fs:import`, `fs:videoGen`, `fs:videoGenPro`, `fs:ltxVideo`, `fs:wanVideo`, `fs:hunyuanVideo`)
+**Connects to:** Any node consuming IMAGE (`fs:nanoBanana`, `fs:img2img`, `fs:kontext`, `fs:nextFrame`, `fs:controlNet`, `fs:upscale`, `fs:removeBg`, `fs:preview`)
+
+**No ComfyUI mapping** — pure browser. Equivalent to `VHS_LoadVideo(frame_load_cap=1, skip_first_frames=N)` but stays local.
+
+---
+
 ## fs:controlNet — ControlNet
 
 **Purpose:** Structure-guided generation using ControlNet Union Pro 2.0. Preserves edges, depth, pose, or lineart from a reference image.
@@ -1116,7 +1168,7 @@ _manifest.json    ← { count, prefix, triggerToken, triggerPosition, captioner,
 | Input | IMAGE | input | Source image |
 | Output | IMAGE | image | Enhanced + upscaled image |
 
-**Parameters:** scale (1-4, default 2), steps (10-50, default 20), restoration (0-1, default 0.5), cfg (1-10, default 4), colorFix (None / AdaIn / Wavelet)
+**Parameters:** scale (1-4, default 2), steps (10-50, default 20), restoration (0-1, default 1.0 — control_scale, higher = stays closer to source), cfg (1-10, default 4), colorFix (None / AdaIn / Wavelet)
 
 **ComfyUI Mapping:** SUPIR_Upscale → SaveImage
 

@@ -5,7 +5,7 @@ function EnhanceProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
   const scale = data.widgetValues?.scale ?? 2;
   const steps = data.widgetValues?.steps ?? 20;
-  const restoration = data.widgetValues?.restoration ?? 0.5;
+  const restoration = data.widgetValues?.restoration ?? 1.0;
   const cfg = data.widgetValues?.cfg ?? 4.0;
   const colorFix = data.widgetValues?.colorFix ?? "AdaIn";
   const seed = data.widgetValues?.seed ?? "";
@@ -28,7 +28,7 @@ function EnhanceProperties({ nodeId, data }: { nodeId: string; data: any }) {
         <input type="range" className="props-range" min={0} max={1} step={0.05} value={restoration}
           onChange={(e) => updateWidgetValue(nodeId, "restoration", parseFloat(e.target.value))} />
         <span className="props-range-value">{restoration.toFixed(2)}</span>
-        <p className="settings-hint" style={{ marginTop: 4 }}>0 = no change · 0.5 = balanced · 1.0 = max detail</p>
+        <p className="settings-hint" style={{ marginTop: 4 }}>0 = freely regenerate · 0.5 = balanced · 1.0 = stick to source (default)</p>
       </div>
       <div className="props-section">
         <div className="props-section-title">Steps</div>

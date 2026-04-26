@@ -826,6 +826,101 @@
 .nextframe-outputs { padding: 6px 0; border-top: 1px solid var(--border); }
 
 /* ══════════════════════════════════════════════════════════════════
+   Frame Extract Node
+   ══════════════════════════════════════════════════════════════════ */
+.frameex-node {
+  background: var(--bg-node); border: 1px solid var(--border);
+  border-radius: var(--radius); width: 360px;
+  overflow: visible; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  transition: box-shadow 0.08s, border-color 0.08s; position: relative;
+}
+.frameex-node.selected {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 2px rgba(167,139,250,0.25), 0 4px 16px rgba(0,0,0,0.3);
+}
+.frameex-node.incompatible { opacity: 0.35; transition: opacity 0.15s; }
+.frameex-node-inner { overflow: hidden; border-radius: var(--radius) var(--radius) 0 0; }
+.frameex-accent { height: 3px; background: #a78bfa; }
+.frameex-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
+}
+.frameex-icon { font-size: 16px; }
+.frameex-header-text { display: flex; flex-direction: column; }
+.frameex-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.frameex-status { font-size: 10px; color: #a78bfa; font-weight: 700; letter-spacing: 0.4px; }
+.frameex-inputs { padding: 6px 0; }
+.frameex-outputs { padding: 6px 0; border-top: 1px solid var(--border); }
+
+.frameex-preview {
+  background: #0b0b0d;
+  margin: 4px 8px 6px;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80px;
+  width: calc(100% - 16px);
+}
+.frameex-preview-video {
+  width: 100%; height: 100%; display: block;
+  object-fit: contain;
+  background: #000;
+}
+.frameex-placeholder {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 30px 10px;
+  text-align: center;
+}
+
+.frameex-controls {
+  padding: 4px 12px 10px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.frameex-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 6px; border-radius: 3px;
+  background: #2a2a30;
+  outline: none; cursor: pointer;
+}
+.frameex-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #f5a524; cursor: pointer;
+  box-shadow: 0 0 0 2px #1a1a1f, 0 0 6px rgba(245,165,36,0.4);
+}
+.frameex-slider::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%; border: none;
+  background: #f5a524; cursor: pointer;
+  box-shadow: 0 0 0 2px #1a1a1f, 0 0 6px rgba(245,165,36,0.4);
+}
+.frameex-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--text-muted); gap: 8px;
+}
+.frameex-meta-label { color: var(--text-muted); }
+.frameex-meta-value { color: #f5a524; font-weight: 600; }
+.frameex-last-btn {
+  background: transparent;
+  border: 1px solid #3a3a45;
+  color: var(--text-muted);
+  font-size: 10px; font-weight: 600;
+  padding: 3px 8px; border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.1s;
+  white-space: nowrap;
+}
+.frameex-last-btn:hover { border-color: #a78bfa; color: #a78bfa; }
+.frameex-last-btn.locked {
+  background: rgba(167,139,250,0.15);
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+
+/* ══════════════════════════════════════════════════════════════════
    Remove BG Node
    ══════════════════════════════════════════════════════════════════ */
 .removebg-node {

@@ -1,7 +1,7 @@
 import { memo, useCallback, useState, useRef } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
-import { queuePrompt, getImageUrl, uploadImage, getComfyUrl, interruptGeneration } from "../api/comfyApi";
+import { queuePrompt, getImageUrl, uploadImage, getComfyUrl, stopAll } from "../api/comfyApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
@@ -182,7 +182,7 @@ function HunyuanVideoNode({ id, data, selected }: NodeProps) {
           <button className="localgen-generate-btn generating" onClick={(e) => {
             e.stopPropagation();
             abortRef.current = true;
-            interruptGeneration().catch(() => {});
+            stopAll().catch(() => {});
           }}>
             Stop
           </button>

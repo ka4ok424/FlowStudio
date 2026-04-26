@@ -1,7 +1,7 @@
 import { memo, useCallback, useState, useRef } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
-import { queuePrompt, getImageUrl, uploadImage, getComfyUrl, interruptGeneration } from "../api/comfyApi";
+import { queuePrompt, getImageUrl, uploadImage, getComfyUrl, stopAll } from "../api/comfyApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
@@ -53,9 +53,10 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
     const stg = freshWv.stg ?? 0.6;
     const maxShift = freshWv.maxShift ?? 0.6;
     const baseShift = freshWv.baseShift ?? 0.6;
-    const frameStrength = freshWv.frameStrength ?? 0.85;
+    const frameStrength = freshWv.frameStrength ?? 1;
     const spatialUpscale = !!freshWv.spatialUpscale;
     const temporalUpscale = !!freshWv.temporalUpscale;
+    const temporalStartSigma = freshWv.temporalStartSigma ?? 0.4;
 
     // Get prompt
     let promptText = "";
@@ -102,7 +103,7 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
         width, height, frames, fps, stg, maxShift, baseShift, maxLength,
         guideFrames: frameUploads.map(f => ({ name: f.url, idx: f.idx })),
         frameStrength,
-        spatialUpscale, temporalUpscale,
+        spatialUpscale, temporalUpscale, temporalStartSigma,
       });
 
       const result = await queuePrompt(workflow);
@@ -231,7 +232,7 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
           <button className="localgen-generate-btn generating" onClick={(e) => {
             e.stopPropagation();
             abortRef.current = true;
-            interruptGeneration().catch(() => {});
+            stopAll().catch(() => {});
           }}>
             Stop
           </button>

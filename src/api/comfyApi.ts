@@ -1,10 +1,10 @@
-// ComfyUI server URL — empty = Vite proxy, or direct URL like "http://192.168.0.67:8188"
+// ComfyUI server URL — empty = Vite proxy, or direct URL like "http://192.168.31.175:8188"
 const COMFY_SERVER_KEY = "flowstudio_comfyui_server";
 
 // Direct URL to the backend (must match vite.config.ts proxy target).
 // Used when the user needs a real link (e.g. to open ComfyUI in a new tab)
 // since an empty string would point at FlowStudio itself via the proxy.
-export const DEFAULT_COMFY_DIRECT_URL = "http://192.168.0.67:8188";
+export const DEFAULT_COMFY_DIRECT_URL = "http://192.168.31.175:8188";
 
 /** Get the URL for API calls (empty = Vite proxy, which only works from inside the app). */
 export function getComfyUrl(): string {
@@ -132,6 +132,22 @@ export function connectWebSocket(onMessage: (data: any) => void): WebSocket {
 // ── Interrupt current generation ───────────────────────────────────
 export async function interruptGeneration(): Promise<void> {
   await fetch(`${getComfyUrl()}/api/interrupt`, { method: "POST" });
+}
+
+// ── Clear all pending prompts in the queue ─────────────────────────
+export async function clearQueue(): Promise<void> {
+  await fetch(`${getComfyUrl()}/api/queue`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clear: true }),
+  });
+}
+
+// ── Full stop: drop pending queue AND kill the running prompt ──────
+// Without clearQueue first, interrupt only kills the current prompt
+// and the next pending one starts immediately, masking the stop.
+export async function stopAll(): Promise<void> {
+  await Promise.all([clearQueue(), interruptGeneration()]);
 }
 
 // ── Get queue status ───────────────────────────────────────────────

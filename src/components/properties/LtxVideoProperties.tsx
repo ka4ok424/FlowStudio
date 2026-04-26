@@ -14,10 +14,11 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const stg = data.widgetValues?.stg ?? 0.6;
   const maxShift = data.widgetValues?.maxShift ?? 0.6;
   const baseShift = data.widgetValues?.baseShift ?? 0.6;
-  const frameStrength = data.widgetValues?.frameStrength ?? 0.85;
+  const frameStrength = data.widgetValues?.frameStrength ?? 1;
   const maxLength = data.widgetValues?.maxLength ?? 512;
   const spatialUpscale = !!data.widgetValues?.spatialUpscale;
   const temporalUpscale = !!data.widgetValues?.temporalUpscale;
+  const temporalStartSigma = data.widgetValues?.temporalStartSigma ?? 0.4;
 
   const outputW = spatialUpscale ? width * 2 : width;
   const outputH = spatialUpscale ? height * 2 : height;
@@ -152,6 +153,17 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
             onChange={(e) => updateWidgetValue(nodeId, "frameStrength", parseFloat(e.target.value))} />
           <span className="props-range-value">{frameStrength.toFixed(2)}</span>
         </div>
+        {temporalUpscale && (
+          <div className="props-section">
+            <div className="props-section-title">Temporal Strength</div>
+            <input type="range" className="props-range" min={0.05} max={1} step={0.05} value={temporalStartSigma}
+              onChange={(e) => updateWidgetValue(nodeId, "temporalStartSigma", parseFloat(e.target.value))} />
+            <span className="props-range-value">{temporalStartSigma.toFixed(2)}</span>
+            <p className="settings-hint" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, lineHeight: 1.4 }}>
+              Starting sigma for temporal refinement (default 0.4). Lower = preserves character identity from Stage 1. Higher = more "creative" interpolation but faces may drift. Lightricks original = 0.85.
+            </p>
+          </div>
+        )}
       </details>
     </>
   );

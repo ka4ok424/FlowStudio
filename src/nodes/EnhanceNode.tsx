@@ -30,7 +30,7 @@ function EnhanceNode({ id, data, selected }: NodeProps) {
     const scale = freshWv.scale ?? 2;
     const steps = freshWv.steps || 20;
     const cfg = freshWv.cfg ?? 4.0;
-    const restoration = freshWv.restoration ?? 0.5;
+    const restoration = freshWv.restoration ?? 1.0;
     const seed = freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647);
     const prompt = freshWv.prompt || "high quality, detailed, sharp";
     const negPrompt = freshWv.negPrompt || "blurry, noise, artifacts, low quality";

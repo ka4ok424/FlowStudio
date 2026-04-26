@@ -12,7 +12,17 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
 
   const [fullscreen, setFullscreen] = useState(false);
 
-  // Find connected source image
+  // Node types that produce video / audio (used to detect mediaType when
+  // upstream stores the URL as a blob: that doesn't reveal MIME).
+  const VIDEO_SOURCE_TYPES = new Set([
+    "fs:videoGen", "fs:videoGenPro",
+    "fs:ltxVideo", "fs:wanVideo", "fs:wanAnimate",
+    "fs:hunyuanVideo", "fs:hunyuanAvatar",
+    "fs:smoothFps",
+  ]);
+  const AUDIO_SOURCE_TYPES = new Set(["fs:music", "fs:tts"]);
+
+  // Find connected source
   const inputEdge = edgesAll.find((e) => e.target === id && e.targetHandle === "input");
   let previewUrl: string | null = null;
   let mediaType: string = "none";
@@ -21,33 +31,28 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
     const sourceNode = nodesAll.find((n) => n.id === inputEdge.source);
     if (sourceNode) {
       const srcData = sourceNode.data as any;
-      const srcType = srcData.type || "";
+      const srcType: string = srcData.type || "";
+      const wv = srcData.widgetValues || {};
 
-      // From Import
-      if (srcData.widgetValues?._preview) {
-        previewUrl = srcData.widgetValues._preview;
-        mediaType = srcData.widgetValues._mediaType || "image";
-      }
-      // From generation nodes (_previewUrl)
-      if (srcData.widgetValues?._previewUrl) {
-        previewUrl = srcData.widgetValues._previewUrl;
-        // Detect media type from source node type or URL
-        if (srcType === "fs:videoGen") {
-          mediaType = "video";
-        } else if (srcType === "fs:music" || srcType === "fs:tts") {
-          mediaType = "audio";
-        } else if (previewUrl.startsWith("data:video/")) {
-          mediaType = "video";
-        } else if (previewUrl.startsWith("data:audio/")) {
-          mediaType = "audio";
-        } else {
-          mediaType = "image";
-        }
-      }
-      // Audio from Music/TTS nodes
-      if (srcData.widgetValues?._audioUrl) {
-        previewUrl = srcData.widgetValues._audioUrl;
+      // 1. Resolve URL: prefer the freshest output (_previewUrl from generators),
+      //    then Import's blob (_preview), then audio-only nodes (_audioUrl).
+      previewUrl = wv._previewUrl || wv._preview || wv._audioUrl || null;
+
+      // 2. Resolve mediaType — trust upstream's explicit hint first.
+      if (wv._mediaType && wv._mediaType !== "none") {
+        mediaType = wv._mediaType;
+      } else if (wv._audioUrl) {
         mediaType = "audio";
+      } else if (VIDEO_SOURCE_TYPES.has(srcType)) {
+        mediaType = "video";
+      } else if (AUDIO_SOURCE_TYPES.has(srcType)) {
+        mediaType = "audio";
+      } else if (previewUrl?.startsWith("data:video/")) {
+        mediaType = "video";
+      } else if (previewUrl?.startsWith("data:audio/")) {
+        mediaType = "audio";
+      } else if (previewUrl) {
+        mediaType = "image";
       }
     }
   }
