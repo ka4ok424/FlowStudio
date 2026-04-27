@@ -1,4 +1,5 @@
 import { useWorkflowStore } from "../../store/workflowStore";
+import { getModelDefaults } from "../../workflows/localGen";
 import BatchCountField from "./BatchCountField";
 
 // ── Local Generate Properties ──────────────────────────────────────
@@ -7,7 +8,7 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const nodeDefs = useWorkflowStore((s) => s.nodeDefs);
 
   // Get image generation models from ComfyUI (filtered)
-  const ALLOWED_MODELS = ["flux-2-klein-4b", "flux-2-klein-9b", "flux2_dev_fp8mixed", "flux2-dev.safetensors"];
+  const ALLOWED_MODELS = ["flux-2-klein-4b", "flux-2-klein-9b", "flux2_dev_fp8mixed", "flux1-dev", "z_image_turbo"];
   const checkpoints: string[] = [];
   for (const loaderName of ["UNETLoader", "UnetLoaderGGUF", "CheckpointLoaderSimple"]) {
     if (nodeDefs[loaderName]) {
@@ -28,6 +29,7 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const height = data.widgetValues?.height ?? 512;
   const seed = data.widgetValues?.seed ?? "";
   const count = data.widgetValues?.count ?? 1;
+  const recommended = getModelDefaults(model);
 
   return (
     <>
@@ -35,9 +37,18 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
         <div className="props-section-title">Checkpoint</div>
         <select className="props-select"
           value={model}
-          onChange={(e) => updateWidgetValue(nodeId, "model", e.target.value)}>
+          onChange={(e) => {
+            const newModel = e.target.value;
+            const r = getModelDefaults(newModel);
+            updateWidgetValue(nodeId, "model", newModel);
+            updateWidgetValue(nodeId, "steps", r.steps);
+            updateWidgetValue(nodeId, "cfg", r.cfg);
+          }}>
           {checkpoints.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+          {recommended.label} — recommended: {recommended.steps} steps, CFG {recommended.cfg}
+        </div>
       </div>
 
       <div className="props-section">
@@ -45,16 +56,31 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
         <div className="props-input-row">
           <input type="number" className="props-input" value={width} min={64} max={2048} step={64}
             onChange={(e) => updateWidgetValue(nodeId, "width", e.target.value === "" ? "" : parseInt(e.target.value) || "")}
-            onBlur={(e) => { if (!e.target.value) updateWidgetValue(nodeId, "width", 512); }} />
+            onBlur={(e) => {
+              const n = parseInt(e.target.value);
+              const snapped = !n || isNaN(n) ? 512 : Math.max(64, Math.min(2048, Math.round(n / 64) * 64));
+              updateWidgetValue(nodeId, "width", snapped);
+            }} />
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>×</span>
           <input type="number" className="props-input" value={height} min={64} max={2048} step={64}
             onChange={(e) => updateWidgetValue(nodeId, "height", e.target.value === "" ? "" : parseInt(e.target.value) || "")}
-            onBlur={(e) => { if (!e.target.value) updateWidgetValue(nodeId, "height", 512); }} />
+            onBlur={(e) => {
+              const n = parseInt(e.target.value);
+              const snapped = !n || isNaN(n) ? 512 : Math.max(64, Math.min(2048, Math.round(n / 64) * 64));
+              updateWidgetValue(nodeId, "height", snapped);
+            }} />
         </div>
       </div>
 
       <div className="props-section">
-        <div className="props-section-title">Steps</div>
+        <div className="props-section-title">
+          Steps
+          {steps !== recommended.steps && (
+            <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6, fontWeight: 400 }}>
+              (recommended {recommended.steps})
+            </span>
+          )}
+        </div>
         <div className="props-slider-row">
           <input type="range" className="props-slider" min={1} max={50} value={steps}
             onChange={(e) => updateWidgetValue(nodeId, "steps", parseInt(e.target.value))} />
@@ -63,7 +89,14 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
       </div>
 
       <div className="props-section">
-        <div className="props-section-title">CFG Scale</div>
+        <div className="props-section-title">
+          CFG Scale
+          {cfg !== recommended.cfg && (
+            <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6, fontWeight: 400 }}>
+              (recommended {recommended.cfg})
+            </span>
+          )}
+        </div>
         <div className="props-slider-row">
           <input type="range" className="props-slider" min={1} max={20} step={0.5} value={cfg}
             onChange={(e) => updateWidgetValue(nodeId, "cfg", parseFloat(e.target.value))} />

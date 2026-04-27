@@ -23,7 +23,7 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
   const previewUrl = nodeData.widgetValues?._previewUrl || null;
 
   // Get available models from ComfyUI (filtered for image generation)
-  const ALLOWED_MODELS = ["flux-2-klein-4b", "flux-2-klein-9b", "flux2_dev_fp8mixed", "flux2-dev.safetensors"];
+  const ALLOWED_MODELS = ["flux-2-klein-4b", "flux-2-klein-9b", "flux2_dev_fp8mixed", "flux1-dev", "z_image_turbo"];
   const [checkpoints, setCheckpoints] = useState<string[]>([]);
   useEffect(() => {
     const models: string[] = [];
