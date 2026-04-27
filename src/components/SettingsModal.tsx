@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { getCustomRules, setCustomRules } from "../ai/rules";
 import { getComfyUrl, setComfyUrl } from "../api/comfyApi";
+import ModelLibrary from "./ModelLibrary";
 
 interface ApiKeys {
   google: string;
@@ -33,6 +35,7 @@ export default function SettingsModal({ open, onClose }: Props) {
   const [aiRules, setAiRules] = useState("");
   const [keys, setKeys] = useState<ApiKeys>({ google: "", openai: "", claude: "", elevenlabs: "", kling: "", tiktok_client_key: "", tiktok_client_secret: "" });
   const [comfyServer, setComfyServer] = useState("");
+  const [modelsOpen, setModelsOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -68,6 +71,7 @@ export default function SettingsModal({ open, onClose }: Props) {
   ];
 
   return (
+    <>
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -117,6 +121,16 @@ export default function SettingsModal({ open, onClose }: Props) {
             </div>
           ))}
 
+          <div className="settings-section-title" style={{ marginTop: 16 }}>Models Library</div>
+          <p className="settings-hint">Browse all models installed on the ComfyUI backend, grouped by category.</p>
+          <button
+            className="settings-preset-btn"
+            style={{ marginTop: 4 }}
+            onClick={() => setModelsOpen(true)}
+          >
+            📚 Browse Models Library
+          </button>
+
           <div className="settings-section-title" style={{ marginTop: 16 }}>AI Assistant Rules</div>
           <p className="settings-hint">Custom instructions for the AI assistant. These are added to every conversation.</p>
           <textarea
@@ -134,5 +148,24 @@ export default function SettingsModal({ open, onClose }: Props) {
         </div>
       </div>
     </div>
+    {modelsOpen && createPortal(
+      <div className="modal-backdrop" onClick={() => setModelsOpen(false)} style={{ zIndex: 10000 }}>
+        <div
+          className="modal-content"
+          onClick={(e) => e.stopPropagation()}
+          style={{ width: 720, maxWidth: "90vw", height: "80vh", display: "flex", flexDirection: "column", padding: 0, overflow: "hidden" }}
+        >
+          <div className="modal-header" style={{ flexShrink: 0 }}>
+            <span className="modal-title">Models Library</span>
+            <button className="modal-close" onClick={() => setModelsOpen(false)}>✕</button>
+          </div>
+          <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column" }}>
+            <ModelLibrary />
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )}
+    </>
   );
 }

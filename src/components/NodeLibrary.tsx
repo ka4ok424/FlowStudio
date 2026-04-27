@@ -101,29 +101,39 @@ export default function NodeLibrary() {
             "fs:tiktokPublish",
           ]);
 
-          // Local image generation + universal helpers (Prompt/Preview/Import/Character/Scene/Storyboard).
-          // Anything image-output goes here even if intended for a video pipeline downstream.
-          const localTypes = new Set([
+          // Main — universal helpers used across any pipeline (Prompt/Preview/Import).
+          // Always rendered first so they're easy to grab.
+          const mainTypes = new Set(["fs:prompt", "fs:preview", "fs:import"]);
+          // Pin order so it's deterministic (Prompt → Preview → Import).
+          const mainOrder = ["fs:prompt", "fs:preview", "fs:import"];
+
+          // Image — local image generation + composition helpers.
+          // (Was "Local"; Prompt/Preview/Import moved to Main.)
+          const imageTypes = new Set([
             "fs:localGenerate", "fs:img2img", "fs:kontext", "fs:nextFrame",
             "fs:inpaint", "fs:inpaintCN", "fs:controlNet",
-            "fs:prompt", "fs:preview", "fs:import",
             "fs:characterCard", "fs:scene", "fs:storyboard",
           ]);
 
-          // Pinned to the bottom of Local — pipeline-organisation nodes (character/scene/storyboard).
-          const localBottomTypes = ["fs:characterCard", "fs:scene", "fs:storyboard"];
-          const localNodesRaw = allNative.filter((n) => localTypes.has(n.type));
-          const localNodes = [
-            ...localNodesRaw.filter((n) => !localBottomTypes.includes(n.type)),
-            ...localBottomTypes
-              .map((t) => localNodesRaw.find((n) => n.type === t))
+          // Pinned to the bottom of Image — pipeline-organisation nodes
+          // (character/scene/storyboard).
+          const imageBottomTypes = ["fs:characterCard", "fs:scene", "fs:storyboard"];
+          const mainNodes = mainOrder
+            .map((t) => allNative.find((n) => n.type === t))
+            .filter((n): n is NonNullable<typeof n> => Boolean(n));
+          const imageNodesRaw = allNative.filter((n) => imageTypes.has(n.type));
+          const imageNodes = [
+            ...imageNodesRaw.filter((n) => !imageBottomTypes.includes(n.type)),
+            ...imageBottomTypes
+              .map((t) => imageNodesRaw.find((n) => n.type === t))
               .filter((n): n is NonNullable<typeof n> => Boolean(n)),
           ];
           const utilityNodes = allNative.filter((n) => utilityTypes.has(n.type));
           const visualNodes = allNative.filter((n) => visualTypes.has(n.type));
           const videoNodes = allNative.filter((n) => videoTypes.has(n.type));
           const cloudNodes = allNative.filter((n) =>
-            !localTypes.has(n.type) &&
+            !mainTypes.has(n.type) &&
+            !imageTypes.has(n.type) &&
             !utilityTypes.has(n.type) &&
             !visualTypes.has(n.type) &&
             !videoTypes.has(n.type)
@@ -157,10 +167,17 @@ export default function NodeLibrary() {
 
           return (
             <div className="library-category">
-              {localNodes.length > 0 && (
+              {mainNodes.length > 0 && (
                 <>
-                  <div className="native-section-header">Local</div>
-                  {renderGrid(localNodes)}
+                  <div className="native-section-header">Main</div>
+                  {renderGrid(mainNodes)}
+                </>
+              )}
+              {imageNodes.length > 0 && (
+                <>
+                  <div className="native-section-divider" />
+                  <div className="native-section-header">Image</div>
+                  {renderGrid(imageNodes)}
                 </>
               )}
               {utilityNodes.length > 0 && (

@@ -63,7 +63,6 @@ import TextNode from "./nodes/TextNode";
 import StickerNode from "./nodes/StickerNode";
 import AiChat from "./components/AiChat";
 import MediaLibrary from "./components/MediaLibrary";
-import ModelLibrary from "./components/ModelLibrary";
 import { useMediaStore } from "./store/mediaStore";
 import NodeLibrary from "./components/NodeLibrary";
 import Toolbar from "./components/Toolbar";
@@ -645,7 +644,7 @@ function App() {
   const togglePanel = useLogStore((s) => s.togglePanel);
   const [showAiChat, setShowAiChat] = useState(false);
   const [rightTab, setRightTab] = useState<"inspector" | "ai">("inspector");
-  const [sidebarTab, setSidebarTab] = useState<"nodes" | "media" | "models">("nodes");
+  const [sidebarTab, setSidebarTab] = useState<"nodes" | "media">("nodes");
   const [logs, setLogs] = useState<string[]>([]);
 
   // Save undo state when user starts dragging a node
@@ -701,9 +700,8 @@ function App() {
           <div className="sidebar-tabs">
             <button className={`sidebar-tab ${sidebarTab === "nodes" ? "active" : ""}`} onClick={() => setSidebarTab("nodes")}>Nodes</button>
             <button className={`sidebar-tab ${sidebarTab === "media" ? "active" : ""}`} onClick={() => setSidebarTab("media")}>Media</button>
-            <button className={`sidebar-tab ${sidebarTab === "models" ? "active" : ""}`} onClick={() => setSidebarTab("models")}>Models</button>
           </div>
-          {sidebarTab === "nodes" ? <NodeLibrary /> : sidebarTab === "media" ? <MediaLibrary /> : <ModelLibrary />}
+          {sidebarTab === "nodes" ? <NodeLibrary /> : <MediaLibrary />}
         </div>
         <div className="canvas-wrapper" onDrop={onDrop} onDragOver={onDragOver} onMouseMove={onCanvasMouseMove} onMouseLeave={onCanvasMouseLeave}>
           <ReactFlow

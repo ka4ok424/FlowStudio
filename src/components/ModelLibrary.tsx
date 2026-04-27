@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useWorkflowStore } from "../store/workflowStore";
-import { getComfyDirectUrl } from "../api/comfyApi";
 
 /**
  * Model Manager — read-only inventory of models known to the connected ComfyUI
@@ -77,8 +76,6 @@ export default function ModelLibrary() {
   const totalModels = buckets.reduce((s, b) => s + b.models.length, 0);
 
   // Open real ComfyUI in a new tab (direct URL, not via Vite proxy).
-  const openComfyUI = () => window.open(getComfyDirectUrl(), "_blank");
-  const openComfyQueue = () => window.open(`${getComfyDirectUrl()}/queue`, "_blank");
 
   const toggleCat = (c: string) => {
     setOpenCats((prev) => {
@@ -91,28 +88,8 @@ export default function ModelLibrary() {
   return (
     <div className="node-library-content">
       <div style={{ padding: "10px 12px 6px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <div style={{ marginBottom: 6 }}>
           <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Models</h2>
-          <div style={{ display: "flex", gap: 4 }}>
-            <button
-              onClick={openComfyUI}
-              title={`Open ComfyUI UI in new tab (${getComfyDirectUrl()})`}
-              style={{
-                fontSize: 11, padding: "3px 8px",
-                background: "transparent", border: "1px solid var(--border)",
-                borderRadius: 4, color: "var(--text-muted)", cursor: "pointer",
-              }}
-            >Workflows ↗</button>
-            <button
-              onClick={openComfyQueue}
-              title="Open ComfyUI queue / history in new tab"
-              style={{
-                fontSize: 11, padding: "3px 8px",
-                background: "transparent", border: "1px solid var(--border)",
-                borderRadius: 4, color: "var(--text-muted)", cursor: "pointer",
-              }}
-            >Queue ↗</button>
-          </div>
         </div>
         <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
           {totalModels} models across {buckets.length} categories

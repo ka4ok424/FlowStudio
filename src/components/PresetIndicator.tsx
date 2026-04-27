@@ -42,7 +42,7 @@ function meaningfulFlags(argv: string[]): string[] {
 }
 
 const ICON: Record<Preset, string> = {
-  PHOTO: "📷", VIDEO: "🎥", OTHER: "⚙", OFFLINE: "·",
+  PHOTO: "📷", VIDEO: "🎥", OTHER: "🖥", OFFLINE: "·",
 };
 const COLOR: Record<Preset, string> = {
   PHOTO: "#3b82f6", VIDEO: "#e85d75", OTHER: "#f5a524", OFFLINE: "#666",
