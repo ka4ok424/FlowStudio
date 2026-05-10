@@ -29,7 +29,7 @@ const SLOT_COLORS: Record<string, string> = {
   CLIP: "#f0c040", VAE: "#ff7043", CONDITIONING: "#ef9a9a",
   MASK: "#4dd0e1", INT: "#81c784", FLOAT: "#81c784",
   STRING: "#ce93d8", COMBO: "#90a4ae", BOOLEAN: "#e6ee9c",
-  CONTROL_NET: "#a1887f", VIDEO: "#e85d75", AUDIO: "#e8a040",
+  CONTROL_NET: "#a1887f", VIDEO: "#e85d75", AUDIO: "#ec4899",
   TEXT: "#f0c040", CHARACTER: "#a78bfa", MEDIA: "#888888",
 };
 export function getSlotColor(type: string): string {
@@ -321,6 +321,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         ControlNetNode: "controlNetNode",
         InpaintCNNode: "inpaintCNNode",
         WanVideoNode: "wanVideoNode",
+        WanSmoothNode: "wanSmoothNode",
+        MmAudioNode: "mmaudioNode",
+        OmniVoiceTtsNode: "omniVoiceTtsNode",
+        OmniVoiceCloneNode: "omniVoiceCloneNode",
         WanAnimateNode: "wanAnimateNode",
         HunyuanVideoNode: "hunyuanVideoNode",
         HunyuanAvatarNode: "hunyuanAvatarNode",

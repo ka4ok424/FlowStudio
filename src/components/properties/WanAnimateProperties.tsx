@@ -6,8 +6,8 @@ function WanAnimateProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const steps = data.widgetValues?.steps ?? 30;
   const cfg = data.widgetValues?.cfg ?? 6.0;
   const shift = data.widgetValues?.shift ?? 5.0;
-  const width = data.widgetValues?.width ?? 832;
-  const height = data.widgetValues?.height ?? 480;
+  const width = data.widgetValues?.width ?? 720;
+  const height = data.widgetValues?.height ?? 1280;
   const numFrames = data.widgetValues?.numFrames ?? 81;
   const fps = data.widgetValues?.fps ?? 16;
   const seed = data.widgetValues?.seed ?? "";
@@ -43,14 +43,14 @@ function WanAnimateProperties({ nodeId, data }: { nodeId: string; data: any }) {
         <div style={{ display: "flex", gap: 6 }}>
           <input className="props-input" type="number" value={width ?? ""} min={64} max={2048}
             onChange={(e) => updateWidgetValue(nodeId, "width", e.target.value === "" ? "" : Math.min(2048, parseInt(e.target.value)))}
-            onBlur={() => { if (!width || isNaN(width)) updateWidgetValue(nodeId, "width", 832); }} style={{ width: "50%" }} />
+            onBlur={() => { if (!width || isNaN(width)) updateWidgetValue(nodeId, "width", 720); }} style={{ width: "50%" }} />
           <span style={{ color: "var(--text-muted)", alignSelf: "center" }}>x</span>
           <input className="props-input" type="number" value={height ?? ""} min={64} max={2048}
             onChange={(e) => updateWidgetValue(nodeId, "height", e.target.value === "" ? "" : Math.min(2048, parseInt(e.target.value)))}
-            onBlur={() => { if (!height || isNaN(height)) updateWidgetValue(nodeId, "height", 480); }} style={{ width: "50%" }} />
+            onBlur={() => { if (!height || isNaN(height)) updateWidgetValue(nodeId, "height", 1280); }} style={{ width: "50%" }} />
         </div>
         <div className="props-aspect-row" style={{ marginTop: 10 }}>
-          {[{w:832,h:480,l:"16:9"},{w:480,h:832,l:"9:16"},{w:672,h:672,l:"1:1"}].map((s) => (
+          {[{w:1280,h:720,l:"16:9"},{w:720,h:1280,l:"9:16"},{w:672,h:672,l:"1:1"}].map((s) => (
             <button key={s.l} className={`props-aspect-btn ${width === s.w && height === s.h ? "active" : ""}`}
               onClick={() => { updateWidgetValue(nodeId, "width", s.w); updateWidgetValue(nodeId, "height", s.h); }}>{s.l}</button>
           ))}

@@ -25,11 +25,18 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const model = data.widgetValues?.model || checkpoints[0] || "";
   const steps = data.widgetValues?.steps ?? 4;
   const cfg = data.widgetValues?.cfg ?? 7;
-  const width = data.widgetValues?.width ?? 512;
-  const height = data.widgetValues?.height ?? 512;
+  const width = data.widgetValues?.width ?? 720;
+  const height = data.widgetValues?.height ?? 1280;
   const seed = data.widgetValues?.seed ?? "";
   const count = data.widgetValues?.count ?? 1;
   const recommended = getModelDefaults(model);
+
+  const ASPECTS = [
+    { w: 1024, h: 1024, l: "1:1" },
+    { w: 1080, h: 1350, l: "4:5" },
+    { w: 1280, h: 720,  l: "16:9" },
+    { w: 720,  h: 1280, l: "9:16" },
+  ];
 
   return (
     <>
@@ -58,7 +65,7 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
             onChange={(e) => updateWidgetValue(nodeId, "width", e.target.value === "" ? "" : parseInt(e.target.value) || "")}
             onBlur={(e) => {
               const n = parseInt(e.target.value);
-              const snapped = !n || isNaN(n) ? 512 : Math.max(64, Math.min(2048, Math.round(n / 64) * 64));
+              const snapped = !n || isNaN(n) ? 720 : Math.max(64, Math.min(2048, Math.round(n / 64) * 64));
               updateWidgetValue(nodeId, "width", snapped);
             }} />
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>×</span>
@@ -66,9 +73,19 @@ function LocalGenProperties({ nodeId, data }: { nodeId: string; data: any }) {
             onChange={(e) => updateWidgetValue(nodeId, "height", e.target.value === "" ? "" : parseInt(e.target.value) || "")}
             onBlur={(e) => {
               const n = parseInt(e.target.value);
-              const snapped = !n || isNaN(n) ? 512 : Math.max(64, Math.min(2048, Math.round(n / 64) * 64));
+              const snapped = !n || isNaN(n) ? 1280 : Math.max(64, Math.min(2048, Math.round(n / 64) * 64));
               updateWidgetValue(nodeId, "height", snapped);
             }} />
+        </div>
+        <div className="props-aspect-row" style={{ marginTop: 8 }}>
+          {ASPECTS.map((s) => (
+            <button key={s.l}
+              className={`props-aspect-btn ${width === s.w && height === s.h ? "active" : ""}`}
+              onClick={() => {
+                updateWidgetValue(nodeId, "width", s.w);
+                updateWidgetValue(nodeId, "height", s.h);
+              }}>{s.l}</button>
+          ))}
         </div>
       </div>
 

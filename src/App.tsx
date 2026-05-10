@@ -51,6 +51,10 @@ import EnhanceNode from "./nodes/EnhanceNode";
 import ControlNetNode from "./nodes/ControlNetNode";
 import InpaintCNNode from "./nodes/InpaintCNNode";
 import WanVideoNode from "./nodes/WanVideoNode";
+import WanSmoothNode from "./nodes/WanSmoothNode";
+import MmAudioNode from "./nodes/MmAudioNode";
+import OmniVoiceTtsNode from "./nodes/OmniVoiceTtsNode";
+import OmniVoiceCloneNode from "./nodes/OmniVoiceCloneNode";
 import WanAnimateNode from "./nodes/WanAnimateNode";
 import HunyuanVideoNode from "./nodes/HunyuanVideoNode";
 import HunyuanAvatarNode from "./nodes/HunyuanAvatarNode";
@@ -109,6 +113,10 @@ const nodeTypes = {
   controlNetNode: ControlNetNode,
   inpaintCNNode: InpaintCNNode,
   wanVideoNode: WanVideoNode,
+  wanSmoothNode: WanSmoothNode,
+  mmaudioNode: MmAudioNode,
+  omniVoiceTtsNode: OmniVoiceTtsNode,
+  omniVoiceCloneNode: OmniVoiceCloneNode,
   wanAnimateNode: WanAnimateNode,
   hunyuanVideoNode: HunyuanVideoNode,
   hunyuanAvatarNode: HunyuanAvatarNode,

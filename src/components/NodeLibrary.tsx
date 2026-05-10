@@ -96,9 +96,16 @@ export default function NodeLibrary() {
           // Cloud video (Veo videoGen / videoGenPro) lives in Cloud / API since
           // its boundary is "where does it run?", not "what does it produce?".
           const videoTypes = new Set([
-            "fs:ltxVideo", "fs:wanVideo", "fs:wanAnimate",
+            "fs:ltxVideo", "fs:wanVideo", "fs:wanSmooth", "fs:wanAnimate",
             "fs:hunyuanVideo", "fs:hunyuanAvatar",
             "fs:tiktokPublish",
+          ]);
+
+          // Audio — local TTS / voice cloning / video-driven audio (ComfyUI-based, runs on PC GPU).
+          const audioTypes = new Set([
+            "fs:omnivoiceTts",
+            "fs:omnivoiceClone",
+            "fs:mmaudio",
           ]);
 
           // Main — universal helpers used across any pipeline (Prompt/Preview/Import).
@@ -131,12 +138,14 @@ export default function NodeLibrary() {
           const utilityNodes = allNative.filter((n) => utilityTypes.has(n.type));
           const visualNodes = allNative.filter((n) => visualTypes.has(n.type));
           const videoNodes = allNative.filter((n) => videoTypes.has(n.type));
+          const audioNodes = allNative.filter((n) => audioTypes.has(n.type));
           const cloudNodes = allNative.filter((n) =>
             !mainTypes.has(n.type) &&
             !imageTypes.has(n.type) &&
             !utilityTypes.has(n.type) &&
             !visualTypes.has(n.type) &&
-            !videoTypes.has(n.type)
+            !videoTypes.has(n.type) &&
+            !audioTypes.has(n.type)
           );
 
           const renderGrid = (nodes: typeof allNative) => (
@@ -206,6 +215,13 @@ export default function NodeLibrary() {
                   <div className="native-section-divider" />
                   <div className="native-section-header">Video</div>
                   {renderGrid(videoNodes)}
+                </>
+              )}
+              {audioNodes.length > 0 && (
+                <>
+                  <div className="native-section-divider" />
+                  <div className="native-section-header">Audio</div>
+                  {renderGrid(audioNodes)}
                 </>
               )}
             </div>

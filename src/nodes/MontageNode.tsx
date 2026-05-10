@@ -1,8 +1,23 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
+import { queuePrompt, getImageUrl, uploadImage, getComfyUrl, stopAll } from "../api/comfyApi";
+import { addGenerationToLibrary } from "../store/mediaStore";
+import { addToHistory } from "../utils/historyLimit";
+import { log } from "../store/logStore";
+import { buildMontageWorkflow, type MontageClipParam } from "../workflows/montage";
 
 const VIDEO_COLOR = "#e85d75";
+const CLIP_COLOR = "#a78bfa";
+
+// Pick a "nice" tick step so the ruler shows ~targetTicks labels without crowding.
+function pickRulerStep(totalSec: number, targetTicks: number): number {
+  const raw = totalSec / Math.max(1, targetTicks);
+  const nice = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
+  for (const s of nice) if (s >= raw) return s;
+  return Math.ceil(raw / 60) * 60;
+}
 
 interface ClipInfo {
   handleId: string;       // e.g. "video-0"
@@ -50,7 +65,22 @@ function MontageNode({ id, data, selected }: NodeProps) {
   const clipCount: number = Math.max(MIN_CLIPS, Math.min(MAX_CLIPS, wv.clipCount ?? 2));
   const audioMode: "keep" | "mute" = wv.audioMode || "keep";
   const trimsState: Record<string, { start: number; end: number }> = wv._clipTrims || {};
+  const clipMeta: Record<string, { fps: number; width: number; height: number; hasAudio?: boolean }> = wv._clipMeta || {};
   const _previewUrl: string | null = wv._previewUrl || null;
+  const _genTime: number | undefined = wv._genTime;
+
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef(false);
+  const [showModal, setShowModal] = useState(false);
+
+  // Frame-scrub during trim drag.
+  // Inline mode: live-seek the main preview video to show the frame being trimmed.
+  // Modal mode: hidden video + canvas tooltip floating near the cursor.
+  const seekVideoRef = useRef<HTMLVideoElement | null>(null);
+  const seekCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const seekStateRef = useRef<{ pending: number | null; active: boolean }>({ pending: null, active: false });
+  const [scrubTip, setScrubTip] = useState<{ x: number; y: number; clipIndex: number; time: number } | null>(null);
 
   // Resolve clip URLs from upstream
   const clipUrls: (string | null)[] = [];
@@ -96,22 +126,48 @@ function MontageNode({ id, data, selected }: NodeProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clips.length, clips.map((c) => c.url).join("|")]);
 
-  // Switch <video> src when current clip changes
+  // Switch <video> src when current clip changes. Resume playback if we were
+  // mid-stream so clip-to-clip transitions don't pause.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
     const c = clips[currentIdx];
     if (!c || !c.url) return;
-    if (v.src !== c.url) v.src = c.url;
-    // Seek to trim start once metadata loaded
-    const onLoaded = () => {
-      v.currentTime = Math.min(c.trim.start, (v.duration || 0) - 0.01);
-      v.removeEventListener("loadedmetadata", onLoaded);
+    const wasPlaying = playing;
+    const wantSrc = c.url;
+    const seekAndMaybePlay = () => {
+      try {
+        v.currentTime = Math.min(c.trim.start, (v.duration || 0) - 0.01);
+      } catch { /* ignore */ }
+      if (wasPlaying) v.play().catch(() => {});
     };
-    v.addEventListener("loadedmetadata", onLoaded);
-    return () => v.removeEventListener("loadedmetadata", onLoaded);
+    if (v.src !== wantSrc) {
+      // Hide flash of old frame while loading
+      v.style.opacity = "0";
+      v.src = wantSrc;
+      const onLoaded = () => {
+        v.removeEventListener("loadedmetadata", onLoaded);
+        seekAndMaybePlay();
+        v.style.opacity = "1";
+      };
+      v.addEventListener("loadedmetadata", onLoaded);
+      return () => v.removeEventListener("loadedmetadata", onLoaded);
+    } else {
+      seekAndMaybePlay();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIdx, clips[currentIdx]?.url]);
+
+  // Preload neighbouring clip so the next switch is instant (decoder warm).
+  useEffect(() => {
+    const next = clips[currentIdx + 1];
+    if (!next?.url) return;
+    const pre = document.createElement("video");
+    pre.preload = "auto";
+    pre.muted = true;
+    pre.src = next.url;
+    return () => { pre.removeAttribute("src"); pre.load(); };
+  }, [currentIdx, clips]);
 
   // Apply mute mode
   useEffect(() => {
@@ -120,15 +176,29 @@ function MontageNode({ id, data, selected }: NodeProps) {
     v.muted = audioMode === "mute";
   }, [audioMode, currentIdx]);
 
-  // Source duration auto-detect — load each connected URL silently
+  // Source metadata auto-detect — duration via loadedmetadata, fps via rVFC sampling
   useEffect(() => {
     let cancelled = false;
     for (const c of clips) {
-      if (durations[c.handleId]) continue;
+      if (durations[c.handleId] && clipMeta[c.handleId]?.fps) continue;
       const probe = document.createElement("video");
-      probe.preload = "metadata";
+      probe.preload = "auto";
+      probe.muted = true;
+      probe.playsInline = true;
       probe.crossOrigin = "anonymous";
-      probe.src = c.url!;
+      const finishMeta = (fps: number) => {
+        if (cancelled) return;
+        const cur = (useWorkflowStore.getState().nodes.find((n) => n.id === id)?.data as any)?.widgetValues?._clipMeta || {};
+        const p = probe as any;
+        const hasAudio = !!p.webkitAudioDecodedByteCount || !!p.mozHasAudio || !!(p.audioTracks && p.audioTracks.length > 0);
+        updateWidgetValue(id, "_clipMeta", {
+          ...cur,
+          [c.handleId]: { fps, width: probe.videoWidth, height: probe.videoHeight, hasAudio },
+        });
+        try { probe.pause(); } catch { /* ignore */ }
+        probe.removeAttribute("src");
+        probe.load();
+      };
       probe.onloadedmetadata = () => {
         if (cancelled) return;
         const d = probe.duration;
@@ -145,7 +215,32 @@ function MontageNode({ id, data, selected }: NodeProps) {
             });
           }
         }
+        // FPS sampling via requestVideoFrameCallback (5 deltas → median)
+        if ("requestVideoFrameCallback" in probe) {
+          const samples: number[] = [];
+          let prev = -1;
+          const onFrame = (_now: number, meta: any) => {
+            if (cancelled) return;
+            if (prev >= 0) {
+              const dt = meta.mediaTime - prev;
+              if (dt > 0) samples.push(dt);
+            }
+            prev = meta.mediaTime;
+            if (samples.length < 5) {
+              (probe as any).requestVideoFrameCallback(onFrame);
+            } else {
+              samples.sort((a, b) => a - b);
+              const median = samples[Math.floor(samples.length / 2)];
+              finishMeta(median > 0 ? Math.round(1 / median) : 24);
+            }
+          };
+          (probe as any).requestVideoFrameCallback(onFrame);
+          probe.play().catch(() => finishMeta(24));
+        } else {
+          finishMeta(24);
+        }
       };
+      probe.src = c.url!;
     }
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -221,8 +316,37 @@ function MontageNode({ id, data, selected }: NodeProps) {
     }
   }, [clips, totalDuration]);
 
-  // Trim handle dragging (per-clip start/end)
-  const onTrimDrag = useCallback((handleId: string, side: "start" | "end") => (e: React.PointerEvent) => {
+  // Throttled seek + frame-presented callback. Uses rVFC so we never queue more
+  // than one seek at a time — pending time is replaced; the next seek runs after
+  // the current frame is actually presented.
+  const scrubSeek = useCallback((v: HTMLVideoElement, t: number, onFrame?: () => void) => {
+    const st = seekStateRef.current;
+    if (st.active) { st.pending = t; return; }
+    st.active = true;
+    try {
+      const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : t + 1;
+      v.currentTime = Math.max(0, Math.min(t, dur - 0.001));
+    } catch { st.active = false; return; }
+    const done = () => {
+      st.active = false;
+      onFrame?.();
+      if (st.pending != null) {
+        const next = st.pending; st.pending = null;
+        scrubSeek(v, next, onFrame);
+      }
+    };
+    const va: any = v;
+    if (typeof va.requestVideoFrameCallback === "function") {
+      va.requestVideoFrameCallback(done);
+    } else {
+      const oneShot = () => { va.removeEventListener("seeked", oneShot); done(); };
+      va.addEventListener("seeked", oneShot);
+    }
+  }, []);
+
+  // Drag the whole trim window (slip edit — length unchanged, source in/out shift)
+  const onTrimShift = useCallback((handleId: string, scaleDur: number, onScrub?: (sourceTime: number, x: number, y: number) => void, onScrubEnd?: () => void) => (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).classList.contains("montage-trim-handle")) return;
     e.stopPropagation();
     const target = e.currentTarget as HTMLDivElement;
     const bar = target.parentElement;
@@ -230,28 +354,60 @@ function MontageNode({ id, data, selected }: NodeProps) {
     const rect = bar.getBoundingClientRect();
     const dur = durations[handleId];
     if (!dur) return;
+    const cur = trimsState[handleId] || { start: 0, end: dur };
     const startMouseX = e.clientX;
-    const startVal = trimsState[handleId]?.[side] ?? (side === "start" ? 0 : dur);
+    const startStart = cur.start;
+    const startEnd = cur.end;
 
     const onMove = (ev: PointerEvent) => {
-      const dx = ev.clientX - startMouseX;
-      const dpct = dx / rect.width;
-      let newVal = startVal + dpct * dur;
-      newVal = Math.max(0, Math.min(dur, newVal));
-      // Constrain start < end with min 0.1s gap
-      const cur = trimsState[handleId] || { start: 0, end: dur };
-      const next = { ...cur };
-      if (side === "start") {
-        next.start = Math.min(newVal, (cur.end ?? dur) - 0.1);
-      } else {
-        next.end = Math.max(newVal, (cur.start ?? 0) + 0.1);
-      }
-      updateWidgetValue(id, "_clipTrims", { ...trimsState, [handleId]: next });
+      const dt = ((ev.clientX - startMouseX) / rect.width) * scaleDur;
+      let ns = startStart + dt;
+      let ne = startEnd + dt;
+      if (ns < 0) { ne -= ns; ns = 0; }
+      if (ne > dur) { ns -= (ne - dur); ne = dur; }
+      updateWidgetValue(id, "_clipTrims", { ...trimsState, [handleId]: { start: ns, end: ne } });
+      onScrub?.(ns, ev.clientX, ev.clientY);
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+      onScrubEnd?.();
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }, [durations, trimsState, id, updateWidgetValue]);
+
+  // Trim handle drag (per-clip start/end). scaleDur = bar's time scale (output total).
+  const onTrimDrag = useCallback((handleId: string, side: "start" | "end", scaleDur: number, onScrub?: (sourceTime: number, x: number, y: number) => void, onScrubEnd?: () => void) => (e: React.PointerEvent) => {
+    e.stopPropagation();
+    const target = e.currentTarget as HTMLDivElement;
+    const bar = target.parentElement?.parentElement;
+    if (!bar) return;
+    const rect = bar.getBoundingClientRect();
+    const dur = durations[handleId];
+    if (!dur) return;
+    const startMouseX = e.clientX;
+    const cur = trimsState[handleId] || { start: 0, end: dur };
+    const startVal = cur[side];
+
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startMouseX;
+      const dpct = dx / rect.width;
+      let newVal = startVal + dpct * scaleDur;
+      newVal = Math.max(0, Math.min(dur, newVal));
+      const next = { ...cur };
+      if (side === "start") next.start = Math.min(newVal, cur.end - 0.1);
+      else next.end = Math.max(newVal, cur.start + 0.1);
+      updateWidgetValue(id, "_clipTrims", { ...trimsState, [handleId]: next });
+      onScrub?.(side === "start" ? next.start : next.end, ev.clientX, ev.clientY);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      onScrubEnd?.();
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -277,16 +433,240 @@ function MontageNode({ id, data, selected }: NodeProps) {
     updateWidgetValue(id, "clipCount", clipCount - 1);
   }, [clipCount, trimsState, id, updateWidgetValue]);
 
-  const onRunMontage = useCallback((e: React.MouseEvent) => {
+  const onRunMontage = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Phase 1 stub — render comes in Phase 2 (ffmpeg.wasm)
-    alert("Render coming in Phase 2 (ffmpeg.wasm). Phase 1 = preview + trim only.");
-  }, []);
+    if (!connectedCount) return;
+    setProcessing(true);
+    setError(null);
+    abortRef.current = false;
+    const startTime = Date.now();
+
+    try {
+      // Output params from clip 1
+      const meta1 = clipMeta[clips[0].handleId];
+      const outputFps = meta1?.fps && meta1.fps > 0 ? meta1.fps : 24;
+
+      const uploaded: MontageClipParam[] = [];
+      for (let i = 0; i < clips.length; i++) {
+        if (abortRef.current) throw new Error("Stopped");
+        const c = clips[i];
+        const fileName = `fs_montage_in_${id}_${i}_${Date.now()}.mp4`;
+        let upName: string;
+        if (c.url!.startsWith("data:")) {
+          upName = await uploadImage(c.url!, fileName);
+        } else {
+          const resp = await fetch(c.url!);
+          const blob = await resp.blob();
+          const dataUrl: string = await new Promise((r) => {
+            const rd = new FileReader();
+            rd.onloadend = () => r(rd.result as string);
+            rd.readAsDataURL(blob);
+          });
+          upName = await uploadImage(dataUrl, fileName);
+        }
+        const cMeta = clipMeta[c.handleId];
+        const nativeFps = cMeta?.fps && cMeta.fps > 0 ? cMeta.fps : outputFps;
+        const skipFrames = Math.max(0, Math.round(c.trim.start * nativeFps));
+        const totalFrames = Math.max(1, Math.round((c.trim.end - c.trim.start) * nativeFps));
+        uploaded.push({
+          filename: upName,
+          skipFrames,
+          frameCap: totalFrames,
+          // Resample clips 1..N to clip-0 fps for consistent concat; clip 0 stays native
+          forceRate: i === 0 ? 0 : outputFps,
+        });
+      }
+
+      // Only chain audio if user wants it AND every clip actually has an audio track —
+      // VHS_LoadVideo throws if asked to extract audio from a silent file, and AudioConcat
+      // can't bridge over a missing track.
+      const allHaveAudio = clips.every((c) => clipMeta[c.handleId]?.hasAudio);
+      const includeAudio = audioMode === "keep" && allHaveAudio;
+
+      const workflow = buildMontageWorkflow({
+        clips: uploaded,
+        outputFps,
+        includeAudio,
+      });
+
+      log("Montage rendering", { nodeId: id, nodeType: "fs:montage", nodeLabel: "Montage", details: `${connectedCount} clips @ ${outputFps}fps${includeAudio ? " +audio" : ""}` });
+      const result = await queuePrompt(workflow);
+      const promptId = result.prompt_id;
+
+      for (let attempt = 0; attempt < 600; attempt++) {
+        if (abortRef.current) { setError("Stopped"); setProcessing(false); return; }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        try {
+          const histRes = await fetch(`${getComfyUrl()}/api/history/${promptId}`);
+          if (!histRes.ok) continue;
+          const history = await histRes.json();
+          if (history[promptId]) {
+            const outputs = history[promptId].outputs;
+            for (const nId of Object.keys(outputs || {})) {
+              const media = outputs[nId]?.videos || outputs[nId]?.gifs || outputs[nId]?.images;
+              if (media && media.length > 0) {
+                const m = media[media.length - 1];
+                const apiUrl = getImageUrl(m.filename, m.subfolder, m.type);
+                updateWidgetValue(id, "_genTime", Date.now() - startTime);
+                updateWidgetValue(id, "_previewUrl", apiUrl);
+                const prevHist: string[] = (useWorkflowStore.getState().nodes.find((n) => n.id === id)?.data as any)?.widgetValues?._history || [];
+                const { history: newHist, index: newIdx } = await addToHistory(id, prevHist, apiUrl);
+                updateWidgetValue(id, "_history", newHist);
+                updateWidgetValue(id, "_historyIndex", newIdx);
+                log("Montage complete", { nodeId: id, nodeType: "fs:montage", nodeLabel: "Montage", status: "success", details: `${connectedCount} clips · ${totalDuration.toFixed(1)}s @ ${outputFps}fps` });
+                addGenerationToLibrary(apiUrl, {
+                  prompt: `montage ${connectedCount} clips`,
+                  model: "Concat",
+                  seed: "0",
+                  steps: 0,
+                  cfg: 0,
+                  width: meta1?.width || 0,
+                  height: meta1?.height || 0,
+                  nodeType: "fs:montage",
+                  duration: Date.now() - startTime,
+                }, "video");
+                setProcessing(false);
+                return;
+              }
+            }
+            const st = history[promptId].status;
+            if (st?.completed || st?.status_str === "error") {
+              const errMsg = history[promptId].status?.messages?.find((m: any) => m[0] === "execution_error");
+              setError(errMsg ? errMsg[1]?.exception_message?.slice(0, 120) : "Render failed");
+              log("Montage failed", { nodeId: id, nodeType: "fs:montage", nodeLabel: "Montage", status: "error" });
+              setProcessing(false);
+              return;
+            }
+          }
+        } catch { /* keep polling */ }
+      }
+      setError("Timeout"); setProcessing(false);
+    } catch (err: any) {
+      setError(err.message || String(err));
+      log("Montage error", { nodeId: id, nodeType: "fs:montage", nodeLabel: "Montage", status: "error", details: err.message || String(err) });
+      setProcessing(false);
+    }
+  }, [connectedCount, clips, clipMeta, audioMode, id, totalDuration, updateWidgetValue]);
 
   // Status
-  const status = !connectedCount ? "NO INPUT"
+  const status = processing ? "RENDERING..."
+    : !connectedCount ? "NO INPUT"
     : _previewUrl ? "READY"
     : "STALE";
+
+  // Render the staircase timeline. Used both inline (compact) and inside the
+  // popup modal (large, with bigger handles + denser ruler).
+  const renderTimeline = (modal: boolean) => {
+    let cum = 0;
+    const positions = clips.map((c) => {
+      const len = Math.max(0, c.trim.end - c.trim.start);
+      const out = { handleId: c.handleId, outStart: cum, outLen: len };
+      cum += len;
+      return out;
+    });
+    const scaleDur = totalDuration > 0 ? totalDuration : 0.0001;
+    const step = pickRulerStep(scaleDur, modal ? 16 : 6);
+    const ticks: number[] = [];
+    for (let t = 0; t <= scaleDur + 1e-6; t += step) ticks.push(Math.round(t * 100) / 100);
+
+    const drawTooltipFrame = () => {
+      const v = seekVideoRef.current; const c = seekCanvasRef.current;
+      if (!v || !c || !v.videoWidth) return;
+      const aspect = v.videoWidth / v.videoHeight;
+      const W = 240; const H = Math.round(W / aspect);
+      if (c.width !== W) c.width = W;
+      if (c.height !== H) c.height = H;
+      const ctx = c.getContext("2d"); if (!ctx) return;
+      ctx.drawImage(v, 0, 0, W, H);
+    };
+    // Same scrub behaviour everywhere: hidden video decoder → canvas → floating
+    // tooltip pinned to cursor. Works in inline node and in modal alike.
+    const buildScrub = (i: number, clipUrl: string) => ({
+      onScrub: (sourceTime: number, x: number, y: number) => {
+        const v = seekVideoRef.current; if (!v) return;
+        if (v.src !== clipUrl) v.src = clipUrl;
+        setScrubTip({ x, y, clipIndex: i, time: sourceTime });
+        scrubSeek(v, sourceTime, drawTooltipFrame);
+      },
+      onScrubEnd: () => {
+        setScrubTip(null);
+        const v = seekVideoRef.current;
+        if (v) { try { v.pause(); } catch { /* ignore */ } v.removeAttribute("src"); v.load(); }
+        seekStateRef.current = { pending: null, active: false };
+      },
+    });
+
+    return (
+      <div className={`montage-timeline nodrag ${modal ? "in-modal" : ""}`} onClick={(e) => e.stopPropagation()}>
+        {!modal && (
+          <div
+            className="montage-timeline-header"
+            onClick={(e) => { e.stopPropagation(); setShowModal(true); }}
+            style={{ cursor: "pointer", userSelect: "none" }}
+            title="Open full editor"
+          >
+            <span className="montage-timeline-icon">⛶</span>
+            <span className="montage-timeline-title">Trim sources</span>
+            <span className="montage-timeline-meta">{fmtTime(totalDuration)}s output</span>
+          </div>
+        )}
+        <div className="montage-tracks-area">
+          <div className="montage-tracks-inner">
+            <div className="montage-source-row montage-ruler-row">
+              <span className="montage-source-tag" style={{ visibility: "hidden" }}>C0</span>
+              <div className="montage-source-bar-wrap">
+                <div className="montage-timeline-ruler">
+                  {ticks.map((t) => (
+                    <div key={t} className="montage-ruler-tick" style={{ left: `${(t / scaleDur) * 100}%` }}>
+                      <span className="montage-ruler-label">{t % 1 === 0 ? `${t}s` : `${t.toFixed(1)}s`}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <span className="montage-source-meta" style={{ visibility: "hidden" }}>src 0s</span>
+            </div>
+            {clips.map((clip, i) => {
+              const dur = clip.duration || 1;
+              const pos = positions[i];
+              const leftPct = (pos.outStart / scaleDur) * 100;
+              const widthPct = (pos.outLen / scaleDur) * 100;
+              const scrub = buildScrub(i, clip.url!);
+              return (
+                <div key={clip.handleId} className="montage-source-row">
+                  <span className="montage-source-tag" style={{ background: CLIP_COLOR + "22", borderColor: CLIP_COLOR, color: CLIP_COLOR }}>
+                    C{i + 1}
+                  </span>
+                  <div className="montage-source-bar-wrap">
+                    <div className="montage-timeline-bar">
+                      {ticks.map((t) => (
+                        <div key={t} className="montage-bar-tick" style={{ left: `${(t / scaleDur) * 100}%` }} />
+                      ))}
+                      <div
+                        className="montage-timeline-trim"
+                        style={{
+                          left: `${leftPct}%`,
+                          width: `${widthPct}%`,
+                          background: CLIP_COLOR + "55",
+                          borderColor: CLIP_COLOR,
+                          cursor: "grab",
+                        }}
+                        onPointerDown={onTrimShift(clip.handleId, scaleDur, scrub.onScrub, scrub.onScrubEnd)}
+                      >
+                        <div className="montage-trim-handle left" onPointerDown={onTrimDrag(clip.handleId, "start", scaleDur, scrub.onScrub, scrub.onScrubEnd)} />
+                        <div className="montage-timeline-label">{fmtTime(pos.outLen)}s</div>
+                        <div className="montage-trim-handle right" onPointerDown={onTrimDrag(clip.handleId, "end", scaleDur, scrub.onScrub, scrub.onScrubEnd)} />
+                      </div>
+                    </div>
+                  </div>
+                  <span className="montage-source-meta">src {fmtTime(dur)}s</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Highlights
   const inHL = connectingDir === "source" && (connectingType === "VIDEO" || connectingType === "MEDIA" || connectingType === "*") ? "highlight" : "";
@@ -367,15 +747,32 @@ function MontageNode({ id, data, selected }: NodeProps) {
                 {audioMode === "mute" ? "🔇" : "🔊"}
               </button>
             </div>
-            {/* Progress bar with clip dividers */}
-            <div className="montage-progress" onClick={onSeekProgress}>
-              <div className="montage-progress-fill" style={{ width: `${totalDuration ? (montageTime / totalDuration) * 100 : 0}%` }} />
-              {clips.slice(0, -1).map((_, i) => {
-                const cumulative = clips.slice(0, i + 1).reduce((s, c) => s + (c.trim.end - c.trim.start), 0);
+            {/* Sequence strip — colored block per clip, width = trimmed/total. Click to seek. */}
+            <div className="montage-sequence" onClick={onSeekProgress} title="Click to seek">
+              {clips.map((clip, i) => {
+                const widthPct = totalDuration > 0 ? ((clip.trim.end - clip.trim.start) / totalDuration) * 100 : 0;
+                const active = i === currentIdx;
                 return (
-                  <div key={i} className="montage-progress-divider" style={{ left: `${(cumulative / totalDuration) * 100}%` }} />
+                  <div
+                    key={clip.handleId}
+                    className={`montage-seq-clip ${active ? "active" : ""}`}
+                    style={{
+                      width: `${widthPct}%`,
+                      background: CLIP_COLOR,
+                      borderColor: active ? "#fff" : CLIP_COLOR,
+                      // Subtle alternating shade so adjacent clips remain distinguishable with one colour
+                      filter: i % 2 === 1 ? "brightness(0.82)" : undefined,
+                    }}
+                  >
+                    <span className="montage-seq-label">C{i + 1}</span>
+                    <span className="montage-seq-dur">{fmtTime(clip.trim.end - clip.trim.start)}s</span>
+                  </div>
                 );
               })}
+              <div
+                className="montage-seq-playhead"
+                style={{ left: `${totalDuration ? (montageTime / totalDuration) * 100 : 0}%` }}
+              />
             </div>
           </>
         ) : (
@@ -393,60 +790,92 @@ function MontageNode({ id, data, selected }: NodeProps) {
         </div>
       )}
 
+      {error && <div className="nanob-error nodrag" onClick={(e) => e.stopPropagation()}>{error}</div>}
+
       {connectedCount > 0 && (
         <div className="montage-actions nodrag" onClick={(e) => e.stopPropagation()}>
-          <button className="montage-run-btn" onClick={onRunMontage} title="Render concatenated MP4 (Phase 2)">
-            <span style={{ fontSize: 12 }}>▶</span> Run Montage
-          </button>
+          {processing ? (
+            <button className="montage-run-btn generating" onClick={(e) => {
+              e.stopPropagation();
+              abortRef.current = true;
+              stopAll().catch(() => {});
+            }} title="Stop">
+              <span style={{ fontSize: 12 }}>■</span> Stop
+            </button>
+          ) : (
+            <button className="montage-run-btn" onClick={onRunMontage} title="Concatenate clips into a single MP4 on ComfyUI">
+              <span style={{ fontSize: 12 }}>▶</span> Run Montage
+            </button>
+          )}
         </div>
       )}
 
-      {/* Timeline section with trim handles per clip */}
-      {connectedCount > 0 && (
-        <div className="montage-timeline nodrag" onClick={(e) => e.stopPropagation()}>
-          <div className="montage-timeline-header">
-            <span className="montage-timeline-icon">≡</span>
-            <span className="montage-timeline-title">Timeline</span>
-            <span className="montage-timeline-meta">{fmtTime(totalDuration)}s · 1.0×</span>
-          </div>
-          <div className="montage-timeline-tracks">
-            {clips.map((clip, i) => {
-              const dur = clip.duration || 1;
-              const trimW = ((clip.trim.end - clip.trim.start) / dur) * 100;
-              const trimL = (clip.trim.start / dur) * 100;
-              return (
-                <div key={clip.handleId} className="montage-timeline-track">
-                  <div className="montage-timeline-bar">
-                    {/* Full source duration as a faint background */}
-                    <div className="montage-timeline-source" />
-                    {/* Trimmed region */}
-                    <div
-                      className="montage-timeline-trim"
-                      style={{ left: `${trimL}%`, width: `${trimW}%` }}
-                    >
-                      <div
-                        className="montage-trim-handle left"
-                        onPointerDown={onTrimDrag(clip.handleId, "start")}
-                      />
-                      <div className="montage-timeline-label">C{i + 1} {fmtTime(clip.trim.end - clip.trim.start)}s</div>
-                      <div
-                        className="montage-trim-handle right"
-                        onPointerDown={onTrimDrag(clip.handleId, "end")}
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="montage-timeline-badges">
-            {clips.map((clip, i) => (
-              <span key={clip.handleId} className="montage-timeline-badge">
-                C{i + 1} {fmtTime(clip.trim.start)}–{fmtTime(clip.trim.end)}s
-              </span>
-            ))}
-          </div>
+      {_previewUrl && !processing && (
+        <div className="montage-output-wrap nodrag" onClick={(e) => e.stopPropagation()} style={{ marginTop: 6 }}>
+          <video src={_previewUrl} controls playsInline className="montage-preview-video" style={{ width: "100%", borderRadius: 4 }} />
+          {_genTime != null && (
+            <div className="montage-stat-label" style={{ fontSize: 11, marginTop: 2, opacity: 0.7 }}>
+              rendered in {(_genTime / 1000).toFixed(1)}s
+            </div>
+          )}
         </div>
+      )}
+
+      {connectedCount > 0 && renderTimeline(false)}
+
+      {showModal && createPortal(
+        <div
+          className="montage-modal-overlay"
+          // Use mousedown (not click) and require the press to ORIGINATE on the
+          // overlay itself — otherwise a trim drag that started inside the modal
+          // and was released over the overlay would close the dialog.
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}
+        >
+          <div className="montage-modal" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="montage-modal-header">
+              <span className="montage-modal-title">Trim sources — {fmtTime(totalDuration)}s output</span>
+              <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
+            </div>
+            <div className="montage-modal-body">
+              {renderTimeline(true)}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {/* Shared scrub decoder — hidden video that any drag (inline or modal) seeks
+          into. Always mounted so the first drag has a warm element. */}
+      <video
+        ref={seekVideoRef}
+        muted
+        playsInline
+        preload="auto"
+        crossOrigin="anonymous"
+        style={{ position: "fixed", left: -9999, top: -9999, width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+      />
+
+      {/* Floating frame thumbnail at the cursor while a trim handle is being dragged */}
+      {scrubTip && createPortal(
+        (() => {
+          const W = 240;
+          const H = 135; // initial estimate; canvas resizes itself after first frame
+          const margin = 12;
+          let left = scrubTip.x - W / 2;
+          let top = scrubTip.y - H - margin;
+          if (left < margin) left = margin;
+          if (left + W > window.innerWidth - margin) left = window.innerWidth - W - margin;
+          if (top < margin) top = scrubTip.y + margin;
+          return (
+            <div className="montage-scrub-tooltip" style={{ left, top, width: W }}>
+              <canvas ref={seekCanvasRef} />
+              <div className="montage-scrub-time">
+                C{scrubTip.clipIndex + 1} · {fmtTime(scrubTip.time)}s
+              </div>
+            </div>
+          );
+        })(),
+        document.body,
       )}
 
       {/* Output handle */}

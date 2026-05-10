@@ -101,10 +101,10 @@ function MusicNode({ id, data, selected }: NodeProps) {
 
       <div className="scene-outputs">
         <div className="scene-output-row">
-          <span className="scene-badge" style={{ color: "#e8a040", borderColor: "#e8a04066", backgroundColor: "#e8a04012" }}>AUD</span>
+          <span className="scene-badge" style={{ color: "#ec4899", borderColor: "#ec489966", backgroundColor: "#ec489912" }}>AUD</span>
           <span className="scene-output-label">Audio</span>
           <Handle type="source" position={Position.Right} id="output_0"
-            className={`slot-handle ${outputHL}`} style={{ color: "#e8a040" }} />
+            className={`slot-handle ${outputHL}`} style={{ color: "#ec4899" }} />
         </div>
       </div>
     </div>

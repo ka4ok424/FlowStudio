@@ -1,6 +1,7 @@
 import { memo, useState, useCallback } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
+import WaveformPlayer from "../components/WaveformPlayer";
 
 function PreviewNode({ id, data: _data, selected }: NodeProps) {
   void _data;
@@ -16,11 +17,12 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
   // upstream stores the URL as a blob: that doesn't reveal MIME).
   const VIDEO_SOURCE_TYPES = new Set([
     "fs:videoGen", "fs:videoGenPro",
-    "fs:ltxVideo", "fs:wanVideo", "fs:wanAnimate",
+    "fs:ltxVideo", "fs:wanVideo", "fs:wanAnimate", "fs:wanSmooth",
     "fs:hunyuanVideo", "fs:hunyuanAvatar",
     "fs:smoothFps",
+    "fs:montage", "fs:mmaudio",
   ]);
-  const AUDIO_SOURCE_TYPES = new Set(["fs:music", "fs:tts"]);
+  const AUDIO_SOURCE_TYPES = new Set(["fs:music", "fs:tts", "fs:omnivoiceTts", "fs:omnivoiceClone"]);
 
   // Find connected source
   const inputEdge = edgesAll.find((e) => e.target === id && e.targetHandle === "input");
@@ -59,6 +61,11 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
       } else if (previewUrl?.startsWith("data:video/")) {
         mediaType = "video";
       } else if (previewUrl?.startsWith("data:audio/")) {
+        mediaType = "audio";
+      } else if (previewUrl && /\.(mp4|mov|webm|mkv|avi|m4v)(\?|#|&|$)/i.test(previewUrl)) {
+        // ComfyUI /api/view URLs put extension before `&subfolder=...`; match `&` too
+        mediaType = "video";
+      } else if (previewUrl && /\.(mp3|wav|ogg|flac|m4a)(\?|#|&|$)/i.test(previewUrl)) {
         mediaType = "audio";
       } else if (previewUrl) {
         mediaType = "image";
@@ -101,7 +108,7 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
         <div className="preview-input-row">
           <Handle type="target" position={Position.Left} id="input"
             className={`slot-handle ${inputHL}`}
-            style={{ color: mediaType === "video" ? "#e85d75" : mediaType === "audio" ? "#e8a040" : "#64b5f6" }} />
+            style={{ color: mediaType === "video" ? "#e85d75" : mediaType === "audio" ? "#ec4899" : "#64b5f6" }} />
           <TypeBadge color="#64b5f6">MEDIA</TypeBadge>
           <span className="preview-input-label">Input</span>
         </div>
@@ -115,7 +122,9 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
             <video src={previewUrl} className="preview-video" controls muted />
           )}
           {previewUrl && mediaType === "audio" && (
-            <audio src={previewUrl} controls style={{ width: "100%" }} />
+            <div style={{ width: "100%", padding: "8px 10px", boxSizing: "border-box" }} onClick={(e) => e.stopPropagation()}>
+              <WaveformPlayer url={previewUrl} />
+            </div>
           )}
           {!previewUrl && (
             <div className="preview-empty">
@@ -140,7 +149,9 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
           {mediaType === "video" ? (
             <video src={previewUrl} className="preview-fullscreen-img" controls autoPlay onClick={(e) => e.stopPropagation()} />
           ) : mediaType === "audio" ? (
-            <audio src={previewUrl} controls autoPlay onClick={(e) => e.stopPropagation()} style={{ width: "80%" }} />
+            <div style={{ width: "60%", maxWidth: 720 }} onClick={(e) => e.stopPropagation()}>
+              <WaveformPlayer url={previewUrl} />
+            </div>
           ) : (
             <img src={previewUrl} alt="Fullscreen" className="preview-fullscreen-img" />
           )}

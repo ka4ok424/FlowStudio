@@ -4,6 +4,7 @@ import { saveImage, loadImage } from "../store/imageDb";
 import { dataUrlToBlobUrl } from "../utils/blobUrl";
 import { makeDragGhost, findGhostSource } from "../utils/dragGhost";
 import AlbumModal from "../components/AlbumModal";
+import WaveformPlayer from "../components/WaveformPlayer";
 
 interface MediaHistoryProps {
   nodeId: string;
@@ -104,7 +105,7 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
   return (
     <div
       ref={wrapRef}
-      className={`nanob-preview ${currentUrl ? "nodrag" : ""}`}
+      className={`nanob-preview ${mediaType === "audio" ? "nanob-preview-audio" : ""} ${currentUrl ? "nodrag" : ""}`}
       draggable={!!currentUrl}
       onDragStart={onDragStart}
     >
@@ -124,11 +125,33 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
               style={{ width: "100%", minHeight: 160, objectFit: "contain", background: "#000", borderRadius: "inherit" }}
             />
           ) : mediaType === "audio" ? (
-            <audio src={currentUrl} controls style={{ width: "100%", padding: "8px" }} />
+            <WaveformPlayer url={currentUrl} rightSlot={total > 1 ? (
+              <div className="img-history-nav img-history-nav-inline">
+                <button className="img-history-btn" onClick={goPrev} disabled={currentIndex <= 0}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                </button>
+                <button className="img-history-btn" onClick={(e) => { e.stopPropagation(); setAlbumOpen(true); }} title="Open album" style={{ padding: "0 6px" }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                  </svg>
+                </button>
+                <span className="img-history-counter">{currentIndex + 1} / {total}</span>
+                <button className="img-history-btn" onClick={goNext} disabled={currentIndex >= total - 1}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </button>
+              </div>
+            ) : null} />
           ) : (
             <img src={currentUrl} alt="Generated" className="nanob-preview-img" draggable={false} />
           )}
-          {total > 1 && (
+          {total > 1 && mediaType !== "audio" && (
             <div className="img-history-nav">
               <button
                 className="img-history-btn"

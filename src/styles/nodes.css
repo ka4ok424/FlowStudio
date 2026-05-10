@@ -800,6 +800,32 @@
 .ltxvideo-outputs { padding: 6px 0; border-top: 1px solid var(--border); }
 
 /* ══════════════════════════════════════════════════════════════════
+   MMAudio Node (silent video → video with synthesized audio)
+   ══════════════════════════════════════════════════════════════════ */
+.mmaudio-node {
+  background: var(--bg-node); border: 1px solid var(--border);
+  border-radius: var(--radius); width: var(--node-m);
+  overflow: visible; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  transition: box-shadow 0.08s, border-color 0.08s; position: relative;
+}
+.mmaudio-node.selected {
+  border-color: #26a69a;
+  box-shadow: 0 0 0 2px rgba(38,166,154,0.25), 0 4px 16px rgba(0,0,0,0.3);
+}
+.mmaudio-node-inner { overflow: hidden; border-radius: var(--radius) var(--radius) 0 0; }
+.mmaudio-accent { height: 3px; background: linear-gradient(90deg, #26a69a 0%, #80cbc4 100%); }
+.mmaudio-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
+}
+.mmaudio-icon { font-size: 16px; }
+.mmaudio-header-text { display: flex; flex-direction: column; }
+.mmaudio-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.mmaudio-status { font-size: 10px; color: #26a69a; font-weight: 700; }
+.mmaudio-inputs { padding: 6px 0; }
+.mmaudio-outputs { padding: 6px 0; border-top: 1px solid var(--border); }
+
+/* ══════════════════════════════════════════════════════════════════
    Next Frame Node
    ══════════════════════════════════════════════════════════════════ */
 .nextframe-node {
@@ -1310,23 +1336,51 @@
 .montage-time-cur { color: var(--text-primary); font-weight: 600; }
 .montage-time-total { color: var(--text-muted); }
 .montage-time-clip { color: #a78bfa; font-weight: 600; margin-left: 6px; }
-.montage-progress {
+/* Sequence strip — colored block per clip, width = trimmed/total. */
+.montage-sequence {
   position: relative;
-  height: 6px;
-  background: rgba(255,255,255,0.08);
+  display: flex;
+  height: 22px;
+  margin: 4px 8px 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.04);
   cursor: pointer;
+  user-select: none;
 }
-.montage-progress-fill {
-  height: 100%;
-  background: #f5a524;
-  transition: width 0.05s linear;
+.montage-seq-clip {
+  position: relative;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  min-width: 0;
+  border-right: 1px solid rgba(0,0,0,0.5);
+  border-top: 2px solid transparent;
+  border-bottom: 2px solid transparent;
+  transition: filter 0.1s ease;
+  overflow: hidden;
+  font-size: 10px;
+  color: rgba(0,0,0,0.85);
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.montage-progress-divider {
-  position: absolute; top: 0; bottom: 0;
+.montage-seq-clip:last-child { border-right: none; }
+.montage-seq-clip:hover { filter: brightness(1.1); }
+.montage-seq-clip.active {
+  border-top-color: #fff;
+  border-bottom-color: #fff;
+  filter: brightness(1.15);
+}
+.montage-seq-label { font-weight: 800; }
+.montage-seq-dur { font-weight: 600; opacity: 0.85; white-space: nowrap; }
+.montage-seq-playhead {
+  position: absolute;
+  top: -2px; bottom: -2px;
   width: 2px;
   background: #fff;
+  box-shadow: 0 0 6px rgba(255,255,255,0.9);
   pointer-events: none;
   transform: translateX(-1px);
+  transition: left 0.05s linear;
+  z-index: 3;
 }
 
 .montage-stats {
@@ -1368,8 +1422,156 @@
 .montage-timeline-icon { font-size: 12px; color: var(--text-muted); }
 .montage-timeline-title { font-size: 12px; font-weight: 600; color: var(--text-primary); flex: 1; }
 .montage-timeline-meta { font-size: 10px; color: var(--text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.montage-timeline-tracks { display: flex; flex-direction: column; gap: 4px; }
+.montage-timeline-tracks { display: flex; flex-direction: column; gap: 4px; transition: gap 0.15s ease; }
 .montage-timeline-track { width: 100%; }
+.montage-source-row {
+  display: flex; align-items: center; gap: 6px;
+}
+.montage-source-tag {
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid;
+  border-radius: 3px;
+  padding: 2px 0;
+  transition: all 0.15s ease;
+}
+.montage-source-bar-wrap {
+  flex: 1;
+  min-width: 0;
+}
+.montage-source-meta {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+}
+
+/* Tracks layout — inline (compact) shows naturally. Modal shows the same
+   markup at a much larger physical size for precise editing. */
+.montage-tracks-area {
+  overflow: hidden;
+}
+.montage-tracks-inner {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Seconds ruler — inline as its own row, aligned with bar wrap below */
+.montage-ruler-row { margin-bottom: 2px; }
+.montage-timeline-ruler {
+  position: relative;
+  height: 14px;
+  width: 100%;
+}
+.montage-ruler-tick {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 0;
+  border-left: 1px solid rgba(255,255,255,0.18);
+}
+.montage-ruler-label {
+  position: absolute;
+  top: 1px;
+  left: 3px;
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Vertical guides inside each clip's bar — match ruler ticks */
+.montage-bar-tick {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 0;
+  border-left: 1px dashed rgba(255,255,255,0.08);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Modal popup — full editing surface, like the inpaint mask editor */
+.montage-modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.montage-modal {
+  background: var(--bg-node, #1c1c24);
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  border-radius: 10px;
+  width: min(1400px, 96vw);
+  max-height: 90vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+.montage-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.08));
+}
+.montage-modal-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.montage-modal-body {
+  padding: 18px 22px 22px;
+  overflow: auto;
+}
+
+/* In-modal sizing — bigger rows, fonts, ruler, handles */
+.montage-timeline.in-modal {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+.montage-timeline.in-modal .montage-tracks-inner { gap: 10px; }
+.montage-timeline.in-modal .montage-timeline-bar { height: 56px; border-radius: 6px; }
+.montage-timeline.in-modal .montage-source-tag { width: 38px; font-size: 13px; padding: 8px 0; }
+.montage-timeline.in-modal .montage-source-meta { font-size: 12px; min-width: 60px; text-align: right; }
+.montage-timeline.in-modal .montage-timeline-label { font-size: 13px; padding: 0 14px; font-weight: 700; }
+.montage-timeline.in-modal .montage-trim-handle {
+  width: 10px; top: -4px; bottom: -4px; border-radius: 3px;
+}
+.montage-timeline.in-modal .montage-trim-handle.left  { left: -5px; }
+.montage-timeline.in-modal .montage-trim-handle.right { right: -5px; }
+.montage-timeline.in-modal .montage-timeline-ruler { height: 18px; }
+.montage-timeline.in-modal .montage-ruler-label { font-size: 11px; }
+
+/* Floating thumbnail tooltip during trim drag in modal */
+.montage-scrub-tooltip {
+  position: fixed;
+  z-index: 10001;
+  background: #000;
+  border: 1px solid var(--border, rgba(255,255,255,0.18));
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  pointer-events: none;
+  user-select: none;
+}
+.montage-scrub-tooltip canvas {
+  display: block;
+  width: 100%;
+  border-radius: 3px;
+  background: #111;
+}
+.montage-scrub-time {
+  text-align: center;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-primary, #fff);
+  margin-top: 3px;
+  font-weight: 600;
+}
 .montage-timeline-bar {
   position: relative;
   height: 24px;
@@ -1415,20 +1617,7 @@
 }
 .montage-trim-handle.left { left: -3px; }
 .montage-trim-handle.right { right: -3px; }
-.montage-timeline-badges {
-  display: flex; flex-wrap: wrap; gap: 4px;
-  margin-top: 6px;
-}
-.montage-timeline-badge {
-  background: rgba(167,139,250,0.15);
-  border: 1px solid rgba(167,139,250,0.4);
-  color: #a78bfa;
-  font-size: 9px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
+.montage-timeline-trim:active { cursor: grabbing !important; }
 
 .montage-outputs { padding: 6px 0; border-top: 1px solid var(--border); }
 
@@ -1696,6 +1885,32 @@
 .wanvideo-status { font-size: 10px; color: #42a5f5; font-weight: 700; }
 .wanvideo-inputs { padding: 6px 0; }
 .wanvideo-outputs { padding: 6px 0; border-top: 1px solid var(--border); }
+
+/* ══════════════════════════════════════════════════════════════════
+   Wan Smooth Node (RIFE-interpolated Wan 2.2)
+   ══════════════════════════════════════════════════════════════════ */
+.wansmooth-node {
+  background: var(--bg-node); border: 1px solid var(--border);
+  border-radius: var(--radius); width: var(--node-m);
+  overflow: visible; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  transition: box-shadow 0.08s, border-color 0.08s; position: relative;
+}
+.wansmooth-node.selected {
+  border-color: #ce93d8;
+  box-shadow: 0 0 0 2px rgba(206,147,216,0.25), 0 4px 16px rgba(0,0,0,0.3);
+}
+.wansmooth-node-inner { overflow: hidden; border-radius: var(--radius) var(--radius) 0 0; }
+.wansmooth-accent { height: 3px; background: linear-gradient(90deg, #ce93d8, #42a5f5, #e85d75); }
+.wansmooth-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
+}
+.wansmooth-icon { font-size: 16px; }
+.wansmooth-header-text { display: flex; flex-direction: column; }
+.wansmooth-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.wansmooth-status { font-size: 10px; color: #ce93d8; font-weight: 700; }
+.wansmooth-inputs { padding: 6px 0; }
+.wansmooth-outputs { padding: 6px 0; border-top: 1px solid var(--border); }
 
 /* ══════════════════════════════════════════════════════════════════
    Wan Animate Node

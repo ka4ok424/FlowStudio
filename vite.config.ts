@@ -34,12 +34,12 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://192.168.31.175:8188',
+        target: 'http://desktop-6mltn1b.local:8188',
         changeOrigin: true,
-        headers: { Origin: 'http://192.168.31.175:8188' },
+        headers: { Origin: 'http://desktop-6mltn1b.local:8188' },
       },
       '/ws': {
-        target: 'ws://192.168.31.175:8188',
+        target: 'ws://desktop-6mltn1b.local:8188',
         ws: true,
       },
       '/tiktok-api': {

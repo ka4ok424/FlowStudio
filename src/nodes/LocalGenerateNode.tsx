@@ -45,8 +45,8 @@ function LocalGenerateNode({ id, data, selected }: NodeProps) {
   const selectedModel = nodeData.widgetValues?.model || defaultModel;
   const steps = nodeData.widgetValues?.steps || 4;
   const cfg = nodeData.widgetValues?.cfg || 7;
-  const width = nodeData.widgetValues?.width || 512;
-  const height = nodeData.widgetValues?.height || 512;
+  const width = nodeData.widgetValues?.width || 720;
+  const height = nodeData.widgetValues?.height || 1280;
   const seed = nodeData.widgetValues?.seed || "";
   const count: number = Math.max(1, Math.min(20, nodeData.widgetValues?.count ?? 1));
   const [batchInfo, setBatchInfo] = useState<{ done: number; total: number } | null>(null);

@@ -1193,6 +1193,156 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* OmniVoice nodes — slightly wider than default mmaudio-node so the waveform + controls breathe */
+.omnivoice-node { width: 360px !important; }
+
+/* OmniVoice "check GitHub for updates" footer link inside the canvas node */
+.omni-update-link {
+  display: block;
+  margin: 0 12px 6px;
+  padding: 4px 8px;
+  font-size: 10.5px;
+  text-align: center;
+  color: var(--text-muted, #888);
+  background: rgba(236,72,153,0.06);
+  border: 1px solid rgba(236,72,153,0.18);
+  border-radius: 6px;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.omni-update-link:hover {
+  background: rgba(236,72,153,0.14);
+  color: #f472b6;
+  border-color: rgba(236,72,153,0.4);
+}
+
+/* OmniVoice chips inside Inspector */
+.omni-chips { display: flex; flex-direction: column; gap: 8px; }
+.omni-chip-group { display: flex; flex-direction: column; gap: 4px; }
+.omni-chip-group-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-muted, #666); font-weight: 600;
+}
+.omni-chip-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.omni-chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary, #aaa);
+  border: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.omni-chip:hover {
+  background: rgba(236,72,153,0.12);
+  color: #f472b6;
+  border-color: rgba(236,72,153,0.4);
+}
+.omni-chip.active {
+  background: #ec4899;
+  color: #fff;
+  border-color: #ec4899;
+}
+.omni-chip.active:hover { background: #f472b6; border-color: #f472b6; }
+.omni-chip.copied {
+  background: rgba(34,197,94,0.15);
+  color: #4ade80;
+  border-color: rgba(34,197,94,0.4);
+}
+
+/* Solid pink selection ring — opaque, no halo (matches the crisp look used by other nodes) */
+.omnivoice-node.selected {
+  border-color: #ec4899 !important;
+  box-shadow: 0 0 0 2px #ec4899, 0 4px 16px rgba(0,0,0,0.3) !important;
+}
+
+/* Pink Generate button inside OmniVoice nodes */
+.omnivoice-node .localgen-generate-btn { background: #ec4899; }
+.omnivoice-node .localgen-generate-btn:hover { background: #f472b6; }
+.omnivoice-node .localgen-generate-btn.generating { background: #b81e6e; cursor: wait; }
+
+/* Audio variant of preview — collapse to content height, full-width children */
+.nanob-preview-audio {
+  min-height: auto !important;
+  padding: 8px 10px;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  gap: 6px;
+}
+.nanob-preview-audio .nanob-preview-empty {
+  min-height: 40px;
+  padding: 6px 0;
+  align-self: center;
+}
+.nanob-preview-audio .nanob-preview-logo {
+  font-size: 24px;
+}
+
+/* Waveform player */
+.wf-player {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.wf-canvas {
+  width: 100%;
+  height: 36px;
+  display: block;
+}
+.wf-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 2px 4px;
+}
+.wf-time {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  min-width: 64px;
+  text-align: right;
+}
+.wf-play-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.06);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s;
+}
+.wf-play-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.12);
+}
+.wf-play-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.wf-right-slot {
+  display: flex;
+  align-items: center;
+}
+.img-history-nav-inline {
+  position: static !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  background: rgba(0,0,0,0.4);
+  padding: 2px 6px;
+}
+
 /* Image history navigation */
 .img-history-nav {
   position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);

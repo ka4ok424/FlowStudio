@@ -38,7 +38,7 @@ function ImportProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const TYPE_BADGE_COLORS: Record<string, string> = {
     image: "#4ecdc4",
     video: "#ab47bc",
-    audio: "#e8a040",
+    audio: "#ec4899",
     none: "#888",
   };
 

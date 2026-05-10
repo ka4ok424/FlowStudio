@@ -209,8 +209,8 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
           <span className="nanob-input-label">Last Frame</span>
         </div>
         <div className="nanob-input-row">
-          <Handle type="target" position={Position.Left} id="ref_audio" className={`slot-handle ${audioHL}`} style={{ color: "#e8a040" }} />
-          <TypeBadge color="#e8a040">AUD</TypeBadge>
+          <Handle type="target" position={Position.Left} id="ref_audio" className={`slot-handle ${audioHL}`} style={{ color: "#ec4899" }} />
+          <TypeBadge color="#ec4899">AUD</TypeBadge>
           <span className="nanob-input-label">Ref Audio</span>
         </div>
       </div>
@@ -259,8 +259,8 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
                 updateWidgetValue(id, "_prewarmBackup", {
                   frames: wv.frames || 41,
                   fps: wv.fps || 24,
-                  width: wv.width || 768,
-                  height: wv.height || 512,
+                  width: wv.width || 720,
+                  height: wv.height || 1280,
                   steps: wv.steps || 8,
                 });
                 updateWidgetValue(id, "frames", 25);

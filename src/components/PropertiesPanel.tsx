@@ -30,6 +30,10 @@ import PromptProperties from "./properties/PromptProperties";
 import ControlNetProperties from "./properties/ControlNetProperties";
 import InpaintCNProperties from "./properties/InpaintCNProperties";
 import WanVideoProperties from "./properties/WanVideoProperties";
+import WanSmoothProperties from "./properties/WanSmoothProperties";
+import MmAudioProperties from "./properties/MmAudioProperties";
+import OmniVoiceTtsProperties from "./properties/OmniVoiceTtsProperties";
+import OmniVoiceCloneProperties from "./properties/OmniVoiceCloneProperties";
 import WanAnimateProperties from "./properties/WanAnimateProperties";
 import HunyuanVideoProperties from "./properties/HunyuanVideoProperties";
 import HunyuanAvatarProperties from "./properties/HunyuanAvatarProperties";
@@ -67,6 +71,9 @@ const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: a
   "fs:montage": MontageProperties,
   "fs:kontext": KontextProperties,
   "fs:ltxVideo": LtxVideoProperties,
+  "fs:mmaudio": MmAudioProperties,
+  "fs:omnivoiceTts": OmniVoiceTtsProperties,
+  "fs:omnivoiceClone": OmniVoiceCloneProperties,
   // "fs:multiRef": MultiRefProperties, // REMOVED
   "fs:scene": SceneProperties,
   "fs:storyboard": StoryboardProperties,
@@ -75,6 +82,7 @@ const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: a
   "fs:controlNet": ControlNetProperties,
   "fs:inpaintCN": InpaintCNProperties,
   "fs:wanVideo": WanVideoProperties,
+  "fs:wanSmooth": WanSmoothProperties,
   "fs:wanAnimate": WanAnimateProperties,
   "fs:hunyuanVideo": HunyuanVideoProperties,
   "fs:hunyuanAvatar": HunyuanAvatarProperties,

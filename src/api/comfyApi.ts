@@ -1,10 +1,11 @@
-// ComfyUI server URL — empty = Vite proxy, or direct URL like "http://192.168.31.175:8188"
+// ComfyUI server URL — empty = Vite proxy, or direct URL like "http://desktop-6mltn1b.local:8188"
 const COMFY_SERVER_KEY = "flowstudio_comfyui_server";
 
 // Direct URL to the backend (must match vite.config.ts proxy target).
 // Used when the user needs a real link (e.g. to open ComfyUI in a new tab)
 // since an empty string would point at FlowStudio itself via the proxy.
-export const DEFAULT_COMFY_DIRECT_URL = "http://192.168.31.175:8188";
+// mDNS name (desktop-6mltn1b.local) keeps working when PC's IP changes (WiFi/Ethernet roaming).
+export const DEFAULT_COMFY_DIRECT_URL = "http://desktop-6mltn1b.local:8188";
 
 /** Get the URL for API calls (empty = Vite proxy, which only works from inside the app). */
 export function getComfyUrl(): string {

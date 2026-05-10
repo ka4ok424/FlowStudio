@@ -118,11 +118,17 @@ Native nodes can:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | model | string | first checkpoint | Checkpoint filename from ComfyUI |
-| width | number | 512 | Output width (64-2048) |
-| height | number | 512 | Output height (64-2048) |
-| steps | number | 20 | Sampling steps (1-50) |
+| width | number | 720 | Output width (64-2048). Default = 9:16 portrait |
+| height | number | 1280 | Output height (64-2048). Default = 9:16 portrait |
+| steps | number | 4 | Sampling steps (1-50) |
 | cfg | number | 7 | CFG scale (1-20) |
 | seed | string | "" | Seed, random if empty |
+
+**Aspect ratio presets (Properties panel buttons):**
+- `1:1` — 1024 × 1024 (square)
+- `4:5` — 1080 × 1350 (Instagram portrait)
+- `16:9` — 1280 × 720 (landscape)
+- `9:16` — 720 × 1280 (portrait, **default**)
 
 **ComfyUI workflow built internally:**
 ```
@@ -790,6 +796,63 @@ WanVideoModelLoader(TI2V-5B-Q8) → LoadWanVideoT5TextEncoder → WanVideoTextEn
 
 ---
 
+## fs:wanSmooth — Wan Smooth
+
+**Purpose:** Wan 2.2 I2V with **RIFE VFI frame interpolation** for ultra-smooth playback. Adapted from [WAN 2.2 Smooth Workflow v5.0](https://civitai.com/) — single-model variant for TI2V-5B.
+
+**Component:** `src/nodes/WanSmoothNode.tsx`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Positive prompt |
+| Input | IMAGE | start_image | Start frame (image to animate) |
+| Output | VIDEO | video | Generated MP4, FPS = source × RIFE multiplier |
+
+**Parameters (Properties):**
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| modelName | string | `wan2.2_ti2v_5B_fp16.safetensors` | UNET, dropdown auto-filtered for `*Wan*`/`*Smooth*` |
+| steps | number | **6** (Smooth) | Sampling steps |
+| cfg | number | **1.0** (Smooth) | CFG scale |
+| shift | number | **8.0** (Smooth) | Flow shift (ModelSamplingSD3) |
+| width | number | 720 | Video width |
+| height | number | 720 | Video height |
+| numFrames | number | 49 | Source frame count (step 4: 13/17/21/.../129) |
+| fps | number | 16 | Source FPS |
+| rifeMultiplier | number | **2** | RIFE interpolation factor (1=off, 2/3/4) |
+| seed | string | "" | Empty = random |
+| vaeName | string | `Wan2.2_VAE.pth` | VAE |
+| clipName | string | `umt5_xxl_fp8_e4m3fn_scaled.safetensors` | CLIP/T5 (type=wan) |
+| negativePrompt | string | (Smooth Chinese default) | Empty falls back to canonical Chinese negative |
+
+**ComfyUI workflow built internally:**
+```
+UNETLoader (wan2.2_ti2v_5B_fp16.safetensors)
+  → ModelSamplingSD3 (shift=8)
+  → KSampler (euler, simple, steps=6, cfg=1, denoise=1)
+       ← CLIPTextEncode (positive)  ← CLIPLoader(type=wan)
+       ← CLIPTextEncode (negative)  ← CLIPLoader(type=wan)
+       ← Wan22ImageToVideoLatent (start_image, width, height, length)
+            ← VAELoader (Wan2.2_VAE.pth)
+       ↓
+  VAEDecode
+  → RIFE VFI (rife49.pth, multiplier=2/3/4, fast_mode=on, ensemble=on)
+  → CreateVideo (fps × multiplier)
+  → SaveVideo (FS_WANSMOOTH_*.mp4)
+```
+
+**Smooth-style sampling rationale:** steps=6 + cfg=1 + euler/simple is a CFG-distillation regime that works well on Wan 2.2 fine-tunes; ModelSamplingSD3 shift=8 is the Wan 2.2 standard. The "smooth" effect itself comes mostly from **RIFE VFI** which interpolates intermediate frames between Wan's outputs — multiplier=2 doubles effective FPS (16→32fps), multiplier=4 quadruples (16→64fps).
+
+**Differences from upstream Smooth Workflow v5.0:**
+- Single-model (TI2V-5B) instead of HIGH/LOW noise split (no Wan 2.2 14B HIGH/LOW models on PC)
+- No LoRA stack (Power Lora Loader skipped — add later)
+- No MMAudio chain (no MMAudio models on PC)
+- No ColorMatch / ImageScaleBy upscale chain
+
+**To upgrade to full HIGH/LOW Smooth chain:** download `SmoothMix_I2V_v2_High.safetensors` + `SmoothMix_I2V_v2_Low.safetensors` (or Wan 2.2 14B I2V _High/_Low), then extend workflow with KSamplerAdvanced 2-stage split (start=0/end=3, start=3/end=10000).
+
+---
+
 ## fs:wanAnimate — Wan Animate
 
 **Purpose:** Transfer motion from driving video to character image, or replace person in video. Wan 2.2 Animate 14B (GGUF Q4_K_M).
@@ -1023,6 +1086,60 @@ UNETLoader(kontext) → DualCLIPLoader(clip_l + t5xxl) → VAELoader → FluxKon
 
 ---
 
+## fs:mmaudio — MMAudio (silent video → video with audio)
+
+**Purpose:** Add AI-generated audio to a silent video. Analyzes video frames (CLIP for semantic context, Synchformer for motion sync) and synthesizes a matching audio track from a text prompt. Output is the same video re-muxed with the new audio.
+
+**Component:** `src/nodes/MmAudioNode.tsx`
+**Workflow Builder:** `src/workflows/mmaudio.ts`
+**ComfyUI custom node:** `kijai/ComfyUI-MMAudio`
+**Models:** `Kijai/MMAudio_safetensors` (fp16) → `ComfyUI/models/mmaudio/`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Sound description (e.g. `"ocean waves, seagulls, distant boat"`) |
+| Input | VIDEO | video | Silent video to add audio to (any source: LTX, Wan, Hunyuan, Import) |
+| Output | VIDEO | video | MP4 with H.264 video + AAC audio |
+
+### Parameters
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| duration | 8 | Audio length in seconds. MMAudio Large 44k = ~8s reliable, longer may degrade |
+| steps | 25 | Diffusion steps |
+| cfg | 4.5 | Prompt guidance. Higher = stricter prompt match |
+| fps | 24 | Source video FPS (for muxing) |
+| maskAwayClip | false | If true, only Synchformer motion features used (no CLIP semantics) |
+| seed | Random | |
+| mmaudioModel | `mmaudio_large_44k_v2_fp16.safetensors` | Main MMAudio diffusion |
+| vaeModel | `mmaudio_vae_44k_fp16.safetensors` | Audio VAE |
+| synchformerModel | `mmaudio_synchformer_fp16.safetensors` | Motion sync features |
+| clipModel | `apple_DFN5B-CLIP-ViT-H-14-384_fp16.safetensors` | Semantic CLIP |
+
+### ComfyUI workflow
+
+```
+VHS_LoadVideo (uploaded silent MP4)
+  ├─ frames →─────────────────────────┐
+  └─ frames →                         │
+                                       ↓
+MMAudioModelLoader  ──┐                │
+MMAudioFeatureUtilsLoader(vae,         │
+                synchformer, clip)─┐   │
+                                   ↓   ↓
+                              MMAudioSampler(prompt, neg, duration, steps, cfg, images=frames)
+                                              ↓
+                                            AUDIO
+                                              ↓
+                                     CreateVideo(images, fps, audio)
+                                              ↓
+                                          SaveVideo (MP4 H.264 + AAC)
+```
+
+**BigVGAN vocoder:** auto-downloaded by `MMAudioFeatureUtilsLoader` to `models/mmaudio/nvidia/bigvgan_v2_44khz_128band_512x/` on first use.
+
+---
+
 ## fs:videoGen — Video Gen
 
 **Purpose:** Cloud video generation via Google Veo API. Text-to-video and image-to-video.
@@ -1099,6 +1216,113 @@ UNETLoader(kontext) → DualCLIPLoader(clip_l + t5xxl) → VAELoader → FluxKon
 | Output | AUDIO | audio | Generated speech |
 
 **Parameters:** model (`gemini-2.5-flash-preview-tts` / `gemini-2.5-pro-preview-tts`), voice (Kore, Charon, Fenrir, Aoede, Puck, Leda, Orus, Zephyr)
+
+---
+
+## fs:omnivoiceTts — OmniVoice TTS (local)
+
+**Purpose:** Local zero-shot Text-to-Speech via OmniVoice (k2-fsa, Qwen3-0.6B backbone). 600+ languages, 24 kHz output, voice design via instruct attributes. Runs on the user's ComfyUI PC, no API calls.
+
+**Component:** `src/nodes/OmniVoiceTtsNode.tsx`
+**Workflow Builder:** `src/workflows/omnivoiceTts.ts`
+**ComfyUI custom node:** `ComfyUI-OmniVoice` (local)
+**Models:** `k2-fsa/OmniVoice` (HuggingFace) → `ComfyUI/models/omnivoice/` (~3.3 GB)
+**Upstream:** <https://github.com/k2-fsa/OmniVoice> — model is actively updated; tail-clipping and other rough edges may already be fixed in newer releases. Check GitHub before deep-troubleshooting.
+
+### Known limitation: tail clipping
+
+OmniVoice pre-allocates a fixed audio-token budget (`target_lens`) before diffusion based on a phonetic-weight heuristic (`omnivoice/utils/duration.py:RuleDurationEstimator`) and hard-truncates output to that length (`omnivoice/models/omnivoice.py` line ~1297: `tokens[i, :, : task.target_lens[i]]`). When the estimate undershoots (sentence-final lengthening, breath pauses, slow voices), the last words are cut. Additionally, `postprocess_output=True` removes >100 ms trailing silence which can clip a quiet fade.
+
+Workarounds in this UI: set `speed=0.9`, set `duration` manually, disable Postprocess Output, or append punctuation/`...` to the prompt. For Clone: provide explicit `refText` to give the estimator an accurate `speed_factor`.
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | text | Text to synthesize |
+| Output | AUDIO | audio | 24 kHz speech |
+
+### Parameters
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| language | `Auto` | One of Auto/en/zh/ja/ko/ru/fr/de/es/it/pt/ar/hi/tr/vi/th/id/pl/nl/sv (or any of 600+ codes) |
+| instruct | `""` | Speaker attributes: gender, age, pitch, dialect, whisper, accent — comma-separated |
+| numStep | 32 | Diffusion steps, 4-64 |
+| guidanceScale | 2.0 | CFG, 0-4 |
+| denoise | true | Default ON |
+| preprocessPrompt | true | Text normalization |
+| postprocessOutput | true | Audio cleanup |
+| speed | 1.0 | Playback speed, 0.5-2.0 |
+| duration | 0 | Fixed seconds, 0=auto |
+| seed | Random | Integer for reproducibility |
+| modelPath | `omnivoice` | Subfolder under `ComfyUI/models/omnivoice/` or absolute path |
+| precision | `fp16` | fp16 / bf16 / fp32 |
+| loadAsr | true | Load Whisper (only Clone needs it; for pure TTS leave default) |
+
+### ComfyUI workflow
+
+```
+OmniVoiceModelLoader(modelPath, precision, load_asr) → OMNIVOICE_MODEL ─┐
+                                                                       ↓
+OmniVoiceTTS(text, language, num_step, guidance_scale, denoise,
+             preprocess_prompt, postprocess_output, speed, duration,
+             seed, instruct?) → AUDIO
+                                                                       ↓
+                                                          SaveAudio(audio/FS_OMNI_TTS_<ts>)
+```
+
+---
+
+## fs:omnivoiceClone — OmniVoice Clone (zero-shot voice cloning)
+
+**Purpose:** Zero-shot voice cloning. Provide ~5-15s of reference voice and a text → speaks the text in that voice. Cross-lingual: ref language and output language can differ.
+
+**Component:** `src/nodes/OmniVoiceCloneNode.tsx`
+**Workflow Builder:** `src/workflows/omnivoiceClone.ts`
+**ComfyUI custom node:** `ComfyUI-OmniVoice` (local)
+**Models:** same as `fs:omnivoiceTts` (`k2-fsa/OmniVoice`)
+**Upstream:** <https://github.com/k2-fsa/OmniVoice> — model is actively updated; cloning fidelity, tail-clipping and other rough edges may already be fixed in newer releases. Check GitHub before deep-troubleshooting.
+
+Tail-clipping caveat is shared with `fs:omnivoiceTts` (see that section). Cloning specifically benefits from supplying an accurate `refText` matching the reference audio — otherwise OmniVoice falls back to the hardcoded heuristic `ref_text="Nice to meet you."` (`num_ref_audio_tokens=25`) which makes the per-character duration estimate inaccurate.
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | text | Text to synthesize |
+| Input | AUDIO | ref_audio | Reference voice (5-15s recommended) |
+| Output | AUDIO | audio | Cloned speech |
+
+### Parameters
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| refText | `""` | Transcript of reference. Empty + loadAsr ⇒ Whisper auto-transcribes |
+| language | `Auto` | Output language. Can differ from ref language (cross-lingual) |
+| instruct | `""` | Optional extra attributes (whisper, slow). Usually empty — ref carries timbre |
+| numStep | 32 | Diffusion steps, 4-64 |
+| guidanceScale | 2.0 | CFG, 0-4 |
+| denoise | true | Default ON |
+| preprocessPrompt | true | Text normalization |
+| postprocessOutput | true | Audio cleanup |
+| speed | 1.0 | Playback speed |
+| duration | 0 | Fixed seconds, 0=auto |
+| seed | Random | |
+| modelPath | `omnivoice` | |
+| precision | `fp16` | |
+| loadAsr | true | **MUST be ON if refText is empty** |
+
+### ComfyUI workflow
+
+```
+OmniVoiceModelLoader(load_asr=true) → OMNIVOICE_MODEL ──┐
+LoadAudio(uploaded ref) → AUDIO ────────────────────────┤
+                                                         ↓
+OmniVoiceClone(text, ref_audio, ref_text?, language, num_step,
+               guidance_scale, denoise, preprocess_prompt,
+               postprocess_output, speed, duration, seed, instruct?)
+                                                         ↓
+                                            SaveAudio(audio/FS_OMNI_CLONE_<ts>)
+```
+
+The reference audio is uploaded to ComfyUI `input/` folder via `/api/upload/image` (same endpoint used for video uploads — accepts arbitrary files), then read back via `LoadAudio`.
 
 ---
 

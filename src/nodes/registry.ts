@@ -181,8 +181,8 @@ registerNativeNode({
     ],
     params: {
       model: "Any checkpoint from ComfyUI models folder (.safetensors, .ckpt)",
-      width: "Image width, 64-2048, default 512",
-      height: "Image height, 64-2048, default 512",
+      width: "Image width, 64-2048, default 720 (9:16). Aspect presets: 1:1 (1024x1024), 4:5 (1080x1350), 16:9 (1280x720), 9:16 (720x1280)",
+      height: "Image height, 64-2048, default 1280 (9:16)",
       steps: "Sampling steps, 1-50, default 20. More = higher quality but slower",
       cfg: "CFG scale, 1-20, default 7. How closely to follow prompt",
       seed: "Integer for reproducibility",
@@ -445,6 +445,91 @@ registerNativeNode({
     params: { model: "MUST use exact API ID: gemini-2.5-flash-preview-tts (default), gemini-2.5-pro-preview-tts", voice: "Kore, Charon, Fenrir, Aoede, Puck, Leda, Orus, Zephyr" },
     connectsFrom: ["fs:prompt"],
     examples: ["Prompt('Hello world') → TTS (voice: Kore) → audio"],
+  },
+});
+
+registerNativeNode({
+  type: "fs:omnivoiceTts",
+  label: "OmniVoice TTS",
+  icon: "🗣️",
+  accentColor: "#9c6cd9",
+  component: "OmniVoiceTtsNode",
+  description: "Local zero-shot TTS via OmniVoice (k2-fsa). 600+ languages, voice design via instruct attributes. Runs on ComfyUI.",
+  inputs: [{ name: "text", type: "TEXT" }],
+  outputs: [{ name: "audio", type: "AUDIO" }],
+  aiDoc: {
+    purpose: "Text-to-Speech via OmniVoice diffusion model (Qwen3-0.6B backbone). 24 kHz output. Runs locally on ComfyUI, no API calls.",
+    skills: [
+      "TTS in 600+ languages (model auto-detects or use language code)",
+      "Voice design via instruct: 'female, young, calm, British accent'",
+      "Fast inference (RTF ~0.025, 40× faster than real-time)",
+      "Non-verbal markers like [laughter] supported",
+    ],
+    params: {
+      language: "Auto, en, zh, ja, ko, ru, fr, de, es, it, pt, ar, hi, tr, vi, th, id, pl, nl, sv (or any of OmniVoice's 600+ codes)",
+      instruct: "Comma-separated speaker attributes (gender, age, pitch, dialect, whisper, etc.)",
+      numStep: "Diffusion steps, 4-64, default 32 (16 = faster)",
+      guidanceScale: "CFG, 0-4, default 2.0",
+      speed: "Playback speed, 0.5-2.0, default 1.0",
+      duration: "Fixed seconds, 0=auto",
+      denoise: "Default ON",
+      preprocessPrompt: "Text normalization, default ON",
+      postprocessOutput: "Audio cleanup, default ON",
+      seed: "Integer for reproducibility",
+      modelPath: "Default 'omnivoice' = ComfyUI/models/omnivoice/",
+      precision: "fp16 (default) | bf16 | fp32",
+      loadAsr: "Load Whisper for ref-audio auto-transcribe in Clone (TTS doesn't need)",
+    },
+    connectsFrom: ["fs:prompt"],
+    connectsTo: ["fs:preview", "fs:omnivoiceClone (as reference)"],
+    examples: [
+      "Prompt('Hello, how are you today?') → OmniVoice TTS (instruct='female, young, calm') → audio",
+      "Prompt('Привет, как дела?') → OmniVoice TTS (language='ru') → russian audio",
+    ],
+    comfyMapping: "OmniVoiceModelLoader(omnivoice, fp16, load_asr) → OmniVoiceTTS(text, language, num_step, guidance_scale, denoise, preprocess_prompt, postprocess_output, speed, duration, seed, instruct?) → SaveAudio. Uses ComfyUI-OmniVoice custom node + k2-fsa/OmniVoice models in ComfyUI/models/omnivoice/.",
+  },
+});
+
+registerNativeNode({
+  type: "fs:omnivoiceClone",
+  label: "OmniVoice Clone",
+  icon: "🎤",
+  accentColor: "#d96cb1",
+  component: "OmniVoiceCloneNode",
+  description: "Zero-shot voice cloning via OmniVoice. Provide a few seconds of reference voice + text → speaks the text in that voice. Cross-lingual.",
+  inputs: [
+    { name: "text", type: "TEXT" },
+    { name: "ref_audio", type: "AUDIO" },
+  ],
+  outputs: [{ name: "audio", type: "AUDIO" }],
+  aiDoc: {
+    purpose: "Zero-shot voice cloning via OmniVoice. Reference audio (5-15s of speech) defines timbre; text is spoken in that voice. Cross-lingual: ref can be in language A, output in language B.",
+    skills: [
+      "Clone any voice from a short reference clip",
+      "Cross-lingual cloning (ref in language A → speak language B with same voice)",
+      "Use auto-transcribe (Whisper) when refText is empty",
+      "Provide refText manually for highest fidelity",
+    ],
+    params: {
+      refText: "Transcript of reference audio. Empty + Load ASR ON ⇒ Whisper auto-transcribes",
+      language: "Output language (can differ from ref language for cross-lingual)",
+      instruct: "Optional extra attributes (e.g. whisper, slow). Usually empty — ref voice carries timbre",
+      numStep: "Diffusion steps, default 32",
+      guidanceScale: "CFG, default 2.0",
+      speed: "Playback speed, default 1.0",
+      duration: "Fixed seconds, 0=auto",
+      seed: "Integer for reproducibility",
+      modelPath: "Default 'omnivoice'",
+      precision: "fp16 (default) | bf16 | fp32",
+      loadAsr: "MUST be ON if refText is empty (default ON)",
+    },
+    connectsFrom: ["fs:prompt", "fs:tts (as reference)", "fs:music (as reference)", "fs:omnivoiceTts (as reference)", "fs:import"],
+    connectsTo: ["fs:preview"],
+    examples: [
+      "Prompt('Read the new chapter') + ref_audio(narrator sample) → OmniVoice Clone → narration in that voice",
+      "Prompt('Hello world') + ref_audio(russian voice) → OmniVoice Clone (language='en') → English speech in russian-accented voice",
+    ],
+    comfyMapping: "OmniVoiceModelLoader(load_asr=true) + LoadAudio(uploaded ref) → OmniVoiceClone(text, ref_audio, ref_text?, ...) → SaveAudio. ref_audio is uploaded to ComfyUI input/ via /api/upload/image then read by LoadAudio.",
   },
 });
 
@@ -936,6 +1021,49 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:mmaudio",
+  label: "MMAudio",
+  icon: "🔊",
+  accentColor: "#26a69a",
+  component: "MmAudioNode",
+  description: "Add AI-generated audio to a silent video. Analyzes video frames (CLIP + Synchformer) and synthesizes matching sound effects, ambience, or voice from a text prompt.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "video", type: "VIDEO" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "Post-process video → audio generation using MMAudio (Large 44k v2). Takes any silent video and adds synthesized audio guided by text prompt. CLIP encodes visual semantics, Synchformer extracts motion-sync features, MMAudio diffusion model generates the waveform. Output is the same video frames re-muxed with the new audio track.",
+    skills: [
+      "Add foley/sound-effects to silent gen video (LTX, Wan, Hunyuan output)",
+      "Generate ambience matching scene (e.g. 'wind, distant traffic, footsteps on snow')",
+      "Sync audio events to motion via Synchformer features",
+      "44.1 kHz stereo output, max ~8s reliable duration",
+    ],
+    params: {
+      duration: "Audio duration in seconds, 1-30, default 8. Match to video length",
+      steps: "Diffusion steps, 5-50, default 25",
+      cfg: "Prompt guidance, 1-10, default 4.5. Higher = stricter prompt match",
+      maskAwayClip: "Boolean. Disables CLIP semantic features → only motion sync. Useful when video CLIP semantics conflict with desired audio",
+      seed: "Integer for reproducibility",
+      mmaudioModel: "Main MMAudio diffusion checkpoint, default mmaudio_large_44k_v2_fp16.safetensors",
+      vaeModel: "Audio VAE, default mmaudio_vae_44k_fp16.safetensors",
+      synchformerModel: "Sync feature extractor, default mmaudio_synchformer_fp16.safetensors",
+      clipModel: "Semantic CLIP, default apple_DFN5B-CLIP-ViT-H-14-384_fp16.safetensors",
+    },
+    connectsFrom: ["fs:ltxVideo", "fs:wanVideo", "fs:wanSmooth", "fs:hunyuanVideo", "fs:import (video)"],
+    connectsTo: ["fs:preview", "fs:tiktokPublish"],
+    examples: [
+      "LTX Video(silent waves clip) → MMAudio(prompt='ocean waves crashing on rocks, distant seagulls') → video with realistic surf audio",
+      "Wan Smooth(person walking) → MMAudio(prompt='footsteps on gravel, light wind') → walking video with foley",
+    ],
+    comfyMapping: "VHS_LoadVideo (uploaded silent MP4) → MMAudioModelLoader + MMAudioFeatureUtilsLoader(VAE+Synchformer+CLIP) → MMAudioSampler(prompt, neg, duration, steps, cfg, images=video frames) → AUDIO → CreateVideo(images, fps, audio) → SaveVideo (MP4 H.264 + AAC). Uses kijai/ComfyUI-MMAudio custom node + Kijai/MMAudio_safetensors models in ComfyUI/models/mmaudio/.",
+  },
+});
+
+registerNativeNode({
   type: "fs:nextFrame",
   label: "Next Frame",
   icon: "🎞️",
@@ -1353,6 +1481,52 @@ registerNativeNode({
     connectsTo: ["fs:preview"],
     examples: ["Prompt('a cat walking') → Wan Video → Preview", "LocalGen(cat) → Wan Video + Prompt('cat running') → Preview"],
     comfyMapping: "WanVideoModelLoader(TI2V-5B) + WanVideoVAELoader + LoadWanVideoT5TextEncoder + WanVideoTextEncode + WanVideoImageToVideoEncode + WanVideoSampler + WanVideoDecode + SaveVideo",
+  },
+});
+
+registerNativeNode({
+  type: "fs:wanSmooth",
+  label: "Wan Smooth",
+  icon: "✨",
+  accentColor: "#ce93d8",
+  component: "WanSmoothNode",
+  description: "Wan 2.2 I2V with RIFE frame interpolation for silky-smooth video. Adapted from 'WAN 2.2 Smooth Workflow v5.0'.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "start_image", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "Image-to-video with Wan 2.2 (TI2V-5B by default) plus RIFE VFI frame interpolation for ultra-smooth playback. Architecture inspired by 'WAN 2.2 Smooth Workflow v5.0' adapted for single-model TI2V chain.",
+    skills: [
+      "Smooth I2V — start image animated into video",
+      "RIFE temporal upscale (×2/×3/×4) doubles to quadruples effective FPS",
+      "Tuned Smooth-style sampling (steps=6, cfg=1, shift=8, euler/simple)",
+      "Default Chinese negative prompt (anti-noise, anti-still, anti-low-quality)",
+    ],
+    params: {
+      modelName: "UNET model. Default wan2.2_ti2v_5B_fp16.safetensors. Auto-lists *Wan*/*Smooth* from ComfyUI",
+      steps: "Sampling steps, 2-50, Smooth default 6",
+      cfg: "CFG scale, 1-15, Smooth default 1.0",
+      shift: "Flow shift (ModelSamplingSD3), 0-20, Smooth default 8.0",
+      numFrames: "Source frame count, 13-129 step 4, default 49",
+      fps: "Source FPS, 8-30, default 16. Output FPS = fps × rifeMultiplier",
+      rifeMultiplier: "RIFE interpolation factor 1/2/3/4. 1 = off (raw Wan), 2 = double FPS, etc.",
+      width: "Video width, default 720",
+      height: "Video height, default 720",
+      negativePrompt: "Empty → uses Smooth default Chinese negative",
+      vaeName: "VAE, default Wan2.2_VAE.pth",
+      clipName: "CLIP/text encoder, default umt5_xxl_fp8_e4m3fn_scaled.safetensors (type=wan)",
+    },
+    connectsFrom: ["fs:prompt", "fs:import", "fs:localGenerate", "fs:kontext", "fs:nanoBanana"],
+    connectsTo: ["fs:preview"],
+    examples: [
+      "LocalGen(portrait) → Wan Smooth(prompt='woman turning head', RIFE×2) → smooth 32fps video",
+      "Import image + Prompt('camera dolly forward') → Wan Smooth → cinematic clip",
+    ],
+    comfyMapping: "UNETLoader → ModelSamplingSD3(shift) → KSampler(euler/simple, steps=6, cfg=1) ← CLIPTextEncode(pos+neg) ← Wan22ImageToVideoLatent(start_image) → VAEDecode → RIFE VFI(multiplier) → CreateVideo(fps×mult) → SaveVideo",
   },
 });
 

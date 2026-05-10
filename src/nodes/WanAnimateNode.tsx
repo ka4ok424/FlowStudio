@@ -53,8 +53,8 @@ function WanAnimateNode({ id, data, selected }: NodeProps) {
     const steps = freshWv.steps || 30;
     const cfg = freshWv.cfg ?? 6.0;
     const shift = freshWv.shift ?? 5.0;
-    const width = freshWv.width || 832;
-    const height = freshWv.height || 480;
+    const width = freshWv.width || 720;
+    const height = freshWv.height || 1280;
     const numFrames = freshWv.numFrames || 81;
     const fps = freshWv.fps || 16;
     const poseStrength = freshWv.poseStrength ?? 1.0;

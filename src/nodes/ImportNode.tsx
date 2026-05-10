@@ -1,11 +1,12 @@
-import { memo, useCallback, useRef, useState, useEffect } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { processImportFile, type ImportMediaType as MediaType } from "../utils/importFile";
 import { makeDragGhost, findGhostSource } from "../utils/dragGhost";
+import WaveformPlayer from "../components/WaveformPlayer";
 
 const TYPE_COLORS: Record<MediaType, string> = {
-  none: "#888888", image: "#64b5f6", video: "#e85d75", audio: "#e8a040",
+  none: "#888888", image: "#64b5f6", video: "#e85d75", audio: "#ec4899",
 };
 const TYPE_LABELS: Record<MediaType, string> = {
   none: "MEDIA", image: "IMAGE", video: "VIDEO", audio: "AUDIO",
@@ -19,7 +20,6 @@ function ImportNode({ id, data, selected }: NodeProps) {
   const connectingDir = useWorkflowStore((s) => s.connectingDirection);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mediaType, setMediaType] = useState<MediaType>(nodeData.widgetValues?._mediaType || "none");
   const [preview, setPreview] = useState<string | null>(nodeData.widgetValues?._preview || null);
   const [fileName, setFileName] = useState<string>(nodeData.widgetValues?._fileName || "");
@@ -46,43 +46,6 @@ function ImportNode({ id, data, selected }: NodeProps) {
     updateWidgetValue(id, "_preview", null);
     updateWidgetValue(id, "_fileInfo", {});
   }, [id, preview, updateWidgetValue]);
-
-  // Draw audio waveform
-  useEffect(() => {
-    if (mediaType !== "audio" || !preview || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const audioCtx = new AudioContext();
-    fetch(preview)
-      .then((r) => r.arrayBuffer())
-      .then((buf) => audioCtx.decodeAudioData(buf))
-      .then((audioBuffer) => {
-        const raw = audioBuffer.getChannelData(0);
-        const w = canvas.width;
-        const h = canvas.height;
-        const step = Math.ceil(raw.length / w);
-
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = "#e8a040";
-        const mid = h / 2;
-
-        for (let i = 0; i < w; i++) {
-          let min = 1, max = -1;
-          for (let j = 0; j < step; j++) {
-            const val = raw[i * step + j] || 0;
-            if (val < min) min = val;
-            if (val > max) max = val;
-          }
-          const barH = Math.max(1, (max - min) * mid * 0.9);
-          ctx.globalAlpha = 0.7;
-          ctx.fillRect(i, mid - barH / 2, 1, barH);
-        }
-        audioCtx.close();
-      })
-      .catch(() => {});
-  }, [mediaType, preview]);
 
   const handleMediaDrop = useCallback((url: string, fileName: string, type: string) => {
     let mt: MediaType = "none";
@@ -174,7 +137,9 @@ function ImportNode({ id, data, selected }: NodeProps) {
           <video src={preview} className="import-preview-video" controls muted />
         )}
         {preview && mediaType === "audio" && (
-          <AudioPlayer src={preview} canvasRef={canvasRef} />
+          <div className="import-audio-wrap" onClick={(e) => e.stopPropagation()}>
+            <WaveformPlayer url={preview} />
+          </div>
         )}
         {!preview && (
           <div className="import-placeholder">
@@ -213,83 +178,6 @@ function ImportNode({ id, data, selected }: NodeProps) {
       <Handle type="source" position={Position.Right} id="output_0"
         className={`slot-handle ${outputHighlight}`}
         style={{ color: portColor, top: "50px" }} />
-    </div>
-  );
-}
-
-// ── Custom Audio Player with waveform ──────────────────────────────
-function AudioPlayer({ src, canvasRef }: { src: string; canvasRef: React.RefObject<HTMLCanvasElement | null> }) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-
-  const toggle = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!audioRef.current) return;
-    if (playing) { audioRef.current.pause(); }
-    else { audioRef.current.play(); }
-    setPlaying(!playing);
-  }, [playing]);
-
-  const fmt = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
-  };
-
-  // Seek by clicking on waveform
-  const seekOnCanvas = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    e.stopPropagation();
-    if (!canvasRef.current || !audioRef.current || !duration) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    audioRef.current.currentTime = pct * duration;
-    setCurrentTime(pct * duration);
-  }, [canvasRef, duration]);
-
-  // Draw playhead on waveform
-  useEffect(() => {
-    if (!canvasRef.current || !duration) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    // Redraw waveform with playhead
-    const pct = currentTime / duration;
-    const x = pct * canvas.width;
-
-    // The waveform is already drawn, just overlay playhead line
-    // We need to save waveform data... for simplicity, draw a progress overlay
-    ctx.save();
-    ctx.fillStyle = "rgba(100, 181, 246, 0.15)";
-    ctx.fillRect(0, 0, x, canvas.height);
-    ctx.restore();
-  }, [currentTime, duration, canvasRef]);
-
-  return (
-    <div className="import-audio-wrap" onClick={(e) => e.stopPropagation()}>
-      <canvas
-        ref={canvasRef}
-        className="import-waveform"
-        width={280}
-        height={50}
-        onClick={seekOnCanvas}
-        style={{ cursor: "pointer" }}
-      />
-      <div className="audio-controls">
-        <button className="audio-play-btn" onClick={toggle}>
-          {playing ? "❚❚" : "▶"}
-        </button>
-        <span className="audio-time">{fmt(currentTime)} / {fmt(duration)}</span>
-      </div>
-      <audio
-        ref={audioRef}
-        src={src}
-        onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}
-        onTimeUpdate={() => { if (audioRef.current) setCurrentTime(audioRef.current.currentTime); }}
-        onEnded={() => setPlaying(false)}
-      />
     </div>
   );
 }

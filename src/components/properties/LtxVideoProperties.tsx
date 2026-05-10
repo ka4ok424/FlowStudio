@@ -5,8 +5,8 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
   const steps = data.widgetValues?.steps ?? 8;
   const cfg = data.widgetValues?.cfg ?? 1.0;
-  const width = data.widgetValues?.width ?? 768;
-  const height = data.widgetValues?.height ?? 512;
+  const width = data.widgetValues?.width ?? 720;
+  const height = data.widgetValues?.height ?? 1280;
   const frames = data.widgetValues?.frames ?? 97;
   const fps = data.widgetValues?.fps ?? 24;
   const seed = data.widgetValues?.seed ?? "";
@@ -54,19 +54,19 @@ function LtxVideoProperties({ nodeId, data }: { nodeId: string; data: any }) {
         <div style={{ display: "flex", gap: 6 }}>
           <input className="props-input" type="number" value={width ?? ""} min={64} max={2048}
             onChange={(e) => updateWidgetValue(nodeId, "width", e.target.value === "" ? "" : Math.min(2048, parseInt(e.target.value)))}
-            onBlur={() => { if (!width || isNaN(width)) updateWidgetValue(nodeId, "width", 768); }} style={{ width: "50%" }} />
+            onBlur={() => { if (!width || isNaN(width)) updateWidgetValue(nodeId, "width", 720); }} style={{ width: "50%" }} />
           <span style={{ color: "var(--text-muted)", alignSelf: "center" }}>x</span>
           <input className="props-input" type="number" value={height ?? ""} min={64} max={2048}
             onChange={(e) => updateWidgetValue(nodeId, "height", e.target.value === "" ? "" : Math.min(2048, parseInt(e.target.value)))}
-            onBlur={() => { if (!height || isNaN(height)) updateWidgetValue(nodeId, "height", 512); }} style={{ width: "50%" }} />
+            onBlur={() => { if (!height || isNaN(height)) updateWidgetValue(nodeId, "height", 1280); }} style={{ width: "50%" }} />
         </div>
         <div className="props-aspect-row" style={{ marginTop: 10 }}>
           {[
             {w:512,h:512,l:"1:1"},
             {w:768,h:512,l:"3:2"},
             {w:512,h:768,l:"2:3"},
-            {w:960,h:544,l:"16:9"},
-            {w:544,h:960,l:"9:16"},
+            {w:1280,h:720,l:"16:9"},
+            {w:720,h:1280,l:"9:16"},
           ].map((s) => (
             <button key={s.l} className={`props-aspect-btn ${width === s.w && height === s.h ? "active" : ""}`}
               onClick={() => { updateWidgetValue(nodeId, "width", s.w); updateWidgetValue(nodeId, "height", s.h); }}>{s.l}</button>
