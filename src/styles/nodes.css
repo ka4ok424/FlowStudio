@@ -1148,23 +1148,32 @@
 .multicrop-placeholder-text { color: var(--text-muted); font-size: 12px; }
 .multicrop-detected-rect {
   position: absolute;
-  border: 2px solid #66bb6a;
+  border: 2px solid #f59e0b;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(0, 0, 0, 0.4);
   pointer-events: none;
   box-sizing: border-box;
-  background: rgba(102, 187, 106, 0.05);
+  background: rgba(245, 158, 11, 0.06);
 }
 .multicrop-cell-num {
   position: absolute;
-  top: 2px;
-  left: 2px;
-  background: rgba(102, 187, 106, 0.95);
+  /* Inset by border width so the square sits flush against the inner edge
+     of the frame and reads as part of the rectangle's stroke. */
+  top: 0;
+  left: 0;
+  width: 16px; height: 16px;
+  box-sizing: border-box;
+  background: #f59e0b;                /* matches .multicrop-detected-rect border */
   color: #000;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 0;
+  border-radius: 0;                   /* sharp corners so it merges with the frame */
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  text-decoration: none;
 }
 
 .multicrop-controls {
