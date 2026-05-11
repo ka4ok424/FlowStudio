@@ -4,7 +4,7 @@ import { useWorkflowStore } from "../../store/workflowStore";
 function NextFrameProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
   const { nodes: allNodes, edges: allEdges } = useWorkflowStore();
-  const denoise = data.widgetValues?.denoise ?? 0.35;
+  const denoise = data.widgetValues?.denoise ?? 0.8;
   const steps = data.widgetValues?.steps ?? 8;
   const cfg = data.widgetValues?.cfg ?? 1.2;
   const seed = data.widgetValues?.seed ?? "";

@@ -52,7 +52,7 @@ export function buildLtxVideoWorkflow(p: LtxVideoParams): Record<string, any> {
   workflow[unetId] = {
     class_type: "UNETLoader",
     inputs: {
-      unet_name: "LTX23\\ltx-2.3-22b-distilled_transformer_only_fp8_input_scaled_v3.safetensors",
+      unet_name: "LTX23/ltx-2.3-22b-distilled_transformer_only_fp8_input_scaled_v3.safetensors",
       weight_dtype: "default",
     },
   };
@@ -74,7 +74,7 @@ export function buildLtxVideoWorkflow(p: LtxVideoParams): Record<string, any> {
   workflow[vaeId] = {
     class_type: "VAELoaderKJ",
     inputs: {
-      vae_name: "LTX23\\LTX23_video_vae_bf16.safetensors",
+      vae_name: "LTX23/LTX23_video_vae_bf16.safetensors",
       device: "main_device",
       weight_dtype: "bf16",
     },
@@ -90,13 +90,27 @@ export function buildLtxVideoWorkflow(p: LtxVideoParams): Record<string, any> {
   const condId = String(n++);
   workflow[condId] = { class_type: "LTXVConditioning", inputs: { positive: [posId, 0], negative: [negId, 0], frame_rate: p.fps } };
 
-  // 6. Guide frames (optional) — LoadImage for each
+  // 6. Guide frames (optional) — LoadImage + ImageScale(crop=center) → cover-fit to W×H.
+  // The sampler internally would just stretch images to its width/height; we pre-fit
+  // them with aspect-preserving cover crop so faces/composition aren't squashed.
   const guideImageIds: string[] = [];
   const guideIndices: number[] = [];
   for (const frame of p.guideFrames) {
     const imgLoadId = String(n++);
     workflow[imgLoadId] = { class_type: "LoadImage", inputs: { image: frame.name } };
-    guideImageIds.push(imgLoadId);
+
+    const resizeId = String(n++);
+    workflow[resizeId] = {
+      class_type: "ImageScale",
+      inputs: {
+        image: [imgLoadId, 0],
+        upscale_method: "lanczos",
+        width: p.width,
+        height: p.height,
+        crop: "center",
+      },
+    };
+    guideImageIds.push(resizeId);
     guideIndices.push(frame.idx);
   }
 
@@ -236,9 +250,9 @@ export function buildLtxVideoWorkflow(p: LtxVideoParams): Record<string, any> {
 
 export function buildLtxWarmupWorkflow(prompt: string, seed: number, fps: number, maxShift: number, baseShift: number): Record<string, any> {
   return {
-    "1": { class_type: "UNETLoader", inputs: { unet_name: "LTX23\\ltx-2.3-22b-distilled_transformer_only_fp8_input_scaled_v3.safetensors", weight_dtype: "default" } },
+    "1": { class_type: "UNETLoader", inputs: { unet_name: "LTX23/ltx-2.3-22b-distilled_transformer_only_fp8_input_scaled_v3.safetensors", weight_dtype: "default" } },
     "2": { class_type: "DualCLIPLoader", inputs: { clip_name1: "gemma_3_12B_it.safetensors", clip_name2: "LTX23_text_projection_bf16.safetensors", type: "ltxv", device: "default" } },
-    "3": { class_type: "VAELoaderKJ", inputs: { vae_name: "LTX23\\LTX23_video_vae_bf16.safetensors", device: "main_device", weight_dtype: "bf16" } },
+    "3": { class_type: "VAELoaderKJ", inputs: { vae_name: "LTX23/LTX23_video_vae_bf16.safetensors", device: "main_device", weight_dtype: "bf16" } },
     "4": { class_type: "CLIPTextEncode", inputs: { text: prompt, clip: ["2", 0] } },
     "5": { class_type: "CLIPTextEncode", inputs: { text: "", clip: ["2", 0] } },
     "6": { class_type: "LTXVConditioning", inputs: { positive: ["4", 0], negative: ["5", 0], frame_rate: fps } },

@@ -43,9 +43,9 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
     const steps = freshWv.steps || 8;
     const cfg = freshWv.cfg ?? 1.0;
-    const width = freshWv.width || 768;
-    const height = freshWv.height || 512;
-    const frames = freshWv.frames || 41;
+    const width = freshWv.width || 720;
+    const height = freshWv.height || 1280;
+    const frames = freshWv.frames || 97;
     const fps = freshWv.fps || 24;
     const maxLength = freshWv.maxLength || 512;
     const seed = freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647);
@@ -170,7 +170,7 @@ function LtxVideoNode({ id, data, selected }: NodeProps) {
   const dimClass = connectingType ? (hasCompatible ? "compatible" : "incompatible") : "";
 
   const freshWv = nodeData.widgetValues || {};
-  const frames = freshWv.frames || 41;
+  const frames = freshWv.frames || 97;
   const fps = freshWv.fps || 24;
   const duration = (frames / fps).toFixed(1);
 

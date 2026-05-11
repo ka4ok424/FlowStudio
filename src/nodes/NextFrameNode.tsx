@@ -30,7 +30,7 @@ function NextFrameNode({ id, data, selected }: NodeProps) {
     const freshWv = (useWorkflowStore.getState().nodes.find(n => n.id === id)?.data as any)?.widgetValues || {};
     const steps = freshWv.steps || 8;
     const cfg = freshWv.cfg ?? 1.2;
-    const denoise = freshWv.denoise ?? 0.35;
+    const denoise = freshWv.denoise ?? 0.8;
     const seed = freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647);
     const negativePrompt = freshWv.negativePrompt || "";
 

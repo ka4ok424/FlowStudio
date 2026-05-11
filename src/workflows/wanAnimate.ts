@@ -38,7 +38,7 @@ export function buildWanAnimateWorkflow(p: WanAnimateParams): Record<string, any
   workflow[modelId] = {
     class_type: "WanVideoModelLoader",
     inputs: {
-      model: "Wan22Animate\\Wan2_2_Animate_14B_Q4_K_M.gguf",
+      model: "Wan22Animate/Wan2_2_Animate_14B_Q4_K_M.gguf",
       base_precision: "bf16",
       quantization: "disabled",
       load_device: "main_device",
