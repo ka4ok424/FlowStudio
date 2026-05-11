@@ -1683,11 +1683,26 @@
 .inpaint-status { font-size: 10px; color: #ab47bc; font-weight: 700; }
 .inpaint-inputs { padding: 6px 0; }
 .inpaint-outputs { padding: 6px 0; border-top: 1px solid var(--border); }
-.inpaint-preview-wrap { position: relative; }
+.inpaint-preview-wrap {
+  /* flow-root traps the child .nanob-preview's vertical margins inside
+     this wrap. Without it, margin: 8 12 collapses outward and the wrap's
+     own height equals the bare image height — making the absolute mask
+     overlay's top:8 / bottom:8 insets cut into the image area, producing
+     visible un-masked strips above and below. */
+  position: relative;
+  display: flow-root;
+}
 .inpaint-mask-overlay {
-  position: absolute; top: 8px; left: 12px; right: 12px; bottom: 0;
-  width: calc(100% - 24px); height: calc(100% - 8px);
-  object-fit: cover; border-radius: var(--radius-sm);
+  /* Match .nanob-preview margins exactly. For replaced elements (<img>)
+     insets alone don't size the element — its intrinsic dimensions are used
+     instead. So we also set explicit width/height that mirror the inset math:
+     parent_width − (12 + 12) and parent_height − (8 + 8). */
+  position: absolute;
+  top: 8px; left: 12px;
+  width: calc(100% - 24px);
+  height: calc(100% - 16px);
+  object-fit: fill;
+  border-radius: var(--radius-sm);
   opacity: 0; pointer-events: none;
 }
 .inpaint-preview-wrap:hover .inpaint-mask-overlay { opacity: 0.6; filter: invert(1); }
@@ -1874,7 +1889,12 @@
 .inpaintcn-status { font-size: 10px; color: #26a69a; font-weight: 700; }
 .inpaintcn-inputs { padding: 6px 0; }
 .inpaintcn-outputs { padding: 6px 0; border-top: 1px solid var(--border); }
-.inpaintcn-preview-wrap { position: relative; }
+.inpaintcn-preview-wrap {
+  /* See .inpaint-preview-wrap — flow-root keeps .nanob-preview's vertical
+     margins INSIDE the wrap so the overlay rect aligns with the image. */
+  position: relative;
+  display: flow-root;
+}
 .inpaintcn-preview-wrap:hover .inpaint-mask-overlay { opacity: 0.6; filter: invert(1); }
 .inpaintcn-generate-btn {
   flex: 1; padding: 10px; border: none; border-radius: var(--radius-sm);

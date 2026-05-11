@@ -191,15 +191,24 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
           {genTime != null && genTime > 0 && (
             <span className="media-gen-time">{genTime < 1000 ? `${genTime}ms` : `${(genTime / 1000).toFixed(1)}s`}</span>
           )}
-          {/* Download button */}
-          <button className="media-history-download" onClick={(e) => {
-            e.stopPropagation();
-            const ext = mediaType === "video" ? "mp4" : mediaType === "audio" ? "wav" : "png";
-            const a = document.createElement("a");
-            a.href = currentUrl;
-            a.download = `flowstudio_${mediaType}_${Date.now()}.${ext}`;
-            a.click();
-          }} title="Download">
+          {/* Download button — pointer-events also stopped on down so the
+              click doesn't reach wavesurfer's seek-on-pointerdown handler
+              underneath the audio waveform. */}
+          <button
+            className="media-history-download"
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              const ext = mediaType === "video" ? "mp4" : mediaType === "audio" ? "wav" : "png";
+              const a = document.createElement("a");
+              a.href = currentUrl;
+              a.download = `flowstudio_${mediaType}_${Date.now()}.${ext}`;
+              a.click();
+            }}
+            title="Download"
+          >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />

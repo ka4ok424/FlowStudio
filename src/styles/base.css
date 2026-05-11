@@ -1183,6 +1183,9 @@ body {
   border: none; border-radius: 4px; color: #ccc; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   opacity: 0; transition: opacity 0.15s;
+  /* Stay above the wavesurfer canvas so clicks reach the button instead of
+     bubbling into wavesurfer's seek handler. */
+  z-index: 10;
 }
 .nanob-preview:hover .media-history-download { opacity: 1; }
 .media-history-download:hover { background: rgba(0,0,0,0.8); color: #fff; }

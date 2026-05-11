@@ -121,8 +121,10 @@ export default function MaskCanvas({ imageUrl, existingMask, onSave, onClose }: 
     img.src = imageUrl;
   }, [imageUrl, existingMask, saveToHistory]);
 
-  // Update cursor position
-  const updateCursor = useCallback((e: React.MouseEvent) => {
+  // Update cursor position. `display` is toggled when the cursor enters/leaves
+  // the canvas; coords are computed every move whether the pointer is inside
+  // or outside the bounds.
+  const updateCursor = useCallback((e: React.PointerEvent | { clientX: number; clientY: number }) => {
     const cursor = cursorRef.current;
     const mask = maskRef.current;
     if (!cursor || !mask) return;
@@ -132,56 +134,59 @@ export default function MaskCanvas({ imageUrl, existingMask, onSave, onClose }: 
     cursor.style.top = `${e.clientY - rect.top - size / 2}px`;
     cursor.style.width = `${size}px`;
     cursor.style.height = `${size}px`;
-    cursor.style.display = "block";
   }, []);
 
-  const draw = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Paint a single stamp at (clientX, clientY).
+  // The brush is a circle. Near any canvas edge we add a RECTANGLE from the
+  // edge inward to the brush center to the same path — so when `ctx.fill()`
+  // runs it paints circle + edge-spill as ONE shape at the same alpha. This
+  // guarantees full coverage right up to the boundary row/column without
+  // doubling alpha in the overlap zone.
+  const stampAt = useCallback((clientX: number, clientY: number) => {
+    const mask = maskRef.current;
+    if (!mask) return;
+    const rect = mask.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const r = brushSizeRef.current / 2;
+    const ctx = mask.getContext("2d")!;
+    if (isErasing) {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = "rgba(0, 0, 0, 1)";
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      const alpha = brushOpacityRef.current / 100;
+      ctx.fillStyle = `rgba(255, 0, 0, ${alpha * 0.6})`;
+    }
+    const W = mask.width, H = mask.height;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    if (y < r)     ctx.rect(x - r, 0, 2 * r, y);
+    if (y > H - r) ctx.rect(x - r, y, 2 * r, H - y);
+    if (x < r)     ctx.rect(0,     y - r, x,     2 * r);
+    if (x > W - r) ctx.rect(x,     y - r, W - x, 2 * r);
+    ctx.fill();
+  }, [isErasing]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.button !== 0) return;
+    setDrawing(true);
+    // Pointer capture ensures we keep receiving move/up events even when the
+    // cursor leaves the canvas — so the brush can paint right up to and past
+    // the edge without the gesture being interrupted by onMouseLeave.
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    stampAt(e.clientX, e.clientY);
+    updateCursor(e);
+  }, [stampAt, updateCursor]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     updateCursor(e);
     if (!drawing) return;
-    const mask = maskRef.current;
-    if (!mask) return;
-    const rect = mask.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const ctx = mask.getContext("2d")!;
+    stampAt(e.clientX, e.clientY);
+  }, [drawing, stampAt, updateCursor]);
 
-    if (isErasing) {
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.fillStyle = "rgba(0, 0, 0, 1)";
-    } else {
-      ctx.globalCompositeOperation = "source-over";
-      const alpha = brushOpacityRef.current / 100;
-      ctx.fillStyle = `rgba(255, 0, 0, ${alpha * 0.6})`;
-    }
-    ctx.beginPath();
-    ctx.arc(x, y, brushSizeRef.current / 2, 0, Math.PI * 2);
-    ctx.fill();
-  }, [drawing, isErasing, updateCursor]);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    setDrawing(true);
-    // Draw single dot on click
-    const mask = maskRef.current;
-    if (!mask) return;
-    const rect = mask.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const ctx = mask.getContext("2d")!;
-    if (isErasing) {
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.fillStyle = "rgba(0, 0, 0, 1)";
-    } else {
-      ctx.globalCompositeOperation = "source-over";
-      const alpha = brushOpacityRef.current / 100;
-      ctx.fillStyle = `rgba(255, 0, 0, ${alpha * 0.6})`;
-    }
-    ctx.beginPath();
-    ctx.arc(x, y, brushSizeRef.current / 2, 0, Math.PI * 2);
-    ctx.fill();
-    updateCursor(e);
-  }, [isErasing, updateCursor]);
-
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    (e.target as Element).releasePointerCapture?.(e.pointerId);
     if (drawing) {
       setDrawing(false);
       saveToHistory();
@@ -241,12 +246,18 @@ export default function MaskCanvas({ imageUrl, existingMask, onSave, onClose }: 
           <canvas
             ref={maskRef}
             className="mask-canvas-draw"
-            onMouseDown={handleMouseDown}
-            onMouseMove={draw}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={() => { setDrawing(false); if (cursorRef.current) cursorRef.current.style.display = "none"; }}
-            onMouseEnter={updateCursor}
-            style={{ cursor: "none" }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onPointerEnter={(e) => { if (cursorRef.current) cursorRef.current.style.display = "block"; updateCursor(e); }}
+            onPointerLeave={() => {
+              // Hide the visual brush ring but DON'T stop drawing — pointer
+              // capture keeps the gesture alive so the user can paint past
+              // the canvas edge for full edge coverage.
+              if (cursorRef.current) cursorRef.current.style.display = "none";
+            }}
+            style={{ cursor: "none", touchAction: "none" }}
           />
           <div ref={cursorRef} className="mask-brush-cursor" style={{ display: "none" }} />
         </div>
