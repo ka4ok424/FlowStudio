@@ -3,10 +3,9 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { dataUrlToBlobUrl } from "../utils/blobUrl";
 import { getConnectedImageUrl } from "../hooks/useNodeHelpers";
+import MultiCropEditor, { type CellRect } from "../components/MultiCropEditor";
 
 const IMAGE_COLOR = "#64b5f6";
-
-interface CellRect { x: number; y: number; w: number; h: number }
 
 async function loadImage(url: string): Promise<HTMLImageElement> {
   const img = new Image();
@@ -39,131 +38,6 @@ async function cropCell(srcUrl: string, c: CellRect): Promise<string> {
   return dataUrlToBlobUrl(dataUrl);
 }
 
-/**
- * Detect image regions in a source picture via connected-components on the
- * background-thresholded version of the image. Designed for storyboards /
- * contact sheets / collages where images are separated by a uniform-color
- * background (white, black, beige, etc).
- *
- * Pipeline:
- *   1. Sample background color from the edges (40 points across borders).
- *   2. Threshold every pixel by RGB distance to background → content mask.
- *   3. BFS connected components on the content mask.
- *   4. Filter components by min area, fill ratio, aspect ratio.
- *   5. Sort top-to-bottom, left-to-right with row tolerance.
- *
- * Returns each component's bounding rect in SOURCE-image pixel coords.
- */
-async function detectImageCells(srcUrl: string): Promise<CellRect[]> {
-  const img = await loadImage(srcUrl);
-  // Downscale for speed (4K = 16M pixels = slow). Cap at 600px on the long edge.
-  const maxDim = 600;
-  const longEdge = Math.max(img.naturalWidth, img.naturalHeight);
-  const scale = longEdge > maxDim ? maxDim / longEdge : 1;
-  const aw = Math.max(1, Math.round(img.naturalWidth * scale));
-  const ah = Math.max(1, Math.round(img.naturalHeight * scale));
-  const sx = img.naturalWidth / aw;
-  const sy = img.naturalHeight / ah;
-
-  const canvas = document.createElement("canvas");
-  canvas.width = aw; canvas.height = ah;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas 2D unavailable");
-  ctx.drawImage(img, 0, 0, aw, ah);
-  const data = ctx.getImageData(0, 0, aw, ah).data;
-
-  // 1. Background color via edge sampling (median of corners + edge midpoints)
-  const samples: number[][] = [];
-  const N = 10;
-  for (let i = 0; i < N; i++) {
-    const t = Math.round((i / (N - 1)) * (aw - 1));
-    samples.push([t, 0], [t, ah - 1]);
-    const u = Math.round((i / (N - 1)) * (ah - 1));
-    samples.push([0, u], [aw - 1, u]);
-  }
-  let bgR = 0, bgG = 0, bgB = 0;
-  for (const [x, y] of samples) {
-    const i = (y * aw + x) * 4;
-    bgR += data[i]; bgG += data[i + 1]; bgB += data[i + 2];
-  }
-  bgR /= samples.length; bgG /= samples.length; bgB /= samples.length;
-
-  // 2. Threshold each pixel
-  const tolerance = 35; // RGB distance (0..441)
-  const isContent = new Uint8Array(aw * ah);
-  for (let i = 0; i < aw * ah; i++) {
-    const idx = i * 4;
-    const dr = data[idx] - bgR;
-    const dg = data[idx + 1] - bgG;
-    const db = data[idx + 2] - bgB;
-    const dist = Math.sqrt(dr * dr + dg * dg + db * db);
-    isContent[i] = dist > tolerance ? 1 : 0;
-  }
-
-  // 3. Connected components — iterative DFS with explicit stack (avoid recursion
-  // overflow on large blobs).
-  const labels = new Int32Array(aw * ah);
-  let nextLabel = 1;
-  interface Box { minX: number; minY: number; maxX: number; maxY: number; size: number }
-  const labelBoxes = new Map<number, Box>();
-
-  for (let y0 = 0; y0 < ah; y0++) {
-    for (let x0 = 0; x0 < aw; x0++) {
-      const i0 = y0 * aw + x0;
-      if (!isContent[i0] || labels[i0]) continue;
-
-      const label = nextLabel++;
-      let minX = x0, maxX = x0, minY = y0, maxY = y0, size = 0;
-      const stack: number[] = [i0];
-      labels[i0] = label;
-      while (stack.length > 0) {
-        const j = stack.pop() as number;
-        size++;
-        const jx = j % aw;
-        const jy = (j - jx) / aw;
-        if (jx < minX) minX = jx;
-        if (jx > maxX) maxX = jx;
-        if (jy < minY) minY = jy;
-        if (jy > maxY) maxY = jy;
-        if (jx > 0     && isContent[j - 1]  && !labels[j - 1])  { labels[j - 1]  = label; stack.push(j - 1); }
-        if (jx < aw-1  && isContent[j + 1]  && !labels[j + 1])  { labels[j + 1]  = label; stack.push(j + 1); }
-        if (jy > 0     && isContent[j - aw] && !labels[j - aw]) { labels[j - aw] = label; stack.push(j - aw); }
-        if (jy < ah-1  && isContent[j + aw] && !labels[j + aw]) { labels[j + aw] = label; stack.push(j + aw); }
-      }
-      labelBoxes.set(label, { minX, minY, maxX, maxY, size });
-    }
-  }
-
-  // 4. Filter components
-  const totalArea = aw * ah;
-  const minArea = totalArea * 0.005;   // 0.5% of source area
-  const candidates: CellRect[] = [];
-  for (const [, box] of labelBoxes) {
-    if (box.size < minArea) continue;
-    const w = box.maxX - box.minX + 1;
-    const h = box.maxY - box.minY + 1;
-    const fill = box.size / (w * h);
-    if (fill < 0.3) continue;          // too sparse → text/noise
-    const ar = w / h;
-    if (ar > 12 || ar < 1 / 12) continue; // too elongated → text bar / divider line
-    candidates.push({
-      x: Math.round(box.minX * sx),
-      y: Math.round(box.minY * sy),
-      w: Math.round(w * sx),
-      h: Math.round(h * sy),
-    });
-  }
-
-  // 5. Sort top-to-bottom, left-to-right with row tolerance
-  candidates.sort((a, b) => {
-    const tol = Math.min(a.h, b.h) * 0.5;
-    if (Math.abs(a.y - b.y) < tol) return a.x - b.x;
-    return a.y - b.y;
-  });
-
-  return candidates;
-}
-
 function MultiCropNode({ id, data, selected }: NodeProps) {
   const nodeData = data as any;
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
@@ -174,14 +48,18 @@ function MultiCropNode({ id, data, selected }: NodeProps) {
   const edgesAll = useWorkflowStore((s) => s.edges);
 
   const srcUrl = getConnectedImageUrl(id, "input", nodesAll as any[], edgesAll as any[]);
+  // sourceNodeId is the stable identity of the upstream node (survives reload,
+  // unlike its blob: URL which is recreated with a new uuid each session).
+  const srcEdge = edgesAll.find((e) => e.target === id && e.targetHandle === "input");
+  const sourceNodeId = srcEdge?.source ?? null;
 
   const wv = nodeData.widgetValues || {};
-  const detectedCells: CellRect[] = wv._detectedCells || [];
+  // Key kept as `_detectedCells` for back-compat (downstream extraction reads it).
+  const cells: CellRect[] = wv._detectedCells || [];
   const cellPreviews: Record<string, string> = wv._cellPreviews || {};
-  const autoDetectOnConnect: boolean = wv.autoDetectOnConnect ?? true;
 
   const [srcDim, setSrcDim] = useState<{ w: number; h: number } | null>(null);
-  const [detecting, setDetecting] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -191,23 +69,10 @@ function MultiCropNode({ id, data, selected }: NodeProps) {
     pending: { url: string; cells: CellRect[] } | null;
   }>({ running: false, pending: null });
 
-  // Run detection (manual or auto)
-  const runDetect = useCallback(async () => {
-    if (!srcUrl) return;
-    setDetecting(true);
-    setError(null);
-    try {
-      const cells = await detectImageCells(srcUrl);
-      updateWidgetValue(id, "_detectedCells", cells);
-      if (cells.length === 0) setError("No images detected — try manual cells or check source");
-    } catch (err: any) {
-      setError(err?.message || "Detect failed");
-    } finally {
-      setDetecting(false);
-    }
-  }, [srcUrl, id, updateWidgetValue]);
-
-  // Load source dims + auto-detect on source change
+  // Load source dims on source change. Reset cells / previews only when the
+  // user CONNECTS A DIFFERENT UPSTREAM NODE — not when the same node just
+  // happens to have a fresh blob: URL after a page reload (which would erase
+  // the user's hand-drawn cells on every refresh).
   useEffect(() => {
     if (!srcUrl) { setSrcDim(null); return; }
     let cancelled = false;
@@ -215,28 +80,37 @@ function MultiCropNode({ id, data, selected }: NodeProps) {
     loadImage(srcUrl).then((img) => {
       if (cancelled) return;
       setSrcDim({ w: img.naturalWidth, h: img.naturalHeight });
-      if (nodeData.widgetValues?._lastSourceUrl !== srcUrl) {
-        updateWidgetValue(id, "_lastSourceUrl", srcUrl);
+      const wv0 = nodeData.widgetValues || {};
+      if (wv0._lastSourceNodeId !== sourceNodeId) {
+        updateWidgetValue(id, "_lastSourceNodeId", sourceNodeId);
         updateWidgetValue(id, "_cellPreviews", {});
         updateWidgetValue(id, "_detectedCells", []);
         lastExtractedRef.current = null;
-        if (autoDetectOnConnect) {
-          // schedule detect in next tick so widgetValues updates first
-          setTimeout(() => runDetect(), 0);
-        }
+      } else {
+        // Same upstream node — force re-extraction of cell previews so blob
+        // URLs from the previous session are refreshed against the live image.
+        lastExtractedRef.current = null;
       }
     }).catch((err) => { if (!cancelled) setError(err.message || "Load failed"); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [srcUrl, id]);
+  }, [srcUrl, sourceNodeId, id]);
 
-  // Extract per-cell PNGs whenever detectedCells changes. Lock + coalesce.
+  // Extract per-cell PNGs whenever cells change. Lock + coalesce.
   useEffect(() => {
-    if (!srcUrl || detectedCells.length === 0) return;
-    const key = `${srcUrl}|${JSON.stringify(detectedCells)}`;
+    if (!srcUrl || cells.length === 0) {
+      // If user cleared the cells, clear previews too so downstream nodes see emptiness.
+      if (srcUrl && cells.length === 0 && Object.keys(cellPreviews).length > 0) {
+        updateWidgetValue(id, "_cellPreviews", {});
+        updateWidgetValue(id, "_previewUrl", null);
+        lastExtractedRef.current = null;
+      }
+      return;
+    }
+    const key = `${srcUrl}|${JSON.stringify(cells)}`;
     if (lastExtractedRef.current === key) return;
 
-    runStateRef.current.pending = { url: srcUrl, cells: detectedCells };
+    runStateRef.current.pending = { url: srcUrl, cells };
     if (runStateRef.current.running) return;
     runStateRef.current.running = true;
     setExtracting(true);
@@ -269,14 +143,18 @@ function MultiCropNode({ id, data, selected }: NodeProps) {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [srcUrl, detectedCells, id, updateWidgetValue]);
+  }, [srcUrl, cells, id, updateWidgetValue]);
+
+  const onEditorChange = useCallback((next: CellRect[]) => {
+    updateWidgetValue(id, "_detectedCells", next);
+  }, [id, updateWidgetValue]);
 
   // Highlights
   const inHL = connectingDir === "source" && (connectingType === "IMAGE" || connectingType === "MEDIA" || connectingType === "*") ? "highlight" : "";
   const outHL = connectingDir === "target" && (connectingType === "IMAGE" || connectingType === "MEDIA" || connectingType === "*") ? "highlight" : "";
   const dimClass = connectingType ? ((inHL || outHL) ? "compatible" : "incompatible") : "";
 
-  const totalCells = detectedCells.length;
+  const totalCells = cells.length;
 
   return (
     <div className={`multicrop-node ${selected ? "selected" : ""} ${dimClass}`} onClick={() => setSelectedNode(id)}>
@@ -289,10 +167,9 @@ function MultiCropNode({ id, data, selected }: NodeProps) {
             <span className="multicrop-status">
               {!srcUrl ? "NO INPUT"
                 : error ? "ERROR"
-                : detecting ? "DETECTING…"
                 : extracting ? "CROPPING…"
                 : totalCells === 0 ? "NO CELLS"
-                : `${totalCells} cells detected`}
+                : `${totalCells} ${totalCells === 1 ? "cell" : "cells"}`}
             </span>
           </div>
         </div>
@@ -308,10 +185,9 @@ function MultiCropNode({ id, data, selected }: NodeProps) {
 
       <div className="multicrop-preview-wrap nodrag" onClick={(e) => e.stopPropagation()}>
         {srcUrl && srcDim ? (
-          <div className="multicrop-preview" style={{ aspectRatio: `${srcDim.w} / ${srcDim.h}`, maxHeight: 540 }}>
+          <div className="multicrop-preview">
             <img src={srcUrl} alt="" className="multicrop-img" draggable={false} crossOrigin="anonymous" />
-            {/* Detected cell bounding boxes */}
-            {detectedCells.map((cell, i) => {
+            {cells.map((cell, i) => {
               const left = `${(cell.x / srcDim.w) * 100}%`;
               const top = `${(cell.y / srcDim.h) * 100}%`;
               const width = `${(cell.w / srcDim.w) * 100}%`;
@@ -333,8 +209,12 @@ function MultiCropNode({ id, data, selected }: NodeProps) {
 
       {srcDim && (
         <div className="multicrop-controls nodrag" onClick={(e) => e.stopPropagation()}>
-          <button className="multicrop-detect-btn" onClick={runDetect} disabled={detecting || !srcUrl}>
-            {detecting ? "Detecting…" : "🎯 Detect images"}
+          <button
+            className="multicrop-detect-btn"
+            onClick={() => setEditorOpen(true)}
+            disabled={!srcUrl}
+          >
+            ✎ Open editor{totalCells > 0 ? ` · ${totalCells}` : ""}
           </button>
         </div>
       )}
@@ -343,10 +223,10 @@ function MultiCropNode({ id, data, selected }: NodeProps) {
 
       <div className="multicrop-outputs">
         <div className="multicrop-outputs-label">Outputs ({totalCells})</div>
-        {detectedCells.length === 0 ? (
-          <div className="multicrop-outputs-empty">Click 🎯 Detect to find image cells</div>
+        {cells.length === 0 ? (
+          <div className="multicrop-outputs-empty">Open the editor to draw cells</div>
         ) : (
-          detectedCells.map((_, i) => {
+          cells.map((_, i) => {
             const handleId = `out_${i + 1}`;
             const hasPreview = !!cellPreviews[handleId];
             return (
@@ -374,6 +254,16 @@ function MultiCropNode({ id, data, selected }: NodeProps) {
           })
         )}
       </div>
+
+      {editorOpen && srcUrl && srcDim && (
+        <MultiCropEditor
+          srcUrl={srcUrl}
+          srcDim={srcDim}
+          initialCells={cells}
+          onChange={onEditorChange}
+          onClose={() => setEditorOpen(false)}
+        />
+      )}
     </div>
   );
 }

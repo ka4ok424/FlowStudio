@@ -288,11 +288,9 @@ function CropNode({ id, data, selected }: NodeProps) {
   }, [id, srcDim, cropX, cropY, cropW, cropH, manualW, manualH, updateWidgetValue]);
 
   // ── Visual scaling ─────────────────────────────────────────────────
-  const previewMaxH = 540;
-  const aspectStyle = srcDim ? {
-    aspectRatio: `${srcDim.w} / ${srcDim.h}`,
-    maxHeight: previewMaxH,
-  } : undefined;
+  // Container/image now self-size via max-width/max-height in CSS — no inline
+  // aspectRatio needed. Keeping the variable absent removes a stale pillarbox
+  // path that broke crop-coord mapping when image AR ≠ container AR.
 
   // Convert source-space crop → CSS percentages over the preview container
   const pct = srcDim && srcDim.w > 0 && srcDim.h > 0 ? {
@@ -342,7 +340,7 @@ function CropNode({ id, data, selected }: NodeProps) {
 
       <div className="crop-preview-wrap nodrag" onClick={(e) => e.stopPropagation()}>
         {srcUrl && srcDim ? (
-          <div ref={previewRef} className="crop-preview" style={aspectStyle}>
+          <div ref={previewRef} className="crop-preview">
             <img src={srcUrl} alt="" className="crop-img" draggable={false} crossOrigin="anonymous" />
             {pct && (
               <>

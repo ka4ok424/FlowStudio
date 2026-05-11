@@ -992,14 +992,22 @@
 }
 .crop-preview {
   position: relative;
-  width: 100%;
+  display: inline-block;
+  /* Sizing is driven by the <img> inside (max-width/max-height clamp).
+     This makes the container hug the actual image — no pillarbox / letterbox
+     bars around it — so the crop overlay coordinates map 1:1 to source pixels. */
+  max-width: 100%;
+  max-height: 540px;
+  line-height: 0;
   user-select: none;
   touch-action: none;
 }
 .crop-img {
   display: block;
-  width: 100%; height: 100%;
-  object-fit: contain;
+  max-width: 100%;
+  max-height: 540px;
+  width: auto;
+  height: auto;
   pointer-events: none;
 }
 .crop-placeholder {
@@ -1116,13 +1124,19 @@
 }
 .multicrop-preview {
   position: relative;
-  width: 100%;
+  display: inline-block;
+  /* Self-size to the image (max clamped by parent) — eliminates pillarbox
+     so overlay cell rectangles map 1:1 to source pixels. */
+  max-width: 100%;
+  max-height: 540px;
+  line-height: 0;
   user-select: none;
 }
 .multicrop-img {
   display: block;
-  width: 100%; height: 100%;
-  object-fit: contain;
+  max-width: 100%;
+  max-height: 540px;
+  width: auto; height: auto;
   pointer-events: none;
 }
 .multicrop-placeholder {

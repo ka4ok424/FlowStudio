@@ -2360,3 +2360,250 @@ body {
   border: 1px solid var(--border) !important;
   border-radius: var(--radius-sm) !important;
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+   MultiCrop fullscreen editor
+   ────────────────────────────────────────────────────────────────────── */
+.mc-editor-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+}
+.mc-editor-modal {
+  width: 92vw; height: 92vh;
+  background: #0e0e12;
+  border: 1px solid #2a2a35;
+  border-radius: 12px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+}
+.mc-editor-toolbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #2a2a35;
+  background: #14141a;
+  flex-shrink: 0;
+}
+.mc-tb-group { display: flex; gap: 4px; }
+.mc-tb-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; font-size: 12px;
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary, #aaa);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  cursor: pointer; user-select: none;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  font-family: inherit;
+}
+.mc-tb-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.08);
+  color: #e8e8ef;
+  border-color: rgba(255,255,255,0.15);
+}
+.mc-tb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.mc-tb-btn.active {
+  background: #f59e0b;
+  color: #0e0e12;
+  border-color: #f59e0b;
+}
+.mc-tb-icon { font-size: 14px; line-height: 1; }
+.mc-tb-counter {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  font-variant-numeric: tabular-nums;
+}
+.mc-tb-template { color: var(--text-secondary, #aaa); margin-left: 4px; }
+.mc-tb-btn.ar { min-width: 38px; padding: 6px 8px; justify-content: center; }
+.mc-tb-btn.small { padding: 4px 8px; min-width: 28px; justify-content: center; font-size: 13px; }
+.mc-tb-btn.small.ghost {
+  background: transparent;
+  border-color: rgba(255,255,255,0.05);
+  color: var(--text-muted, #888);
+}
+.mc-hint-lock { color: #fbbf24; font-weight: 600; }
+
+/* Zoom slider */
+.mc-tb-zoom { display: flex; align-items: center; gap: 6px; }
+.mc-zoom-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 110px; height: 4px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 2px;
+  outline: none;
+  margin: 0 4px;
+}
+.mc-zoom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px;
+  background: #f59e0b;
+  border: 2px solid #0e0e12;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.mc-zoom-slider::-moz-range-thumb {
+  width: 14px; height: 14px;
+  background: #f59e0b;
+  border: 2px solid #0e0e12;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.mc-zoom-pct {
+  font-size: 11px; color: var(--text-muted, #888);
+  font-variant-numeric: tabular-nums;
+  min-width: 40px; text-align: right;
+}
+
+/* Snap guides — full-span yellow lines while a cell drag is snapping. */
+.mc-snap-guide {
+  position: absolute;
+  background: #fbbf24;
+  pointer-events: none;
+  z-index: 2;
+}
+.mc-snap-guide.vertical   { top: 0; bottom: 0; width: 1px; }
+.mc-snap-guide.horizontal { left: 0; right: 0; height: 1px; }
+.mc-tb-done {
+  padding: 6px 16px; font-size: 12px; font-weight: 600;
+  background: #4caf50; color: #fff;
+  border: 1px solid #4caf50;
+  border-radius: 6px;
+  cursor: pointer; user-select: none;
+  transition: background 0.12s;
+  font-family: inherit;
+}
+.mc-tb-done:hover { background: #5bbf5f; }
+
+.mc-editor-canvas-wrap {
+  flex: 1 1 auto; min-height: 0;
+  display: flex;
+  /* `safe center` keeps content centered when it fits, but falls back to
+     `start` when the zoomed image overflows — preserves scroll access. */
+  align-items: safe center; justify-content: safe center;
+  padding: 16px;
+  overflow: auto;
+  background:
+    linear-gradient(45deg, #15151a 25%, transparent 25%) 0 0/20px 20px,
+    linear-gradient(-45deg, #15151a 25%, transparent 25%) 0 10px/20px 20px,
+    linear-gradient(45deg, transparent 75%, #15151a 75%) 10px -10px/20px 20px,
+    linear-gradient(-45deg, transparent 75%, #15151a 75%) -10px 0/20px 20px,
+    #0b0b0d;
+}
+.mc-editor-canvas {
+  position: relative;
+  display: inline-block;
+  /* No max-* caps — canvas hugs the image (which itself caps to viewport
+     at zoom=1). At zoom > 1 the image grows to explicit px size and the
+     canvas grows with it so cell overlays stay aligned with source pixels.
+     Scrolling is handled by .mc-editor-canvas-wrap which has overflow:auto. */
+  line-height: 0;
+  touch-action: none;
+  user-select: none;
+}
+.mc-editor-canvas { cursor: crosshair; }
+.mc-editor-canvas .mc-cell { cursor: move; }
+.mc-editor-img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(92vh - 130px);   /* leave room for toolbar + hint */
+  width: auto; height: auto;
+  pointer-events: none;
+}
+
+.mc-cell {
+  position: absolute;
+  border: 2px solid #f59e0b;
+  background: rgba(245,158,11,0.10);
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+.mc-cell.selected {
+  border-color: #fbbf24;
+  background: rgba(251,191,36,0.18);
+  box-shadow: 0 0 0 1px #0e0e12 inset, 0 0 0 2px rgba(251,191,36,0.4);
+}
+.mc-cell.drawing {
+  border-style: dashed;
+  border-color: #fcd34d;
+  background: rgba(252,211,77,0.12);
+  pointer-events: none;
+}
+.mc-cell-num {
+  position: absolute; top: 4px; left: 6px;
+  font-size: 11px; font-weight: 700;
+  color: #0e0e12;
+  background: #f59e0b;
+  padding: 1px 6px; border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+}
+.mc-cell-size {
+  position: absolute; bottom: 4px; right: 4px;
+  font-size: 10.5px; font-weight: 600;
+  color: #fff;
+  background: rgba(0,0,0,0.7);
+  padding: 1px 6px; border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.mc-cell-size.big {
+  font-size: 13px;
+  padding: 3px 10px;
+  top: 50%; left: 50%; right: auto; bottom: auto;
+  transform: translate(-50%, -50%);
+  background: rgba(0,0,0,0.85);
+  border: 1px solid rgba(252,211,77,0.6);
+}
+.mc-cell.dragging .mc-cell-size {
+  background: #f59e0b;
+  color: #0e0e12;
+}
+.mc-cell-delete {
+  position: absolute; top: 4px; right: 4px;
+  width: 20px; height: 20px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  border: none; border-radius: 10px;
+  font-size: 14px; line-height: 18px;
+  cursor: pointer; padding: 0;
+  opacity: 0; transition: opacity 0.12s;
+}
+.mc-cell:hover .mc-cell-delete { opacity: 1; }
+.mc-cell-delete:hover { background: #ef4444; }
+.mc-cell-handle {
+  position: absolute;
+  width: 14px; height: 14px;
+  background: #fff;
+  border: 2px solid #f59e0b;
+  border-radius: 3px;
+  box-sizing: border-box;
+  pointer-events: none;  /* drag is handled by parent via hitTestHandle */
+}
+.mc-cell-handle.nw { left: -8px; top: -8px;     cursor: nwse-resize; }
+.mc-cell-handle.ne { right: -8px; top: -8px;    cursor: nesw-resize; }
+.mc-cell-handle.sw { left: -8px; bottom: -8px;  cursor: nesw-resize; }
+.mc-cell-handle.se { right: -8px; bottom: -8px; cursor: nwse-resize; }
+
+.mc-editor-hint {
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  background: #14141a;
+  border-top: 1px solid #2a2a35;
+  flex-shrink: 0;
+}
+.mc-editor-hint kbd {
+  background: #2a2a35;
+  color: #e8e8ef;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid #3a3a48;
+}
