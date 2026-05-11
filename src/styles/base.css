@@ -2532,37 +2532,38 @@ body {
   background: rgba(252,211,77,0.12);
   pointer-events: none;
 }
+/* Plain floating text — no pill background, no border. text-shadow keeps
+   the digits legible on any image. */
 .mc-cell-num {
-  position: absolute; top: 4px; left: 6px;
-  font-size: 11px; font-weight: 700;
-  color: #0e0e12;
-  background: #f59e0b;
-  padding: 1px 6px; border-radius: 3px;
+  position: absolute; top: 8px; left: 8px;
+  font-size: 12px; font-weight: 700;
+  color: #f59e0b;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 0 3px rgba(0,0,0,0.6);
   pointer-events: none;
+  line-height: 1;
 }
 .mc-cell-size {
-  position: absolute; bottom: 4px; right: 4px;
+  position: absolute; bottom: 4px; right: 6px;
   font-size: 10.5px; font-weight: 600;
   color: #fff;
-  background: rgba(0,0,0,0.7);
-  padding: 1px 6px; border-radius: 3px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 0 3px rgba(0,0,0,0.6);
   pointer-events: none;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+  line-height: 1;
 }
 .mc-cell-size.big {
-  font-size: 13px;
-  padding: 3px 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fcd34d;
   top: 50%; left: 50%; right: auto; bottom: auto;
   transform: translate(-50%, -50%);
-  background: rgba(0,0,0,0.85);
-  border: 1px solid rgba(252,211,77,0.6);
+  text-shadow: 0 2px 4px rgba(0,0,0,0.98), 0 0 6px rgba(0,0,0,0.7);
 }
 .mc-cell.dragging .mc-cell-size {
-  background: #f59e0b;
-  color: #0e0e12;
+  color: #fcd34d;
 }
 .mc-cell-delete {
   position: absolute; top: 4px; right: 4px;

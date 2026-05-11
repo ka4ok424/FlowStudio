@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 
 export interface CellRect { x: number; y: number; w: number; h: number }
 
@@ -159,6 +159,10 @@ export default function MultiCropEditor({ srcUrl, srcDim, initialCells, onChange
       if (newZoom === oldZoom) return;
 
       // Pivot: keep the pixel under the cursor stationary.
+      // Use flushSync so React commits the zoom (and the img re-renders with
+      // new px dims) BEFORE we read scrollLeft / write the corrected value —
+      // without it there's a 1-frame jump where the image is at the new size
+      // but the scroll is still at the old position.
       const img = imgRef.current;
       if (img) {
         const r = img.getBoundingClientRect();
@@ -167,14 +171,11 @@ export default function MultiCropEditor({ srcUrl, srcDim, initialCells, onChange
         const ratio = newZoom / oldZoom;
         const scrollDX = focusX * (ratio - 1);
         const scrollDY = focusY * (ratio - 1);
-        // Apply zoom, then adjust scroll on next frame after layout updates.
-        setZoom(newZoom);
-        requestAnimationFrame(() => {
-          if (wrap) {
-            wrap.scrollLeft += scrollDX;
-            wrap.scrollTop  += scrollDY;
-          }
-        });
+        flushSync(() => setZoom(newZoom));
+        // After flush: layout reflects the new size. Adjust scroll in the
+        // same browser tick — no visible frame in between.
+        wrap.scrollLeft += scrollDX;
+        wrap.scrollTop  += scrollDY;
       } else {
         setZoom(newZoom);
       }
@@ -259,16 +260,20 @@ export default function MultiCropEditor({ srcUrl, srcDim, initialCells, onChange
   }, [cells, aspectLock, srcDim.w, srcDim.h]);
 
   // ── AR preset click ─────────────────────────────────────────────────────
+  // Applies the ratio to ONLY the currently selected cell (or no cell at all
+  // if nothing is selected). The lock itself is still set globally so all
+  // subsequent draws / resizes / clicks obey it — but other cells already on
+  // the canvas are left untouched.
   const onPickAR = useCallback((ratio: number | null) => {
     setAspectLock(ratio);
     if (ratio == null) return;
-    // Snap all existing cells to the new ratio.
-    if (cellsRef.current.length === 0) return;
+    const sel = selected;
+    if (sel < 0 || sel >= cellsRef.current.length) return;
     pushHistory();
-    const next = cellsRef.current.map((c) => snapToAR(c, ratio));
+    const next = cellsRef.current.map((c, i) => i === sel ? snapToAR(c, ratio) : c);
     setCells(next);
     onChange(next);
-  }, [pushHistory, snapToAR, onChange]);
+  }, [pushHistory, snapToAR, onChange, selected]);
 
   // ── Hit testing ─────────────────────────────────────────────────────────
   const hitTestCell = useCallback((srcX: number, srcY: number): number => {
@@ -369,15 +374,18 @@ export default function MultiCropEditor({ srcUrl, srcDim, initialCells, onChange
     const ar = aspectLockRef.current;
 
     if (d.type === "draw") {
-      d.curX = p.x; d.curY = p.y;
+      // Clamp the cursor itself to image bounds — keeps the rect anchored at
+      // its start point and grows ONLY up to the edge. Without this, dragging
+      // past the edge pushed the rect's x/y back to 0 via the post-rect clamp,
+      // making it look like the size grew "backwards" from the start point.
+      d.curX = Math.max(0, Math.min(srcDim.w, p.x));
+      d.curY = Math.max(0, Math.min(srcDim.h, p.y));
       let x = Math.min(d.startX, d.curX);
       let y = Math.min(d.startY, d.curY);
       let w = Math.abs(d.curX - d.startX);
       let h = Math.abs(d.curY - d.startY);
       if (ar != null && w > 0 && h > 0) {
-        // Use the side with larger drag distance to drive the other.
         if (w / h > ar) {
-          // wider than ar → narrow it
           const newW = h * ar;
           if (d.curX < d.startX) x = d.startX - newW;
           w = newW;
@@ -397,43 +405,40 @@ export default function MultiCropEditor({ srcUrl, srcDim, initialCells, onChange
       if (!d.moved && Math.hypot(dx, dy) > 4) d.moved = true;
       let proposed = clamp({ x: d.startCell.x + dx, y: d.startCell.y + dy, w: d.startCell.w, h: d.startCell.h });
 
-      // Snap-to-align — find the closest matching edge of any other cell.
+      // Snap-to-align — match my left/right/center-X (and same for Y) against
+      // every other cell's same anchors PLUS the image boundaries 0 / srcDim.
       const snapTolX = SNAP_PX * sx;
       const snapTolY = SNAP_PX * sy;
       const others = cellsRef.current.filter((_, i) => i !== d.idx);
-      if (others.length > 0) {
-        const myXs = [proposed.x, proposed.x + proposed.w, proposed.x + proposed.w / 2];
-        const myYs = [proposed.y, proposed.y + proposed.h, proposed.y + proposed.h / 2];
-        const otherXs: number[] = [];
-        const otherYs: number[] = [];
-        for (const o of others) {
-          otherXs.push(o.x, o.x + o.w, o.x + o.w / 2);
-          otherYs.push(o.y, o.y + o.h, o.y + o.h / 2);
-        }
-        let bestDX: number | null = null, bestX: number | null = null;
-        for (const my of myXs) for (const ox of otherXs) {
-          const dd = ox - my;
-          if (Math.abs(dd) <= snapTolX && (bestDX == null || Math.abs(dd) < Math.abs(bestDX))) {
-            bestDX = dd; bestX = ox;
-          }
-        }
-        let bestDY: number | null = null, bestY: number | null = null;
-        for (const my of myYs) for (const oy of otherYs) {
-          const dd = oy - my;
-          if (Math.abs(dd) <= snapTolY && (bestDY == null || Math.abs(dd) < Math.abs(bestDY))) {
-            bestDY = dd; bestY = oy;
-          }
-        }
-        if (bestDX != null) proposed = { ...proposed, x: proposed.x + bestDX };
-        if (bestDY != null) proposed = { ...proposed, y: proposed.y + bestDY };
-        proposed = clamp(proposed);
-        setSnapGuides({
-          xs: bestX != null ? [bestX] : [],
-          ys: bestY != null ? [bestY] : [],
-        });
-      } else {
-        setSnapGuides({ xs: [], ys: [] });
+      const myXs = [proposed.x, proposed.x + proposed.w, proposed.x + proposed.w / 2];
+      const myYs = [proposed.y, proposed.y + proposed.h, proposed.y + proposed.h / 2];
+      const otherXs: number[] = [0, srcDim.w];
+      const otherYs: number[] = [0, srcDim.h];
+      for (const o of others) {
+        otherXs.push(o.x, o.x + o.w, o.x + o.w / 2);
+        otherYs.push(o.y, o.y + o.h, o.y + o.h / 2);
       }
+      let bestDX: number | null = null, bestX: number | null = null;
+      for (const my of myXs) for (const ox of otherXs) {
+        const dd = ox - my;
+        if (Math.abs(dd) <= snapTolX && (bestDX == null || Math.abs(dd) < Math.abs(bestDX))) {
+          bestDX = dd; bestX = ox;
+        }
+      }
+      let bestDY: number | null = null, bestY: number | null = null;
+      for (const my of myYs) for (const oy of otherYs) {
+        const dd = oy - my;
+        if (Math.abs(dd) <= snapTolY && (bestDY == null || Math.abs(dd) < Math.abs(bestDY))) {
+          bestDY = dd; bestY = oy;
+        }
+      }
+      if (bestDX != null) proposed = { ...proposed, x: proposed.x + bestDX };
+      if (bestDY != null) proposed = { ...proposed, y: proposed.y + bestDY };
+      proposed = clamp(proposed);
+      setSnapGuides({
+        xs: bestX != null ? [bestX] : [],
+        ys: bestY != null ? [bestY] : [],
+      });
 
       if (d.moved && !(d as any)._historyPushed) {
         pushHistory();
@@ -460,25 +465,38 @@ export default function MultiCropEditor({ srcUrl, srcDim, initialCells, onChange
       let nh =
         d.handle === "nw" || d.handle === "ne" ? c.h - dy : c.h + dy;
 
-      // AR lock — pick the driving axis by larger user motion.
-      if (ar != null) {
-        if (Math.abs(dx) > Math.abs(dy) * ar) {
-          nh = nw / ar;       // width-driven
+      // AR lock — "fit inside drag" approach: keep whichever side of the
+      // tentative rect is closer to the locked ratio, shrink the other to
+      // match. This is continuous in (dx, dy) — unlike the previous
+      // `|dx| ⋛ |dy|·ar` switch which caused the rect to jump nearly 2× as
+      // the user's diagonal crossed the threshold.
+      if (ar != null && nw > 0 && nh > 0) {
+        if (nw / nh > ar) {
+          nw = nh * ar;        // currently too wide → narrow to ratio
         } else {
-          nw = nh * ar;       // height-driven
+          nh = nw / ar;        // currently too tall → reduce height to ratio
         }
       }
 
       // Available space from anchor to nearest image boundary in this drag
-      // direction. Shrink-to-fit if we'd push past it (keeps AR intact).
+      // direction.
       const goesRight = ax === c.x;                                  // dragging E side
       const goesDown  = ay === c.y;                                  // dragging S side
       const availW = goesRight ? srcDim.w - ax : ax;
       const availH = goesDown  ? srcDim.h - ay : ay;
-      let scale = 1;
-      if (nw > availW) scale = Math.min(scale, availW / nw);
-      if (nh > availH) scale = Math.min(scale, availH / nh);
-      if (scale < 1) { nw *= scale; nh *= scale; }
+      if (ar != null) {
+        // AR locked → proportional shrink so the ratio survives the clamp.
+        let scale = 1;
+        if (nw > availW) scale = Math.min(scale, availW / nw);
+        if (nh > availH) scale = Math.min(scale, availH / nh);
+        if (scale < 1) { nw *= scale; nh *= scale; }
+      } else {
+        // Free ratio → clamp each side independently. Previously we shrunk
+        // both proportionally, which made the rect lag the cursor when only
+        // one side hit the edge.
+        if (nw > availW) nw = availW;
+        if (nh > availH) nh = availH;
+      }
 
       // Lower bound; keep AR when shrunk to floor.
       if (nw < MIN_CELL) {
@@ -494,49 +512,80 @@ export default function MultiCropEditor({ srcUrl, srcDim, initialCells, onChange
       let nx = goesRight ? ax : ax - nw;
       let ny = goesDown  ? ay : ay - nh;
 
-      // Light snap-to-align on the MOVING corner — only when AR is unlocked
-      // (with AR locked, snapping one side forces the other out of ratio).
-      // Snap targets: other cells' edges + image boundaries (0, srcDim.w/h).
+      // Light snap-to-align on the MOVING corner.
+      // Targets:
+      //   - every OTHER cell's left/right/center-X and top/bottom/center-Y
+      //   - image boundaries (0, srcDim.w / srcDim.h) — so even a lone cell
+      //     can magnet to the canvas edge
+      // Under AR-lock: snap the dominant axis (the one carrying more user
+      // motion) and re-derive the other via ratio, so the lock is preserved.
       const snapTolX2 = SNAP_PX * sx;
       const snapTolY2 = SNAP_PX * sy;
       const othersR = cellsRef.current.filter((_, i) => i !== d.idx);
       const guideX: number[] = [], guideY: number[] = [];
-      if (ar == null && othersR.length > 0) {
-        const movingX = goesRight ? nx + nw : nx;
-        const movingY = goesDown  ? ny + nh : ny;
-        const targetsX: number[] = [];
-        const targetsY: number[] = [];
-        for (const o of othersR) {
-          targetsX.push(o.x, o.x + o.w, o.x + o.w / 2);
-          targetsY.push(o.y, o.y + o.h, o.y + o.h / 2);
+      const targetsX: number[] = [0, srcDim.w];
+      const targetsY: number[] = [0, srcDim.h];
+      for (const o of othersR) {
+        targetsX.push(o.x, o.x + o.w, o.x + o.w / 2);
+        targetsY.push(o.y, o.y + o.h, o.y + o.h / 2);
+      }
+      const movingX = goesRight ? nx + nw : nx;
+      const movingY = goesDown  ? ny + nh : ny;
+      let bestDX2: number | null = null, snapX2: number | null = null;
+      for (const tx of targetsX) {
+        const dd = tx - movingX;
+        if (Math.abs(dd) <= snapTolX2 && (bestDX2 == null || Math.abs(dd) < Math.abs(bestDX2))) {
+          bestDX2 = dd; snapX2 = tx;
         }
-        let bestDX2: number | null = null, snapX2: number | null = null;
-        for (const tx of targetsX) {
-          const dd = tx - movingX;
-          if (Math.abs(dd) <= snapTolX2 && (bestDX2 == null || Math.abs(dd) < Math.abs(bestDX2))) {
-            bestDX2 = dd; snapX2 = tx;
-          }
+      }
+      let bestDY2: number | null = null, snapY2: number | null = null;
+      for (const ty of targetsY) {
+        const dd = ty - movingY;
+        if (Math.abs(dd) <= snapTolY2 && (bestDY2 == null || Math.abs(dd) < Math.abs(bestDY2))) {
+          bestDY2 = dd; snapY2 = ty;
         }
-        let bestDY2: number | null = null, snapY2: number | null = null;
-        for (const ty of targetsY) {
-          const dd = ty - movingY;
-          if (Math.abs(dd) <= snapTolY2 && (bestDY2 == null || Math.abs(dd) < Math.abs(bestDY2))) {
-            bestDY2 = dd; snapY2 = ty;
-          }
+      }
+
+      const applySnapX = () => {
+        if (snapX2 == null) return;
+        if (goesRight) { nw = snapX2 - ax; }
+        else           { nw = ax - snapX2; nx = snapX2; }
+        guideX.push(snapX2);
+      };
+      const applySnapY = () => {
+        if (snapY2 == null) return;
+        if (goesDown) { nh = snapY2 - ay; }
+        else          { nh = ay - snapY2; ny = snapY2; }
+        guideY.push(snapY2);
+      };
+
+      if (ar == null) {
+        applySnapX();
+        applySnapY();
+      } else {
+        // Pick the axis closest to a snap target and derive the other from AR.
+        const dXa = bestDX2 != null ? Math.abs(bestDX2) : Infinity;
+        const dYa = bestDY2 != null ? Math.abs(bestDY2) : Infinity;
+        if (dXa <= dYa && snapX2 != null) {
+          applySnapX();
+          nh = nw / ar;
+          if (!goesDown) ny = ay - nh;
+        } else if (snapY2 != null) {
+          applySnapY();
+          nw = nh * ar;
+          if (!goesRight) nx = ax - nw;
         }
-        if (snapX2 != null) {
-          if (goesRight) { nw = snapX2 - ax; }
-          else           { nw = ax - snapX2; nx = snapX2; }
-          guideX.push(snapX2);
-        }
-        if (snapY2 != null) {
-          if (goesDown) { nh = snapY2 - ay; }
-          else          { nh = ay - snapY2; ny = snapY2; }
-          guideY.push(snapY2);
-        }
-        // Re-validate MIN_CELL after snap.
-        if (nw < MIN_CELL) { nw = MIN_CELL; nx = goesRight ? ax : ax - nw; }
-        if (nh < MIN_CELL) { nh = MIN_CELL; ny = goesDown  ? ay : ay - nh; }
+      }
+      // Re-validate MIN_CELL after snap.
+      if (nw < MIN_CELL) {
+        nw = MIN_CELL;
+        nx = goesRight ? ax : ax - nw;
+        if (ar != null) { nh = nw / ar; if (!goesDown) ny = ay - nh; }
+      }
+      if (nh < MIN_CELL) {
+        nh = MIN_CELL;
+        ny = goesDown ? ay : ay - nh;
+        if (ar != null) { nw = nh * ar; if (!goesRight) nx = ax - nw; }
       }
       setSnapGuides({ xs: guideX, ys: guideY });
 
@@ -651,7 +700,7 @@ export default function MultiCropEditor({ srcUrl, srcDim, initialCells, onChange
                   key={p.label}
                   className={`mc-tb-btn ar ${isActive ? "active" : ""}`}
                   onClick={() => onPickAR(p.ratio)}
-                  title={p.ratio == null ? "Free ratio" : `Lock to ${p.label} and snap existing cells`}
+                  title={p.ratio == null ? "Free ratio" : `Lock to ${p.label} — snaps the selected cell (if any) and constrains future draws/resizes`}
                 >{p.label}</button>
               );
             })}

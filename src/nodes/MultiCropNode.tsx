@@ -17,8 +17,11 @@ async function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-async function cropCell(srcUrl: string, c: CellRect): Promise<string> {
-  const img = await loadImage(srcUrl);
+/** Crop one cell from an ALREADY-loaded image. Caller is responsible for
+ *  loading the source once and passing the same HTMLImageElement for every
+ *  cell — avoids re-decoding the source per cell (was the dominant cost in
+ *  the previous N-roundtrip-per-extraction implementation). */
+async function cropCellFromImg(img: HTMLImageElement, c: CellRect): Promise<string> {
   const w = Math.max(1, Math.round(c.w));
   const h = Math.max(1, Math.round(c.h));
   const canvas = document.createElement("canvas");
@@ -36,6 +39,17 @@ async function cropCell(srcUrl: string, c: CellRect): Promise<string> {
     r.readAsDataURL(blob);
   });
   return dataUrlToBlobUrl(dataUrl);
+}
+
+/** Revoke every blob: URL in the provided map. Without this, every drag
+ *  re-extraction leaks ~1-2MB per cell into the browser's blob registry. */
+function revokeBlobMap(map: Record<string, string> | undefined | null) {
+  if (!map) return;
+  for (const v of Object.values(map)) {
+    if (typeof v === "string" && v.startsWith("blob:")) {
+      try { URL.revokeObjectURL(v); } catch { /* noop */ }
+    }
+  }
 }
 
 function MultiCropNode({ id, data, selected }: NodeProps) {
@@ -96,11 +110,24 @@ function MultiCropNode({ id, data, selected }: NodeProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [srcUrl, sourceNodeId, id]);
 
-  // Extract per-cell PNGs whenever cells change. Lock + coalesce.
+  // Extract per-cell PNGs whenever cells change.
+  //
+  // Three layered optimisations vs. the naive "extract on every state tick":
+  //   1. **Debounce 300ms** — every onChange during a drag schedules a new
+  //      timer; only the last one in a quiet window actually runs extraction.
+  //      Avoids 60Hz of full re-extractions during a live move/resize.
+  //   2. **Source image cached for the whole loop** — `loadImage(srcUrl)` is
+  //      done ONCE per extraction; the resulting HTMLImageElement is reused
+  //      for every cell. Previously each cell re-decoded the source.
+  //   3. **Blob URLs revoked** — before writing a new `_cellPreviews` map,
+  //      every blob: URL in the previous one is `URL.revokeObjectURL`'d so
+  //      replaced previews stop holding their PNG bytes alive.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!srcUrl || cells.length === 0) {
-      // If user cleared the cells, clear previews too so downstream nodes see emptiness.
+      // Clearing the cells → drop previews + revoke their blobs.
       if (srcUrl && cells.length === 0 && Object.keys(cellPreviews).length > 0) {
+        revokeBlobMap(cellPreviews);
         updateWidgetValue(id, "_cellPreviews", {});
         updateWidgetValue(id, "_previewUrl", null);
         lastExtractedRef.current = null;
@@ -110,40 +137,81 @@ function MultiCropNode({ id, data, selected }: NodeProps) {
     const key = `${srcUrl}|${JSON.stringify(cells)}`;
     if (lastExtractedRef.current === key) return;
 
+    // Latest pending state always wins (drag emits many).
     runStateRef.current.pending = { url: srcUrl, cells };
     if (runStateRef.current.running) return;
-    runStateRef.current.running = true;
-    setExtracting(true);
+
+    // Cancel any previously scheduled debounce — the new one resets the timer.
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
     setError(null);
 
-    (async () => {
-      try {
-        while (runStateRef.current.pending) {
-          const target = runStateRef.current.pending;
-          runStateRef.current.pending = null;
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      if (!runStateRef.current.pending) return;
+      runStateRef.current.running = true;
+      setExtracting(true);
 
-          const out: Record<string, string> = {};
-          for (let i = 0; i < target.cells.length; i++) {
-            const handleId = `out_${i + 1}`;
-            out[handleId] = await cropCell(target.url, target.cells[i]);
+      (async () => {
+        try {
+          while (runStateRef.current.pending) {
+            const target = runStateRef.current.pending;
+            runStateRef.current.pending = null;
+
+            // Load source ONCE, reuse for every cell.
+            const img = await loadImage(target.url);
+
+            const out: Record<string, string> = {};
+            for (let i = 0; i < target.cells.length; i++) {
+              const handleId = `out_${i + 1}`;
+              out[handleId] = await cropCellFromImg(img, target.cells[i]);
+            }
+
+            const next = runStateRef.current.pending;
+            if (next && next.url !== target.url) {
+              // A newer extraction is queued for a different source — toss
+              // this batch's blobs.
+              revokeBlobMap(out);
+              continue;
+            }
+
+            // Revoke the previous preview blobs before overwriting.
+            const prevPreviews = (useWorkflowStore.getState().nodes
+              .find((n) => n.id === id)?.data as any)?.widgetValues?._cellPreviews;
+            revokeBlobMap(prevPreviews);
+
+            updateWidgetValue(id, "_cellPreviews", out);
+            updateWidgetValue(id, "_previewUrl", out["out_1"] || null);
+            lastExtractedRef.current = `${target.url}|${JSON.stringify(target.cells)}`;
           }
-
-          const next = runStateRef.current.pending;
-          if (next && next.url !== target.url) continue;
-
-          updateWidgetValue(id, "_cellPreviews", out);
-          updateWidgetValue(id, "_previewUrl", out["out_1"] || null);
-          lastExtractedRef.current = key;
+        } catch (err: any) {
+          setError(err?.message || "Crop failed");
+        } finally {
+          runStateRef.current.running = false;
+          setExtracting(false);
         }
-      } catch (err: any) {
-        setError(err?.message || "Crop failed");
-      } finally {
-        runStateRef.current.running = false;
-        setExtracting(false);
+      })();
+    }, 300);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
       }
-    })();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [srcUrl, cells, id, updateWidgetValue]);
+
+  // On unmount, revoke any outstanding blob URLs so they don't linger.
+  useEffect(() => {
+    return () => {
+      const wv0 = (useWorkflowStore.getState().nodes
+        .find((n) => n.id === id)?.data as any)?.widgetValues;
+      revokeBlobMap(wv0?._cellPreviews);
+    };
+  }, [id]);
 
   const onEditorChange = useCallback((next: CellRect[]) => {
     updateWidgetValue(id, "_detectedCells", next);
