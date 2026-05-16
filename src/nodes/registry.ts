@@ -1208,6 +1208,51 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:ltxFL",
+  label: "LTX 2.3 FL",
+  icon: "🎬",
+  accentColor: "#e85d75",
+  component: "LtxFLNode",
+  description: "LTX-2.3 First-Last-Frame to Video (basic FLF2V variant). Two keyframes + prompt → smooth transition, up to 20s. No audio mux / LoRA UI — simpler companion to fs:ltxLora, parallel to fs:ltxF but with two frames.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "first_frame", type: "IMAGE" },
+    { name: "last_frame", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "LTX-2 FLF2V (First-Last-Frame to Video), basic variant: two keyframes + prompt → smooth transition video. Wraps `LTX-2.3_-_FLF2V_First-Last-Frame.json` (not the transition_lora flavour). Same UNETLoader-based pipeline as fs:ltxFlf but without the audio mux chain (LTX auto-generates audio).",
+    skills: [
+      "First→Last frame transitions up to ~20s at 24fps",
+      "Aspect presets 1:1 / 4:5 / 16:9 / 9:16",
+      "LTX-2 prompt enhancer toggle (off by default — chain stripped from workflow when disabled to skip Gemma LLM inference)",
+      "Per-frame guidance strength control",
+    ],
+    params: {
+      frames: "25–481 (~5s default, ~20s max @ 24fps). Back-solved to LENGTH (s) for INTConstant node 2078.",
+      fps: "Output FPS (PrimitiveFloat 2076), default 24",
+      width: "INTConstant 2080, default 720",
+      height: "INTConstant 2079, default 1280 (9:16)",
+      cfg: "CFGGuider 8 + 36, default 1.0",
+      steps: "LTXVScheduler 2, default 8",
+      seed: "RandomNoise 14 = seed, 15 = seed+1",
+      firstFrameStrength: "PrimitiveFloat 2110, default 1.0",
+      lastFrameStrength: "PrimitiveFloat 2108, default 1.0",
+      promptEnhancer: "PrimitiveBoolean 2082, default false. When off, the entire 2070:* + 2102:* enhancer chain is stripped from the workflow at build time so Gemma never loads.",
+    },
+    connectsFrom: ["fs:prompt", "fs:localGenerate", "fs:nanoBanana", "fs:kontext", "fs:import"],
+    connectsTo: ["fs:preview", "fs:tiktokPublish", "fs:smoothFps", "fs:montage", "fs:mmaudio"],
+    examples: [
+      "Prompt('slow zoom-in') + first(start.jpg) + last(end.jpg) → LTX 2.3 FL → Preview",
+      "Prompt('cinematic transition') + first + last → LTX 2.3 FL → SmoothFps → TikTok Publish",
+    ],
+    comfyMapping: "ComfyUI API workflow JSON (~70 nodes, src/workflows/ltxFL.template.json). UNETLoader 187 (ltx-2.3-22b-distilled-1.1) → Power Lora Loader 2107 (off) → LTX2SamplingPreviewOverride. LoadImage 45 (FIRST) / 47 (LAST) → ImageResizeKJv2 → LTXVPreprocess → LTXVImgToVideoInplaceKJ 210 (stage 1, both frames) and 2105 (stage 2, first frame) → LTXVLatentUpsampler → LTXVAddGuide 2152 (last frame at frame_idx=-1) → SamplerCustomAdvanced ×2 → LTXVCropGuides → VAEDecodeTiled → VHS_VideoCombine 43. Audio: LTXVEmptyLatentAudio → LTXVAudioVAEDecode (auto-generated). Enhancer: 2070:* nodes (ComfySwitchNode-based, stripped at build when toggle off).",
+  },
+});
+
+registerNativeNode({
   type: "fs:mmaudio",
   label: "MMAudio",
   icon: "🔊",

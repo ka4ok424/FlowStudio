@@ -9,6 +9,7 @@ export interface LtxFParams {
   cfg: number;
   steps: number;
   seed: number;
+  firstFrameStrength: number;   // applied to both LTXVImgToVideoInplace stages
   promptEnhancer: boolean;
   imageFile: string;       // ComfyUI input/ filename for LoadImage 167
 }
@@ -66,6 +67,12 @@ export function buildLtxFWorkflow(p: LtxFParams): Record<string, any> {
 
   // LoRA disabled by default (kept in graph for pass-through model wiring)
   wf["301"].inputs.lora_1.on = false;
+
+  // First frame guidance strength — applies to both LTXVImgToVideoInplace
+  // stages (stage 1 base render + stage 2 upscale refine). Higher = stronger
+  // anchor to the input image.
+  wf["161"].inputs.strength = p.firstFrameStrength;
+  wf["160"].inputs.strength = p.firstFrameStrength;
 
   // Input image
   wf["167"].inputs.image = p.imageFile;

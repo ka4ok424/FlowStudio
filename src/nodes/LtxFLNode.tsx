@@ -6,9 +6,9 @@ import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
 import { log } from "../store/logStore";
-import { buildLtxFWorkflow } from "../workflows/ltxF";
+import { buildLtxFLWorkflow } from "../workflows/ltxFL";
 
-function LtxFNode({ id, data, selected }: NodeProps) {
+function LtxFLNode({ id, data, selected }: NodeProps) {
   const nodeData = data as any;
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
   const setSelectedNode = useWorkflowStore((s) => s.setSelectedNode);
@@ -47,6 +47,7 @@ function LtxFNode({ id, data, selected }: NodeProps) {
     const steps = freshWv.steps || 8;
     const seed = freshWv.seed ? parseInt(freshWv.seed) : Math.floor(Math.random() * 2147483647);
     const firstFrameStrength = freshWv.firstFrameStrength ?? 1.0;
+    const lastFrameStrength = freshWv.lastFrameStrength ?? 1.0;
     const promptEnhancer = freshWv.promptEnhancer ?? false;
 
     let promptText = "";
@@ -57,21 +58,25 @@ function LtxFNode({ id, data, selected }: NodeProps) {
     }
     if (!promptText) { setError("Connect a Prompt node"); setProcessing(false); return; }
 
-    const imageUrl = getConnectedMedia("image");
-    if (!imageUrl) { setError("Connect an IMAGE input"); setProcessing(false); return; }
+    const firstFrameUrl = getConnectedMedia("first_frame");
+    const lastFrameUrl  = getConnectedMedia("last_frame");
+    if (!firstFrameUrl) { setError("Connect FIRST FRAME (IMAGE)"); setProcessing(false); return; }
+    if (!lastFrameUrl)  { setError("Connect LAST FRAME (IMAGE)");  setProcessing(false); return; }
 
-    log("LTX F rendering", { nodeId: id, nodeType: "fs:ltxF", nodeLabel: "LTX 2.3 F" });
+    log("LTX FL rendering", { nodeId: id, nodeType: "fs:ltxFL", nodeLabel: "LTX 2.3 FL" });
 
     try {
-      const imageFile = await uploadOnce(imageUrl, "png");
+      const firstName = await uploadOnce(firstFrameUrl, "png");
+      const lastName  = await uploadOnce(lastFrameUrl,  "png");
 
-      const workflow = buildLtxFWorkflow({
+      const workflow = buildLtxFLWorkflow({
         prompt: promptText,
         width, height, fps, frames,
         cfg, steps, seed,
-        firstFrameStrength,
+        firstFrameStrength, lastFrameStrength,
         promptEnhancer,
-        imageFile,
+        firstFrameFile: firstName,
+        lastFrameFile: lastName,
       });
 
       const result = await queuePrompt(workflow);
@@ -97,10 +102,10 @@ function LtxFNode({ id, data, selected }: NodeProps) {
                 const { history: newHist, index: newIdx } = await addToHistory(id, prevHist, apiUrl);
                 updateWidgetValue(id, "_history", newHist);
                 updateWidgetValue(id, "_historyIndex", newIdx);
-                log("LTX F complete", { nodeId: id, nodeType: "fs:ltxF", nodeLabel: "LTX 2.3 F", status: "success", details: `${frames}f ${width}x${height}` });
+                log("LTX FL complete", { nodeId: id, nodeType: "fs:ltxFL", nodeLabel: "LTX 2.3 FL", status: "success", details: `${frames}f ${width}x${height}` });
                 addGenerationToLibrary(apiUrl, {
-                  prompt: promptText, model: "LTX 2.3 22B Dev FP8 (I2V)", seed: String(seed),
-                  steps, cfg, width, height, nodeType: "fs:ltxF",
+                  prompt: promptText, model: "LTX 2.3 22B FLF2V", seed: String(seed),
+                  steps, cfg, width, height, nodeType: "fs:ltxFL",
                   duration: Date.now() - startTime,
                 }, "video");
                 setProcessing(false);
@@ -113,7 +118,7 @@ function LtxFNode({ id, data, selected }: NodeProps) {
               const execErr = messages.find((m: any) => m[0] === "execution_error");
               const executedOutputs = Object.keys(history[promptId].outputs || {});
               // eslint-disable-next-line no-console
-              console.group("[LTX F] no media output — full diagnostics");
+              console.group("[LTX FL] no media output — full diagnostics");
               // eslint-disable-next-line no-console
               console.log("status:", st, "messages:", messages, "outputs:", executedOutputs);
               // eslint-disable-next-line no-console
@@ -128,7 +133,7 @@ function LtxFNode({ id, data, selected }: NodeProps) {
                 errLine += ` Only ran: ${executedOutputs.join(", ") || "(none)"}. Check ComfyUI server log.`;
               }
               setError(errLine);
-              log("LTX F failed", { nodeId: id, nodeType: "fs:ltxF", nodeLabel: "LTX 2.3 F", status: "error", details: errLine });
+              log("LTX FL failed", { nodeId: id, nodeType: "fs:ltxFL", nodeLabel: "LTX 2.3 FL", status: "error", details: errLine });
               setProcessing(false);
               return;
             }
@@ -138,7 +143,7 @@ function LtxFNode({ id, data, selected }: NodeProps) {
       setError("Timeout"); setProcessing(false);
     } catch (err: any) {
       setError(err.message);
-      log("LTX F error", { nodeId: id, nodeType: "fs:ltxF", nodeLabel: "LTX 2.3 F", status: "error", details: err.message });
+      log("LTX FL error", { nodeId: id, nodeType: "fs:ltxFL", nodeLabel: "LTX 2.3 FL", status: "error", details: err.message });
       setProcessing(false);
     }
   }, [id, edgesAll, nodesAll, updateWidgetValue]);
@@ -161,7 +166,7 @@ function LtxFNode({ id, data, selected }: NodeProps) {
         <div className="ltxvideo-header">
           <span className="ltxvideo-icon">🎬</span>
           <div className="ltxvideo-header-text">
-            <span className="ltxvideo-title">LTX 2.3 F</span>
+            <span className="ltxvideo-title">LTX 2.3 FL</span>
             <span className="ltxvideo-status">{processing ? "RENDERING..." : `${frames}f · ${duration}s · ${wv.width ?? 720}×${wv.height ?? 1280}`}</span>
           </div>
         </div>
@@ -174,9 +179,14 @@ function LtxFNode({ id, data, selected }: NodeProps) {
           <span className="nanob-input-label">Prompt</span>
         </div>
         <div className="nanob-input-row">
-          <Handle type="target" position={Position.Left} id="image" className={`slot-handle ${imgHL}`} style={{ color: "#64b5f6" }} />
+          <Handle type="target" position={Position.Left} id="first_frame" className={`slot-handle ${imgHL}`} style={{ color: "#64b5f6" }} />
           <TypeBadge color="#64b5f6">IMG</TypeBadge>
-          <span className="nanob-input-label">Image</span>
+          <span className="nanob-input-label">First Frame</span>
+        </div>
+        <div className="nanob-input-row">
+          <Handle type="target" position={Position.Left} id="last_frame" className={`slot-handle ${imgHL}`} style={{ color: "#64b5f6" }} />
+          <TypeBadge color="#64b5f6">IMG</TypeBadge>
+          <span className="nanob-input-label">Last Frame</span>
         </div>
       </div>
 
@@ -221,4 +231,4 @@ function TypeBadge({ color, children }: { color: string; children: React.ReactNo
   return <span className="type-badge" style={{ color, borderColor: color + "66", backgroundColor: color + "12" }}>{children}</span>;
 }
 
-export default memo(LtxFNode);
+export default memo(LtxFLNode);

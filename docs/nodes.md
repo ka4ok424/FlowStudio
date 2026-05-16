@@ -866,6 +866,38 @@ CheckpointLoaderSimple 367 → LoraLoaderModelOnly 362 → Power Lora Loader 301
 
 ---
 
+## fs:ltxFL — LTX 2.3 FL (FLF2V basic)
+
+**Purpose:** LTX-2.3 First-Last-Frame to Video, basic variant. Two keyframes + prompt → transition video up to 20s. Same UNETLoader-based pipeline as `fs:ltxFlf` but without the audio mux chain (LTX auto-generates audio). Sibling to `fs:ltxF` (single-image I2V).
+
+**Component:** `src/nodes/LtxFLNode.tsx`
+**Workflow Builder:** `src/workflows/ltxFL.ts` + `src/workflows/ltxFL.template.json` (70 nodes; sourced from `LTX-2.3_-_FLF2V_First-Last-Frame.json`, with SetNode/GetNode resolved, prompt-enhancer subgraph 2070 + split-view 2102 inlined, LTXVImgToVideoInplaceKJ V3 fields filled)
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Required prompt |
+| Input | IMAGE | first_frame | Required start frame |
+| Input | IMAGE | last_frame | Required end frame |
+| Output | VIDEO | video | Generated video |
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|---|---|---|---|
+| frames | number | 121 | 25–481 (~5s default, ~20s max @ 24fps) |
+| fps | number | 24 | 12–30 |
+| width | number | 720 | |
+| height | number | 1280 | |
+| cfg | number | 1.0 | CFGGuider 8+36 |
+| steps | number | 8 | LTXVScheduler 2 |
+| seed | string | "" | RandomNoise 14/15 |
+| firstFrameStrength | number | 1.0 | PrimitiveFloat 2110 |
+| lastFrameStrength | number | 1.0 | PrimitiveFloat 2108 |
+| promptEnhancer | bool | false | When off, 2070:*+2102:* enhancer chain stripped at build → no Gemma LLM load |
+
+**Upload behavior:** both frame inputs go through `uploadOnce` (content-hash dedup + HEAD probe).
+
+---
+
 ## fs:wanVideo — Wan Video
 
 **Purpose:** Generate video from image + prompt using Wan 2.2 TI2V-5B (GGUF Q8).

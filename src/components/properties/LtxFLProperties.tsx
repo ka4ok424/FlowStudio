@@ -11,7 +11,7 @@ const ASPECT_PRESETS = [
 const DEFAULT_FRAMES = 121;
 const MAX_FRAMES = 481;
 
-function LtxFProperties({ nodeId, data }: { nodeId: string; data: any }) {
+function LtxFLProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const updateWidgetValue = useWorkflowStore((s) => s.updateWidgetValue);
 
   const frames = data.widgetValues?.frames ?? DEFAULT_FRAMES;
@@ -22,6 +22,7 @@ function LtxFProperties({ nodeId, data }: { nodeId: string; data: any }) {
   const steps = data.widgetValues?.steps ?? 8;
   const seed = data.widgetValues?.seed ?? "";
   const firstFrameStrength = data.widgetValues?.firstFrameStrength ?? 1.0;
+  const lastFrameStrength  = data.widgetValues?.lastFrameStrength  ?? 1.0;
   const promptEnhancer = data.widgetValues?.promptEnhancer ?? false;
 
   return (
@@ -97,8 +98,15 @@ function LtxFProperties({ nodeId, data }: { nodeId: string; data: any }) {
           onChange={(e) => updateWidgetValue(nodeId, "firstFrameStrength", parseFloat(e.target.value))} />
         <span className="props-range-value">{firstFrameStrength.toFixed(2)}</span>
       </div>
+
+      <div className="props-section">
+        <div className="props-section-title">Last Frame Strength</div>
+        <input type="range" className="props-range" min={0} max={1.5} step={0.05} value={lastFrameStrength}
+          onChange={(e) => updateWidgetValue(nodeId, "lastFrameStrength", parseFloat(e.target.value))} />
+        <span className="props-range-value">{lastFrameStrength.toFixed(2)}</span>
+      </div>
     </>
   );
 }
 
-export default LtxFProperties;
+export default LtxFLProperties;

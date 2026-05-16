@@ -43,6 +43,7 @@ import LtxLoraNode from "./nodes/LtxLoraNode";
 import LtxFlfNode from "./nodes/LtxFlfNode";
 import LtxFmlNode from "./nodes/LtxFmlNode";
 import LtxFNode from "./nodes/LtxFNode";
+import LtxFLNode from "./nodes/LtxFLNode";
 import NextFrameNode from "./nodes/NextFrameNode";
 import FrameExtractNode from "./nodes/FrameExtractNode";
 import CropNode from "./nodes/CropNode";
@@ -109,6 +110,7 @@ const nodeTypes = {
   ltxFlfNode: LtxFlfNode,
   ltxFmlNode: LtxFmlNode,
   ltxFNode: LtxFNode,
+  ltxFLNode: LtxFLNode,
   nextFrameNode: NextFrameNode,
   frameExtractNode: FrameExtractNode,
   cropNode: CropNode,

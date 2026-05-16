@@ -2,6 +2,7 @@ import { memo, useState, useCallback } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import WaveformPlayer from "../components/WaveformPlayer";
+import { makeDragGhost, findGhostSource } from "../utils/dragGhost";
 
 function PreviewNode({ id, data: _data, selected }: NodeProps) {
   void _data;
@@ -113,10 +114,30 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
           <span className="preview-input-label">Input</span>
         </div>
 
-        {/* Preview area */}
-        <div className="preview-content" onClick={() => previewUrl && setFullscreen(true)}>
+        {/* Preview area — `nodrag` lets HTML5 drag-and-drop fire on children
+            instead of ReactFlow grabbing the whole node. */}
+        <div className="preview-content nodrag" onClick={() => previewUrl && setFullscreen(true)}>
           {previewUrl && mediaType === "image" && (
-            <img src={previewUrl} alt="Preview" className="preview-img" />
+            <img
+              src={previewUrl}
+              alt="Preview"
+              className="preview-img"
+              draggable
+              onDragStart={(e) => {
+                e.stopPropagation();
+                e.dataTransfer.setData("application/flowstudio-media", JSON.stringify({
+                  url: previewUrl,
+                  fileName: `flowstudio_preview_${Date.now()}.png`,
+                  type: "image",
+                }));
+                e.dataTransfer.effectAllowed = "copy";
+                const src = findGhostSource(e.currentTarget as HTMLElement);
+                if (src) {
+                  const ghost = makeDragGhost(src, 120);
+                  e.dataTransfer.setDragImage(ghost, ghost.width / 2, ghost.height / 2);
+                }
+              }}
+            />
           )}
           {previewUrl && mediaType === "video" && (
             <video src={previewUrl} className="preview-video" controls />

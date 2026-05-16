@@ -316,18 +316,39 @@ function MontageNode({ id, data, selected }: NodeProps) {
     }
   }, [clips, totalDuration]);
 
-  // Throttled seek + frame-presented callback. Uses rVFC so we never queue more
-  // than one seek at a time — pending time is replaced; the next seek runs after
-  // the current frame is actually presented.
+  // Throttled seek + frame-presented callback. Uses rVFC when present so we
+  // never queue more than one seek at a time — pending time is replaced; the
+  // next seek runs after the current frame is actually presented.
+  //
+  // Belt-and-suspenders termination: rVFC + `seeked` event + 300ms watchdog,
+  // all guarded by `firedDone` so finish runs exactly once. The watchdog is
+  // critical: rVFC silently doesn't fire when the compositor decides a tiny
+  // offscreen <video> isn't worth painting, which used to leave `st.active`
+  // true forever and freeze the scrub thumbnail.
   const scrubSeek = useCallback((v: HTMLVideoElement, t: number, onFrame?: () => void) => {
     const st = seekStateRef.current;
     if (st.active) { st.pending = t; return; }
+    const target = (() => {
+      const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : t + 1;
+      return Math.max(0, Math.min(t, dur - 0.001));
+    })();
+    // Skip no-op seeks (same frame) — currentTime= is a no-op when equal, so
+    // rVFC/seeked would never fire and the pipeline would deadlock.
+    if (Math.abs(target - v.currentTime) < 0.005) { onFrame?.(); return; }
     st.active = true;
     try {
-      const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : t + 1;
-      v.currentTime = Math.max(0, Math.min(t, dur - 0.001));
+      v.currentTime = target;
     } catch { st.active = false; return; }
-    const done = () => {
+
+    const va: any = v;
+    let firedDone = false;
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
+    const onSeeked = () => { finish(); };
+    const finish = () => {
+      if (firedDone) return;
+      firedDone = true;
+      if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+      va.removeEventListener("seeked", onSeeked);
       st.active = false;
       onFrame?.();
       if (st.pending != null) {
@@ -335,13 +356,11 @@ function MontageNode({ id, data, selected }: NodeProps) {
         scrubSeek(v, next, onFrame);
       }
     };
-    const va: any = v;
     if (typeof va.requestVideoFrameCallback === "function") {
-      va.requestVideoFrameCallback(done);
-    } else {
-      const oneShot = () => { va.removeEventListener("seeked", oneShot); done(); };
-      va.addEventListener("seeked", oneShot);
+      va.requestVideoFrameCallback(finish);
     }
+    va.addEventListener("seeked", onSeeked);
+    watchdog = setTimeout(finish, 300);
   }, []);
 
   // Drag the whole trim window (slip edit — length unchanged, source in/out shift)
@@ -845,15 +864,24 @@ function MontageNode({ id, data, selected }: NodeProps) {
       )}
 
       {/* Shared scrub decoder — hidden video that any drag (inline or modal) seeks
-          into. Always mounted so the first drag has a warm element. */}
-      <video
-        ref={seekVideoRef}
-        muted
-        playsInline
-        preload="auto"
-        crossOrigin="anonymous"
-        style={{ position: "fixed", left: -9999, top: -9999, width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
-      />
+          into. Always mounted so the first drag has a warm element.
+          The video has real dimensions (64×36, in viewport, opacity 1) inside a
+          1×1 overflow:hidden clip so the compositor genuinely paints it on
+          every seek — without this, Chrome can skip presentation for tiny
+          offscreen videos and `requestVideoFrameCallback` never fires. */}
+      <div
+        aria-hidden="true"
+        style={{ position: "fixed", bottom: 0, right: 0, width: 1, height: 1, overflow: "hidden", pointerEvents: "none", zIndex: -1 }}
+      >
+        <video
+          ref={seekVideoRef}
+          muted
+          playsInline
+          preload="auto"
+          crossOrigin="anonymous"
+          style={{ width: 64, height: 36, display: "block" }}
+        />
+      </div>
 
       {/* Floating frame thumbnail at the cursor while a trim handle is being dragged */}
       {scrubTip && createPortal(

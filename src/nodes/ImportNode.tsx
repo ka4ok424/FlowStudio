@@ -160,6 +160,18 @@ function ImportNode({ id, data, selected }: NodeProps) {
         draggable={!!preview}
         onDragStart={(e) => {
           if (!preview || mediaType === "none") return;
+          // Geometric guard (mirrors MediaHistory): if the pointer is inside
+          // the native <video>/<audio> bounds, cancel — let the scrubber /
+          // volume slider handle the drag instead of HTML5 DnD hijacking it.
+          const mediaEl = (e.currentTarget as HTMLElement).querySelector("video, audio") as HTMLElement | null;
+          if (mediaEl) {
+            const r = mediaEl.getBoundingClientRect();
+            if (e.clientX >= r.left && e.clientX <= r.right
+                && e.clientY >= r.top && e.clientY <= r.bottom) {
+              e.preventDefault();
+              return;
+            }
+          }
           e.stopPropagation();
           e.dataTransfer.setData("application/flowstudio-media", JSON.stringify({
             url: preview, fileName: fileName || "import", type: mediaType,
