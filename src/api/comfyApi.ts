@@ -128,9 +128,35 @@ export async function uploadImage(dataUrl: string, filename?: string): Promise<s
 const _uploadByUrl = new Map<string, string>();
 const _uploadByHash = new Map<string, string>();
 
+/**
+ * 16-char content hash. Uses SHA-256 in secure contexts (https / localhost);
+ * falls back to a pure-JS combo of FNV-1a + DJB2 over Tailscale / plain HTTP
+ * where `crypto.subtle` is undefined. Both produce a stable hex string of
+ * the same length, so `fs_<hash16>.<ext>` filenames stay collision-resistant
+ * enough for content deduplication (32 bits × 2 ≈ 1.8e19 of effective space).
+ * Cross-context note: SHA-256 and the fallback yield different hashes for
+ * the same bytes — opening FlowStudio over both LAN and Tailscale will
+ * occasionally double-upload a file. Acceptable trade-off vs. shipping a
+ * pure-JS SHA-256 implementation.
+ */
 async function _sha256Hex(buf: ArrayBuffer): Promise<string> {
-  const h = await crypto.subtle.digest("SHA-256", buf);
-  return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, "0")).join("");
+  const subtle = typeof crypto !== "undefined" ? (crypto as any).subtle : undefined;
+  if (subtle && typeof subtle.digest === "function") {
+    try {
+      const h = await subtle.digest("SHA-256", buf);
+      return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, "0")).join("");
+    } catch { /* some browsers throw here too — fall through */ }
+  }
+  const bytes = new Uint8Array(buf);
+  let h1 = 0x811c9dc5;                                 // FNV-1a offset basis
+  let h2 = 5381;                                       // DJB2 seed
+  for (let i = 0; i < bytes.length; i++) {
+    h1 ^= bytes[i];
+    h1 = Math.imul(h1, 0x01000193);                    // FNV prime
+    h2 = ((h2 << 5) + h2 + bytes[i]) | 0;              // DJB2 step
+  }
+  return (h1 >>> 0).toString(16).padStart(8, "0")
+       + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
 function _filenameFromComfyView(url: string, type: "input" | "output" | "temp"): string | null {
