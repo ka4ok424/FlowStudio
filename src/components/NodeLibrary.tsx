@@ -95,11 +95,16 @@ export default function NodeLibrary() {
           // Video — local video generation + video publishing.
           // Cloud video (Veo videoGen / videoGenPro) lives in Cloud / API since
           // its boundary is "where does it run?", not "what does it produce?".
-          const videoTypes = new Set([
-            "fs:ltxVideo", "fs:ltxLora", "fs:ltxFlf", "fs:ltxFml", "fs:ltxF", "fs:ltxFL", "fs:wanVideo", "fs:wanSmooth", "fs:wanAnimate",
+          // Order matters: rendered top-to-bottom in the Library. ltxF / ltxFL /
+          // ltxFml pinned to the end per user preference.
+          const videoOrder = [
+            "fs:ltxVideo", "fs:ltxLora", "fs:ltxFlf",
+            "fs:wanVideo", "fs:wanSmooth", "fs:wanAnimate",
             "fs:hunyuanVideo", "fs:hunyuanAvatar",
             "fs:tiktokPublish",
-          ]);
+            "fs:ltxF", "fs:ltxFL", "fs:ltxFml",
+          ];
+          const videoTypes = new Set(videoOrder);
 
           // Audio — local TTS / voice cloning / video-driven audio (ComfyUI-based, runs on PC GPU).
           const audioTypes = new Set([
@@ -137,7 +142,9 @@ export default function NodeLibrary() {
           ];
           const utilityNodes = allNative.filter((n) => utilityTypes.has(n.type));
           const visualNodes = allNative.filter((n) => visualTypes.has(n.type));
-          const videoNodes = allNative.filter((n) => videoTypes.has(n.type));
+          const videoNodes = videoOrder
+            .map((t) => allNative.find((n) => n.type === t))
+            .filter((n): n is NonNullable<typeof n> => Boolean(n));
           const audioNodes = allNative.filter((n) => audioTypes.has(n.type));
           const cloudNodes = allNative.filter((n) =>
             !mainTypes.has(n.type) &&
