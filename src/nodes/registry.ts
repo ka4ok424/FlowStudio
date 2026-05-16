@@ -1166,6 +1166,48 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:ltxF",
+  label: "LTX 2.3 F",
+  icon: "🎬",
+  accentColor: "#e85d75",
+  component: "LtxFNode",
+  description: "LTX-2.3 Image-to-Video. One image + prompt → animated video up to 20s. Uses the bundled 22B Dev fp8 checkpoint + distilled-lora-384-1.1.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "image", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "LTX-2 I2V (Image-to-Video): a single keyframe + text prompt → smooth video. Wraps `LTX-2.3_-_I2V_T2V_Basic_for_checkpoint_models.json` — a CheckpointLoaderSimple-based pipeline (single-file fp8 bundle containing UNet+CLIP+VAE) plus the distilled LoRA on top. The native graph also supports pure-T2V via a `bypass` boolean (node 290); the FlowStudio builder forces I2V mode for simplicity.",
+    skills: [
+      "Single-image → video animation at ~5s default / 20s max @ 24fps",
+      "LTX-2 prompt enhancer (LazySwitchKJ-routed, off by default)",
+      "Aspect presets 1:1 / 4:5 / 16:9 / 9:16",
+      "Two-stage sampler (base + spatial upsampler 2×)",
+    ],
+    params: {
+      frames: "25–481 (~5s default, ~20s max @ 24fps). Internally back-solved to LENGTH (seconds) for INTConstant 291.",
+      fps: "Output FPS (PrimitiveFloat 285), default 24",
+      width: "INTConstant 292, default 720",
+      height: "INTConstant 293, default 1280",
+      cfg: "CFGGuider 103 + 129, default 1.0",
+      steps: "LTXVScheduler 206, default 8",
+      seed: "RandomNoise 114 = seed, 115 = seed+1",
+      promptEnhancer: "PrimitiveBoolean 5289 — true = run TextGenerateLTX2Prompt through LazySwitchKJ (lazy: skipped entirely when false, no GPU cost)",
+    },
+    connectsFrom: ["fs:prompt", "fs:localGenerate", "fs:nanoBanana", "fs:kontext", "fs:import"],
+    connectsTo: ["fs:preview", "fs:tiktokPublish", "fs:smoothFps", "fs:montage", "fs:mmaudio"],
+    examples: [
+      "Prompt('cinematic dolly forward') + image(scene.jpg) → LTX 2.3 F → Preview",
+      "Prompt('subject turns and waves') + image(portrait.png) → LTX 2.3 F → SmoothFps → TikTok Publish",
+    ],
+    comfyMapping: "ComfyUI API workflow JSON (~55 nodes, src/workflows/ltxF.template.json). CheckpointLoaderSimple 367 (ltx-2.3-22b-dev-fp8.safetensors, bundled UNet+CLIP+VAE) → LoraLoaderModelOnly 362 (distilled-lora-384-1.1, str 0.5) → Power Lora Loader 301 (off pass-through) → LTX2SamplingPreviewOverride 337. Image: LoadImage 167 → ImageResizeKJv2 → LTXVPreprocess → LTXVImgToVideoInplace 161 (stage 1) and 160 (stage 2). Two SamplerCustomAdvanced passes with LTXVLatentUpsampler between. Prompt enhancer: 5286:* inlined nodes (TextGenerateLTX2Prompt + StringConcatenate + LazySwitchKJ) — LazySwitchKJ makes the off branch genuinely skip the LLM. Audio: LTXVAudioVAELoader 368 (ckpt_name) → LTXVEmptyLatentAudio → LTXVAudioVAEDecode → VHS_VideoCombine 140.",
+  },
+});
+
+registerNativeNode({
   type: "fs:mmaudio",
   label: "MMAudio",
   icon: "🔊",

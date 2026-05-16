@@ -312,6 +312,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         LtxLoraNode: "ltxLoraNode",
         LtxFlfNode: "ltxFlfNode",
         LtxFmlNode: "ltxFmlNode",
+        LtxFNode: "ltxFNode",
         NextFrameNode: "nextFrameNode",
         FrameExtractNode: "frameExtractNode",
         CropNode: "cropNode",

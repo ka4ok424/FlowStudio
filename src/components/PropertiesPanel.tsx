@@ -25,6 +25,7 @@ import LtxVideoProperties from "./properties/LtxVideoProperties";
 import LtxLoraProperties from "./properties/LtxLoraProperties";
 import LtxFlfProperties from "./properties/LtxFlfProperties";
 import LtxFmlProperties from "./properties/LtxFmlProperties";
+import LtxFProperties from "./properties/LtxFProperties";
 // import MultiRefProperties from "./properties/MultiRefProperties"; // REMOVED
 import SceneProperties from "./properties/SceneProperties";
 import StoryboardProperties from "./properties/StoryboardProperties";
@@ -77,6 +78,7 @@ const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: a
   "fs:ltxLora": LtxLoraProperties,
   "fs:ltxFlf": LtxFlfProperties,
   "fs:ltxFml": LtxFmlProperties,
+  "fs:ltxF": LtxFProperties,
   "fs:mmaudio": MmAudioProperties,
   "fs:omnivoiceTts": OmniVoiceTtsProperties,
   "fs:omnivoiceClone": OmniVoiceCloneProperties,

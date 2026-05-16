@@ -834,6 +834,38 @@ LoadImage×3 (45 FIRST, 47 MIDDLE, 2172 LAST) → ImageResizeKJv2×3 → ResizeI
 
 ---
 
+## fs:ltxF — LTX 2.3 F (I2V)
+
+**Purpose:** LTX-2.3 Image-to-Video. One reference image + prompt → animated video up to 20s. Uses the bundled `ltx-2.3-22b-dev-fp8.safetensors` (CheckpointLoaderSimple) + `distilled-lora-384-1.1` (strength 0.5).
+
+**Component:** `src/nodes/LtxFNode.tsx`
+**Workflow Builder:** `src/workflows/ltxF.ts` + `src/workflows/ltxF.template.json` (55 nodes; sourced from `LTX-2.3_-_I2V_T2V_Basic_for_checkpoint_models.json`, with SetNode/GetNode resolved, PrimitiveNode 5292 inlined, prompt-enhancer subgraph 5286 inlined as `5286:*` IDs, rgthree UI nodes stripped)
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Required prompt |
+| Input | IMAGE | image | Required reference frame |
+| Output | VIDEO | video | Generated video |
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|---|---|---|---|
+| frames | number | 121 | 25–481 (~5s default, ~20s max @ 24fps) |
+| fps | number | 24 | 12–30 |
+| width | number | 720 | Default 720 (paired with 9:16 preset) |
+| height | number | 1280 | Default 1280 (9:16) |
+| cfg | number | 1.0 | CFGGuider 103+129 |
+| steps | number | 8 | LTXVScheduler 206 |
+| seed | string | "" | RandomNoise 114=seed, 115=seed+1 |
+| promptEnhancer | bool | false | LazySwitchKJ-routed — off branch genuinely skips the LLM, no GPU cost |
+
+**Upload behavior:** image input goes through `uploadOnce` (content-hash dedup + HEAD probe) — repeat Generates with the same image are effectively free.
+
+**ComfyUI Mapping:**
+CheckpointLoaderSimple 367 → LoraLoaderModelOnly 362 → Power Lora Loader 301 (off pass-through) → LTX2SamplingPreviewOverride 337. Image: LoadImage 167 → ImageResizeKJv2 → LTXVPreprocess → LTXVImgToVideoInplace ×2. Two SamplerCustomAdvanced passes with LTXVLatentUpsampler between → LTXVCropGuides → VAEDecodeTiled → VHS_VideoCombine 140. Audio chain: LTXVAudioVAELoader + LTXVEmptyLatentAudio + LTXVAudioVAEDecode → muxed into VHS_VideoCombine (LTX auto-generates audio).
+
+---
+
 ## fs:wanVideo — Wan Video
 
 **Purpose:** Generate video from image + prompt using Wan 2.2 TI2V-5B (GGUF Q8).
