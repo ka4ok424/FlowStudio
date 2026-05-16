@@ -53,12 +53,33 @@ export async function fetchNodeDefs(): Promise<Record<string, ComfyNodeDef>> {
   return res.json();
 }
 
+// Stable per-tab client identifier. ComfyUI uses this to track which client
+// owns the running prompt — without it, some custom nodes (notably KJNodes'
+// LTX2 preview override) crash because PromptServer.last_node_id stays None.
+//
+// crypto.randomUUID is only exposed in secure contexts (https / localhost) —
+// accessing FlowStudio over Tailscale (http://100.x.x.x) leaves it undefined,
+// so we fall back to a non-cryptographic but unique-enough ID.
+let _clientId: string | null = null;
+export function getClientId(): string {
+  if (_clientId) return _clientId;
+  const c: any = typeof crypto !== "undefined" ? crypto : null;
+  let uuid: string;
+  if (c && typeof c.randomUUID === "function") {
+    uuid = c.randomUUID();
+  } else {
+    uuid = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+  _clientId = `flowstudio-${uuid}`;
+  return _clientId;
+}
+
 // ── Queue a workflow prompt ────────────────────────────────────────
 export async function queuePrompt(workflow: Record<string, any>): Promise<QueuePromptResult> {
   const res = await fetch(`${getComfyUrl()}/api/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: workflow }),
+    body: JSON.stringify({ prompt: workflow, client_id: getClientId() }),
   });
   if (!res.ok) {
     const errBody = await res.text().catch(() => "");
@@ -100,16 +121,20 @@ export async function uploadImage(dataUrl: string, filename?: string): Promise<s
 // ── WebSocket for progress ─────────────────────────────────────────
 export function connectWebSocket(onMessage: (data: any) => void): WebSocket {
   const comfyUrl = getComfyUrl();
+  // MUST match the client_id used in /api/prompt — ComfyUI routes progress
+  // events only to the websocket whose clientId matches the queued prompt's
+  // client_id. If they differ, the top progress bar stays empty.
+  const cid = encodeURIComponent(getClientId());
   let wsUrl: string;
   if (comfyUrl) {
     // Direct connection to ComfyUI server
     const url = new URL(comfyUrl);
     const wsProto = url.protocol === "https:" ? "wss:" : "ws:";
-    wsUrl = `${wsProto}//${url.host}/ws?clientId=comfy-react-ui`;
+    wsUrl = `${wsProto}//${url.host}/ws?clientId=${cid}`;
   } else {
     // Via Vite proxy
     const wsProto = location.protocol === "https:" ? "wss:" : "ws:";
-    wsUrl = `${wsProto}//${location.host}/ws?clientId=comfy-react-ui`;
+    wsUrl = `${wsProto}//${location.host}/ws?clientId=${cid}`;
   }
   const ws = new WebSocket(wsUrl);
 

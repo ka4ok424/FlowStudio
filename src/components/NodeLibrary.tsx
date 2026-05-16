@@ -96,7 +96,7 @@ export default function NodeLibrary() {
           // Cloud video (Veo videoGen / videoGenPro) lives in Cloud / API since
           // its boundary is "where does it run?", not "what does it produce?".
           const videoTypes = new Set([
-            "fs:ltxVideo", "fs:wanVideo", "fs:wanSmooth", "fs:wanAnimate",
+            "fs:ltxVideo", "fs:ltxLora", "fs:ltxFlf", "fs:ltxFml", "fs:wanVideo", "fs:wanSmooth", "fs:wanAnimate",
             "fs:hunyuanVideo", "fs:hunyuanAvatar",
             "fs:tiktokPublish",
           ]);

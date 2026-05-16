@@ -766,6 +766,74 @@ export default memo(MyNode);
 
 ---
 
+## fs:ltxFlf — LTX 2.3 FLF2V
+
+**Purpose:** LTX-2.3 First-Last-Frame to Video. Given two key frames + a prompt, render a smooth transition video up to ~20s. Simpler companion to `fs:ltxLora` — no audio handle, no LoRA toggle in UI.
+
+**Component:** `src/nodes/LtxFlfNode.tsx`
+**Workflow Builder:** `src/workflows/ltxFlf.ts` + `src/workflows/ltxFlf.template.json`
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Required prompt |
+| Input | IMAGE | first_frame | Required start frame |
+| Input | IMAGE | last_frame | Required end frame |
+| Output | VIDEO | video | Generated transition video |
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|---|---|---|---|
+| frames | number | 121 | Output length in frames (25–481, ~20s @ 24fps) |
+| fps | number | 24 | Output FPS (12–30) |
+| width | number | 720 | Video width |
+| height | number | 1280 | Video height (default 9:16) |
+| cfg | number | 1.0 | CFG (CFGGuider nodes 8 + 36) |
+| steps | number | 8 | Sampler steps (LTXVScheduler node 2) |
+| seed | string | "" | Empty = random per run |
+| firstFrameStrength | number | 0.5 | First frame guidance strength (node 2110) |
+| lastFrameStrength | number | 1.0 | Last frame guidance strength (node 2108) |
+| promptEnhancer | bool | true | LTX-2 prompt instruct expansion (PrimitiveBoolean 2082) |
+
+**ComfyUI Mapping:**
+Reuses the canonical FLF2V workflow (`ltxFlf.template.json`). Audio chain stays in the graph but ComfySwitch 2186/2191 are forced `false` at build time (LTX auto-generates audio); rgthree Power Lora Loader 2107 has `lora_1.on=false` so the base model runs clean. LoadImage×2 → ImageResizeKJv2 → LTXVPreprocess → LTXVImgToVideoInplaceKJ → SamplerCustomAdvanced (×2) → LTXVLatentUpsampler → LTXVAddGuide(last_frame) → LTXVCropGuides → VAEDecodeTiled → VHS_VideoCombine.
+
+---
+
+## fs:ltxFml — LTX 2.3 FML
+
+**Purpose:** LTX-2.3 First-Middle-Last Frame to Video (FML2V). Three keyframes + prompt → smooth video that passes through the middle pose. Up to 20s. LTX auto-generates audio (no audio input).
+
+**Component:** `src/nodes/LtxFmlNode.tsx`
+**Workflow Builder:** `src/workflows/ltxFml.ts` + `src/workflows/ltxFml.template.json` (~76 nodes; sourced from `LTX-2.3_-_FML2V_First_Middle_Last_Frame_guider.json`, with rgthree SetNode/GetNode indirection resolved and prompt-enhancer subgraph inlined as `2070:*` prefixed IDs)
+
+| | Type | Name | Description |
+|---|---|---|---|
+| Input | TEXT | prompt | Required prompt |
+| Input | IMAGE | first_frame | Required start frame |
+| Input | IMAGE | middle_frame | Required mid-trajectory pose |
+| Input | IMAGE | last_frame | Required end frame |
+| Output | VIDEO | video | Generated video |
+
+**Parameters (widgetValues):**
+| Key | Type | Default | Description |
+|---|---|---|---|
+| frames | number | 121 | 25–481 (~5s default, ~20s max @ 24fps) |
+| fps | number | 24 | 12–30 |
+| width | number | 720 | Video width |
+| height | number | 1280 | Video height (default 9:16) |
+| cfg | number | 1.0 | CFGGuider 8+36 |
+| steps | number | 8 | LTXVScheduler 2 |
+| seed | string | "" | Empty = random per run |
+| firstFrameStrength | number | 0.7 | Node 2110 (PrimitiveFloat) |
+| middleFrameStrength | number | 0.3 | Node 2278 (PrimitiveFloat) — kept low so middle frame guides only the mid-pose, not the entire arc |
+| lastFrameStrength | number | 1.0 | Node 2108 (PrimitiveFloat) |
+| promptEnhancer | bool | false | LTX-2 prompt instruct expansion (PrimitiveBoolean 2082) |
+
+**ComfyUI Mapping:**
+LoadImage×3 (45 FIRST, 47 MIDDLE, 2172 LAST) → ImageResizeKJv2×3 → ResizeImagesByLongerEdge×3 → LTXVPreprocess×3 → LTXVAddGuideMulti(first+last, stage 1) and LTXVAddGuideMulti(first+middle+last, frame_idx_2 = total/2, stage 2) → SamplerCustomAdvanced ×2 → LTXVLatentUpsampler → LTXVCropGuides → VAEDecodeTiled → VHS_VideoCombine. Optional enhancer path via `2070:*` (TextGenerateLTX2Prompt + ComfySwitch on 2082). Power Lora Loader 2107 is present in the graph but `lora_1.on=false`. Spatial upscaler pinned to v1.1.
+
+---
+
 ## fs:wanVideo — Wan Video
 
 **Purpose:** Generate video from image + prompt using Wan 2.2 TI2V-5B (GGUF Q8).

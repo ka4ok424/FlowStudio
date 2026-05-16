@@ -119,7 +119,6 @@ export default function MediaHistory({ nodeId, history, historyIndex, fallbackUr
               src={currentUrl}
               className="nanob-preview-img"
               controls
-              muted
               loop
               preload="metadata"
               style={{ width: "100%", minHeight: 160, objectFit: "contain", background: "#000", borderRadius: "inherit" }}

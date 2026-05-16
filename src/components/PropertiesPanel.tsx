@@ -22,6 +22,9 @@ import MultiCropProperties from "./properties/MultiCropProperties";
 import MontageProperties from "./properties/MontageProperties";
 import KontextProperties from "./properties/KontextProperties";
 import LtxVideoProperties from "./properties/LtxVideoProperties";
+import LtxLoraProperties from "./properties/LtxLoraProperties";
+import LtxFlfProperties from "./properties/LtxFlfProperties";
+import LtxFmlProperties from "./properties/LtxFmlProperties";
 // import MultiRefProperties from "./properties/MultiRefProperties"; // REMOVED
 import SceneProperties from "./properties/SceneProperties";
 import StoryboardProperties from "./properties/StoryboardProperties";
@@ -71,6 +74,9 @@ const PROPERTY_MAP: Record<string, React.ComponentType<{ nodeId: string; data: a
   "fs:montage": MontageProperties,
   "fs:kontext": KontextProperties,
   "fs:ltxVideo": LtxVideoProperties,
+  "fs:ltxLora": LtxLoraProperties,
+  "fs:ltxFlf": LtxFlfProperties,
+  "fs:ltxFml": LtxFmlProperties,
   "fs:mmaudio": MmAudioProperties,
   "fs:omnivoiceTts": OmniVoiceTtsProperties,
   "fs:omnivoiceClone": OmniVoiceCloneProperties,

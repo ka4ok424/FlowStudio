@@ -39,6 +39,9 @@ import CommentNode from "./nodes/CommentNode";
 import Img2ImgNode from "./nodes/Img2ImgNode";
 import KontextNode from "./nodes/KontextNode";
 import LtxVideoNode from "./nodes/LtxVideoNode";
+import LtxLoraNode from "./nodes/LtxLoraNode";
+import LtxFlfNode from "./nodes/LtxFlfNode";
+import LtxFmlNode from "./nodes/LtxFmlNode";
 import NextFrameNode from "./nodes/NextFrameNode";
 import FrameExtractNode from "./nodes/FrameExtractNode";
 import CropNode from "./nodes/CropNode";
@@ -101,6 +104,9 @@ const nodeTypes = {
   img2ImgNode: Img2ImgNode,
   kontextNode: KontextNode,
   ltxVideoNode: LtxVideoNode,
+  ltxLoraNode: LtxLoraNode,
+  ltxFlfNode: LtxFlfNode,
+  ltxFmlNode: LtxFmlNode,
   nextFrameNode: NextFrameNode,
   frameExtractNode: FrameExtractNode,
   cropNode: CropNode,

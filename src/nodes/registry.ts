@@ -1021,6 +1021,151 @@ registerNativeNode({
 });
 
 registerNativeNode({
+  type: "fs:ltxLora",
+  label: "LTX 2.3 TS Lora",
+  icon: "🎬",
+  accentColor: "#e85d75",
+  component: "LtxLoraNode",
+  description: "LTX-2.3 First-Last-Frame to Video (FLF2V) with optional transition LoRA, prompt enhancer and native or custom audio. Renders a smooth transition between two key frames.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "first_frame", type: "IMAGE" },
+    { name: "last_frame", type: "IMAGE" },
+    { name: "audio", type: "AUDIO" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "LTX-2 FLF2V (First-Last-Frame to Video): give it two frames and the model renders a transition between them. Wraps the user's saved ComfyUI workflow (`LTX-2.3_-_FLF2V_First-Last-Frame_transition_lora_flow_studio.json`) — only parameter VALUES are patched per run, the node graph is preserved.",
+    skills: [
+      "Cinematic First→Last frame transitions",
+      "Optional transition LoRA (ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16)",
+      "Built-in prompt enhancer (LTX-2 instruct → expanded scene description)",
+      "Auto-generated LTX audio OR custom audio with trim + vocals-only (MelBandRoformer)",
+      "Two-stage sampler (base + spatial upsampler) with NAG + LTX2 sampling preview override",
+    ],
+    params: {
+      frames: "Output length in frames, default 97 (= ~4s @ 24fps). Internally converted to LENGTH (seconds) for the workflow's INTConstant node 2078.",
+      fps: "Output FPS, default 24",
+      width: "Default 720",
+      height: "Default 1280 (9:16 portrait)",
+      cfg: "CFG (CFGGuider nodes 8 + 36), default 1.0",
+      steps: "Sampler steps (LTXVScheduler node 2), default 8",
+      seed: "Integer for reproducibility; node 15 uses seed, node 14 uses seed+1",
+      firstFrameStrength: "Strength of first frame guidance (node 2110), default 0.5",
+      lastFrameStrength: "Strength of last frame guidance (node 2108), default 1.0",
+      loraOn: "Transition LoRA on/off (rgthree Power Lora Loader node 2107)",
+      loraStrength: "LoRA strength when enabled, default 0.3",
+      promptEnhancer: "PrimitiveBoolean node 2082 — true = run LTX-2 prompt instruct expansion",
+      audioFile: "Optional. If provided → ComfySwitch 2186=true (custom audio); else 2186=false → LTX auto-generates audio",
+      useVocalsOnly: "ComfySwitch 2191 — true = pass audio through MelBandRoformer (vocals isolation)",
+      trimStart: "Audio trim start (seconds), TrimAudioDuration node 2180",
+      trimDuration: "Audio trim duration (seconds), 0 = auto (matches video length via SimpleCalculatorKJ node 2173)",
+    },
+    connectsFrom: ["fs:prompt", "fs:localGenerate", "fs:nanoBanana", "fs:kontext", "fs:import", "fs:tts", "fs:omnivoiceTts", "fs:music"],
+    connectsTo: ["fs:preview", "fs:tiktokPublish", "fs:smoothFps", "fs:montage"],
+    examples: [
+      "Prompt('cinematic transition empty field → construction site') + first_frame(field.jpg) + last_frame(site.jpg) → LTX TS Lora (LoRA on, strength 0.3) → Preview",
+      "Prompt('riverside zoom-in') + first_frame + last_frame + audio(music.mp3, vocals_only off, trim 5-12s) → LTX TS Lora → TikTok Publish",
+    ],
+    comfyMapping: "ComfyUI workflow JSON (1244 lines, 50+ nodes) — see src/workflows/ltxLora.template.json. Key chain: LoadImage×2 (first/last) → ImageResizeKJv2 → LTXVPreprocess → LTXVImgToVideoInplaceKJ → SamplerCustomAdvanced (stage 1) → LTXVLatentUpsampler → LTXVAddGuide(last_frame) → SamplerCustomAdvanced (stage 2) → LTXVCropGuides → VAEDecodeTiled → VHS_VideoCombine. Audio: LoadAudio → TrimAudioDuration → [MelBandRoformer if vocals_only] → LTXVAudioVAEEncode → SetLatentNoiseMask → LTXVConcatAVLatent (audio+video) → samplers see both → LTXVSeparateAVLatent → LTXVAudioVAEDecode → mux. Prompt: PromptString → optional TextGenerateLTX2Prompt (enhancer) → CLIPTextEncode → LTXVConditioning.",
+  },
+});
+
+registerNativeNode({
+  type: "fs:ltxFlf",
+  label: "LTX 2.3 FLF2V",
+  icon: "🎬",
+  accentColor: "#e85d75",
+  component: "LtxFlfNode",
+  description: "LTX-2.3 First-Last-Frame to Video. Two key frames + prompt → smooth transition video, up to 20s. No audio/LoRA UI — simpler companion to fs:ltxLora.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "first_frame", type: "IMAGE" },
+    { name: "last_frame", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "LTX-2 FLF2V (First-Last-Frame to Video), stripped-down sibling of fs:ltxLora: only prompt + two images go in, video comes out. Same canonical workflow under the hood (`src/workflows/ltxFlf.template.json`) with audio chain switched off (LTX auto-generates audio) and transition LoRA disabled.",
+    skills: [
+      "First→Last frame transition videos up to ~20s at 24fps",
+      "Prompt enhancer toggle (LTX-2 instruct expansion of the user prompt)",
+      "Per-frame guidance strength control",
+      "Aspect presets 1:1 / 4:5 / 16:9 / 9:16",
+    ],
+    params: {
+      frames: "Output length in frames, max 481 (~20s @ 24fps). Internally back-solved to LENGTH (seconds) for INTConstant node 2078.",
+      fps: "Output FPS, default 24",
+      width: "Default 720",
+      height: "Default 1280 (9:16 portrait)",
+      cfg: "CFGGuider nodes 8 + 36, default 1.0",
+      steps: "LTXVScheduler node 2, default 8",
+      seed: "Integer for reproducibility; node 15 uses seed, node 14 uses seed+1",
+      firstFrameStrength: "Strength of first frame guidance (node 2110), default 0.5",
+      lastFrameStrength: "Strength of last frame guidance (node 2108), default 1.0",
+      promptEnhancer: "PrimitiveBoolean node 2082 — true = run LTX-2 prompt instruct expansion",
+    },
+    connectsFrom: ["fs:prompt", "fs:localGenerate", "fs:nanoBanana", "fs:kontext", "fs:import"],
+    connectsTo: ["fs:preview", "fs:tiktokPublish", "fs:smoothFps", "fs:montage", "fs:mmaudio"],
+    examples: [
+      "Prompt('cinematic transition empty field → construction site') + first_frame(field.jpg) + last_frame(site.jpg) → LTX 2.3 FLF2V → Preview",
+      "Prompt('slow zoom-in') + first_frame + last_frame → LTX 2.3 FLF2V → MMAudio (custom soundscape) → TikTok Publish",
+    ],
+    comfyMapping: "Same ComfyUI workflow JSON as fs:ltxLora (src/workflows/ltxFlf.template.json). Audio chain present but ComfySwitch 2186/2191 force-set false at build time → LTX auto-generated audio. Power Lora Loader 2107.lora_1.on forced false. Otherwise identical: LoadImage×2 → ImageResizeKJv2 → LTXVPreprocess → LTXVImgToVideoInplaceKJ → SamplerCustomAdvanced ×2 → LTXVLatentUpsampler → LTXVAddGuide → VAEDecodeTiled → VHS_VideoCombine.",
+  },
+});
+
+registerNativeNode({
+  type: "fs:ltxFml",
+  label: "LTX 2.3 FML",
+  icon: "🎬",
+  accentColor: "#e85d75",
+  component: "LtxFmlNode",
+  description: "LTX-2.3 First-Middle-Last Frame to Video (FML2V). Three keyframes + prompt → smooth video with controlled motion through a middle pose. Up to 20s. LTX auto-generates audio.",
+  inputs: [
+    { name: "prompt", type: "TEXT" },
+    { name: "first_frame", type: "IMAGE" },
+    { name: "middle_frame", type: "IMAGE" },
+    { name: "last_frame", type: "IMAGE" },
+  ],
+  outputs: [
+    { name: "video", type: "VIDEO" },
+  ],
+  aiDoc: {
+    purpose: "LTX-2 FML2V (First-Middle-Last Frame to Video): give it three keyframes and the model renders a video that interpolates through them. Wraps the user's saved `LTX-2.3_-_FML2V_First_Middle_Last_Frame_guider.json` workflow — only parameter VALUES are patched per run, the node graph is preserved.",
+    skills: [
+      "Three-keyframe motion control (begin, mid-pose, end)",
+      "Optional LTX-2 prompt enhancer (auto-expand user prompt with scene/style detail)",
+      "Per-frame guidance strength tuning",
+      "Aspect presets 1:1 / 4:5 / 16:9 / 9:16, up to ~20s at 24fps",
+    ],
+    params: {
+      frames: "Output length in frames, max 481 (~20s @ 24fps). Internally back-solved to LENGTH (seconds) for INTConstant node 2078.",
+      fps: "Output FPS, default 24",
+      width: "Default 720",
+      height: "Default 1280 (9:16 portrait)",
+      cfg: "CFGGuider nodes 8 + 36, default 1.0",
+      steps: "LTXVScheduler node 2, default 8",
+      seed: "Integer for reproducibility; node 15 uses seed, node 14 uses seed+1",
+      firstFrameStrength: "Node 2110 (PrimitiveFloat), default 0.7",
+      middleFrameStrength: "Node 2278 (PrimitiveFloat), default 0.3 — lower so the middle frame guides only the mid-trajectory pose, not the entire arc",
+      lastFrameStrength: "Node 2108 (PrimitiveFloat), default 1.0",
+      promptEnhancer: "PrimitiveBoolean node 2082 — true = run LTX-2 prompt instruct expansion",
+    },
+    connectsFrom: ["fs:prompt", "fs:localGenerate", "fs:nanoBanana", "fs:kontext", "fs:import"],
+    connectsTo: ["fs:preview", "fs:tiktokPublish", "fs:smoothFps", "fs:montage", "fs:mmaudio"],
+    examples: [
+      "Prompt('cinematic morph') + first(start.jpg) + middle(midpose.jpg) + last(end.jpg) → LTX 2.3 FML → Preview",
+      "Prompt('character dance loop') + first + middle + last → LTX 2.3 FML → MMAudio → TikTok Publish",
+    ],
+    comfyMapping: "ComfyUI API workflow JSON (~76 nodes, src/workflows/ltxFml.template.json). Three-frame chain: LoadImage×3 (45 FIRST, 47 MIDDLE, 2172 LAST) → ImageResizeKJv2×3 → ResizeImagesByLongerEdge×3 → LTXVPreprocess×3 → LTXVAddGuideMulti(3 images, frame_idx_2 = total/2) on stage 2; stage 1 uses LTXVAddGuideMulti(first+last only). Then LTXVLatentUpsampler → SamplerCustomAdvanced ×2 → LTXVCropGuides → VAEDecodeTiled → VHS_VideoCombine. Prompt enhancer: optional TextGenerateLTX2Prompt path inlined as 2070:* prefixed nodes (was a UI subgraph in source). Power Lora Loader 2107.lora_1.on forced false. Audio chain: LTXVEmptyLatentAudio → LTXVAudioVAEDecode (LTX-generated only, no LoadAudio).",
+  },
+});
+
+registerNativeNode({
   type: "fs:mmaudio",
   label: "MMAudio",
   icon: "🔊",

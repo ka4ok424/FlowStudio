@@ -119,7 +119,7 @@ function PreviewNode({ id, data: _data, selected }: NodeProps) {
             <img src={previewUrl} alt="Preview" className="preview-img" />
           )}
           {previewUrl && mediaType === "video" && (
-            <video src={previewUrl} className="preview-video" controls muted />
+            <video src={previewUrl} className="preview-video" controls />
           )}
           {previewUrl && mediaType === "audio" && (
             <div style={{ width: "100%", padding: "8px 10px", boxSizing: "border-box" }} onClick={(e) => e.stopPropagation()}>
