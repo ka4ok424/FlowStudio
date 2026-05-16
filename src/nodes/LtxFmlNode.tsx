@@ -1,7 +1,7 @@
 import { memo, useCallback, useState, useRef } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
-import { queuePrompt, getImageUrl, uploadImage, getComfyUrl, stopAll } from "../api/comfyApi";
+import { queuePrompt, getImageUrl, uploadOnce, getComfyUrl, stopAll } from "../api/comfyApi";
 import { addGenerationToLibrary } from "../store/mediaStore";
 import MediaHistory from "./MediaHistory";
 import { addToHistory } from "../utils/historyLimit";
@@ -69,20 +69,13 @@ function LtxFmlNode({ id, data, selected }: NodeProps) {
     log("LTX FML rendering", { nodeId: id, nodeType: "fs:ltxFml", nodeLabel: "LTX 2.3 FML" });
 
     try {
-      const fetchToDataUrl = async (url: string): Promise<string> => {
-        if (url.startsWith("data:")) return url;
-        const resp = await fetch(url);
-        const blob = await resp.blob();
-        return await new Promise<string>((r) => {
-          const rd = new FileReader();
-          rd.onloadend = () => r(rd.result as string);
-          rd.readAsDataURL(blob);
-        });
-      };
-      const ts = Date.now();
-      const firstName  = await uploadImage(await fetchToDataUrl(firstFrameUrl),  `fs_ltxfml_ff_${id}_${ts}.png`);
-      const middleName = await uploadImage(await fetchToDataUrl(middleFrameUrl), `fs_ltxfml_mf_${id}_${ts}.png`);
-      const lastName   = await uploadImage(await fetchToDataUrl(lastFrameUrl),   `fs_ltxfml_lf_${id}_${ts}.png`);
+      // uploadOnce: skips network entirely when the upstream URL is already
+      // an /api/view?type=input file, and reuses cached uploads by content
+      // hash across the session. Repeated Generates with the same frames cost
+      // ~5ms (HEAD) instead of 3× full reupload.
+      const firstName  = await uploadOnce(firstFrameUrl,  "png");
+      const middleName = await uploadOnce(middleFrameUrl, "png");
+      const lastName   = await uploadOnce(lastFrameUrl,   "png");
 
       const workflow = buildLtxFmlWorkflow({
         prompt: promptText,

@@ -118,6 +118,107 @@ export async function uploadImage(dataUrl: string, filename?: string): Promise<s
   return data.name; // filename in ComfyUI input folder
 }
 
+// ── Content-hash deduplicated upload ───────────────────────────────
+// Two-level cache: (a) by sourceUrl so repeat reads of the same blob/URL in
+// one session are free, (b) by SHA-256 so two different sources with the
+// same bytes (e.g., same image imported into two Import nodes) only upload
+// once. The `fs_<hash>` naming is stable across sessions — a HEAD check
+// against /api/view skips the upload entirely if ComfyUI still has the file
+// in input/ from a previous session.
+const _uploadByUrl = new Map<string, string>();
+const _uploadByHash = new Map<string, string>();
+
+async function _sha256Hex(buf: ArrayBuffer): Promise<string> {
+  const h = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function _filenameFromComfyView(url: string, type: "input" | "output" | "temp"): string | null {
+  try {
+    const u = new URL(url, "http://x");                                  // base for relative URLs
+    if (!u.pathname.endsWith("/api/view")) return null;
+    if (u.searchParams.get("type") !== type) return null;
+    const fn = u.searchParams.get("filename");
+    return fn || null;
+  } catch { return null; }
+}
+
+/**
+ * Upload media to ComfyUI input/ exactly once per content hash.
+ *
+ * Fast path:
+ *  - sourceUrl already in ComfyUI input/   → return its filename, no IO
+ *  - same sourceUrl seen this session       → return cached filename
+ *  - same content hash seen this session    → return cached filename
+ *  - file already on server (HEAD 200)      → skip upload, cache + return
+ *
+ * Slow path: download bytes → hash → upload with `fs_<hash16>.<ext>` name.
+ *
+ * `ext` is just the on-server filename suffix; ComfyUI's LoadImage sniffs the
+ * real format via PIL so a JPG named .png still loads fine. Stick with png/wav
+ * unless the caller has a strong preference.
+ */
+export async function uploadOnce(sourceUrl: string, ext: string = "png"): Promise<string> {
+  if (!sourceUrl) throw new Error("uploadOnce: empty sourceUrl");
+
+  const cached = _uploadByUrl.get(sourceUrl);
+  if (cached) return cached;
+
+  // Already on ComfyUI input/ — just use its name (no network).
+  const existing = _filenameFromComfyView(sourceUrl, "input");
+  if (existing) {
+    _uploadByUrl.set(sourceUrl, existing);
+    return existing;
+  }
+
+  // Download bytes (handles blob:, data:, http://, /api/view?type=output etc.)
+  const resp = await fetch(sourceUrl);
+  if (!resp.ok) throw new Error(`uploadOnce: source fetch ${resp.status}`);
+  const buf = await resp.arrayBuffer();
+  if (buf.byteLength === 0) throw new Error("uploadOnce: source is empty");
+
+  const hash = await _sha256Hex(buf);
+
+  const byHash = _uploadByHash.get(hash);
+  if (byHash) {
+    _uploadByUrl.set(sourceUrl, byHash);
+    return byHash;
+  }
+
+  const filename = `fs_${hash.slice(0, 16)}.${ext}`;
+
+  // HEAD probe — file may already be in input/ from a previous session.
+  try {
+    const head = await fetch(
+      `${getComfyUrl()}/api/view?filename=${encodeURIComponent(filename)}&type=input`,
+      { method: "HEAD" },
+    );
+    if (head.ok) {
+      _uploadByUrl.set(sourceUrl, filename);
+      _uploadByHash.set(hash, filename);
+      return filename;
+    }
+  } catch { /* network blip — fall through to real upload */ }
+
+  // Actual upload
+  const form = new FormData();
+  form.append("image", new Blob([buf]), filename);
+  form.append("overwrite", "true");
+  const up = await fetch(`${getComfyUrl()}/api/upload/image`, { method: "POST", body: form });
+  if (!up.ok) throw new Error(`uploadOnce: upload ${up.status}`);
+  const data = await up.json();
+  const name: string = data.name;
+
+  _uploadByUrl.set(sourceUrl, name);
+  _uploadByHash.set(hash, name);
+  return name;
+}
+
+/** Construct the ComfyUI /api/view URL that maps back to an input/ filename. */
+export function inputFileUrl(filename: string): string {
+  return `${getComfyUrl()}/api/view?filename=${encodeURIComponent(filename)}&type=input`;
+}
+
 // ── WebSocket for progress ─────────────────────────────────────────
 export function connectWebSocket(onMessage: (data: any) => void): WebSocket {
   const comfyUrl = getComfyUrl();

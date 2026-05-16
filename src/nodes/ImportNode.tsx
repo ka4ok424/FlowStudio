@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useWorkflowStore } from "../store/workflowStore";
 import { processImportFile, type ImportMediaType as MediaType } from "../utils/importFile";
 import { makeDragGhost, findGhostSource } from "../utils/dragGhost";
+import { uploadOnce, inputFileUrl } from "../api/comfyApi";
 import WaveformPlayer from "../components/WaveformPlayer";
 
 const TYPE_COLORS: Record<MediaType, string> = {
@@ -25,6 +26,30 @@ function ImportNode({ id, data, selected }: NodeProps) {
   const [fileName, setFileName] = useState<string>(nodeData.widgetValues?._fileName || "");
   const [dragOver, setDragOver] = useState(false);
   const [hoverPreview, setHoverPreview] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "uploaded" | "failed">(
+    nodeData.widgetValues?._previewUrl ? "uploaded" : "idle"
+  );
+
+  /** Background: upload the file to ComfyUI input/, store the HTTP URL in
+   *  `_previewUrl`. Downstream nodes (LtxFml etc.) read `_previewUrl` first
+   *  in `getConnectedMedia`, so once this resolves they get a server URL
+   *  that survives blob-revocation, page reloads, and tab restarts. The
+   *  local blob URL stays in `_preview` for fast in-node rendering. */
+  const uploadInBackground = useCallback(async (sourceUrl: string, originalName: string) => {
+    if (!sourceUrl) return;
+    setUploadStatus("uploading");
+    try {
+      const dot = originalName.lastIndexOf(".");
+      const ext = dot > 0 ? originalName.slice(dot + 1).toLowerCase() : "bin";
+      const filename = await uploadOnce(sourceUrl, ext);
+      updateWidgetValue(id, "_previewUrl", inputFileUrl(filename));
+      updateWidgetValue(id, "_comfyFilename", filename);
+      setUploadStatus("uploaded");
+    } catch (err) {
+      console.warn("[Import] background upload failed:", err);
+      setUploadStatus("failed");
+    }
+  }, [id, updateWidgetValue]);
 
   const handleFile = useCallback((file: File) => {
     const { type, url } = processImportFile(file, {
@@ -33,7 +58,11 @@ function ImportNode({ id, data, selected }: NodeProps) {
     setMediaType(type);
     setFileName(file.name);
     setPreview(url);
-  }, [id, updateWidgetValue]);
+    // Invalidate any previous server URL — content has changed.
+    updateWidgetValue(id, "_previewUrl", "");
+    updateWidgetValue(id, "_comfyFilename", "");
+    void uploadInBackground(url, file.name);
+  }, [id, updateWidgetValue, uploadInBackground]);
 
   const clearFile = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -41,9 +70,12 @@ function ImportNode({ id, data, selected }: NodeProps) {
     setMediaType("none");
     setPreview(null);
     setFileName("");
+    setUploadStatus("idle");
     updateWidgetValue(id, "_mediaType", "none");
     updateWidgetValue(id, "_fileName", "");
     updateWidgetValue(id, "_preview", null);
+    updateWidgetValue(id, "_previewUrl", "");
+    updateWidgetValue(id, "_comfyFilename", "");
     updateWidgetValue(id, "_fileInfo", {});
   }, [id, preview, updateWidgetValue]);
 
@@ -60,8 +92,14 @@ function ImportNode({ id, data, selected }: NodeProps) {
     updateWidgetValue(id, "_mediaType", mt);
     updateWidgetValue(id, "_fileName", fileName);
     updateWidgetValue(id, "_preview", url);
+    updateWidgetValue(id, "_previewUrl", "");
+    updateWidgetValue(id, "_comfyFilename", "");
     updateWidgetValue(id, "_fileInfo", { source: "media-library" });
-  }, [id, updateWidgetValue]);
+    const dot = fileName.lastIndexOf(".");
+    const ext = dot > 0 ? fileName.slice(dot + 1).toLowerCase()
+      : (mt === "audio" ? "wav" : mt === "video" ? "mp4" : "png");
+    void uploadInBackground(url, `dropped.${ext}`);
+  }, [id, updateWidgetValue, uploadInBackground]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -102,7 +140,11 @@ function ImportNode({ id, data, selected }: NodeProps) {
           <span className="import-icon">⬆</span>
           <div className="import-header-text">
             <span className="import-title">Import</span>
-            <span className="import-status">{mediaType === "none" ? "IDLE" : actualType}</span>
+            <span className="import-status">
+              {mediaType === "none" ? "IDLE" : actualType}
+              {uploadStatus === "uploading" && " · uploading…"}
+              {uploadStatus === "failed" && " · upload failed"}
+            </span>
           </div>
         </div>
       </div>
